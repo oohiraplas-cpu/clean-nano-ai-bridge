@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: Clean Nano AI Bridge API
+  version: 1.0.0
+  description: Power Platformと外部AIを接続するAPI。業務データの正本はSharePoint Listsです。
+# 公開ホストは未確定のため、serversは意図的に未指定です。
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: 接続確認
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+  /api/tasks:
+    get:
+      operationId: listTasks
+      responses:
+        '200':
+          description: タスク一覧
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskListResponse' }
+  /api/next:
+    get:
+      operationId: getNextTask
+      responses:
+        '200':
+          description: 次タスクまたはタスクなし
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NextResponse' }
+  /webhooks/claude-code:
+    post:
+      operationId: receiveClaudeCodeWebhook
+      security: [{ WebhookApiKey: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInput' } } } }
+      responses:
+        '202': { description: 受付済み }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /webhooks/copilot:
+    post:
+      operationId: receiveCopilotWebhook
+      security: [{ WebhookApiKey: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskInput' } } } }
+      responses:
+        '202': { description: 受付済み }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/tasks/{id}/status:
+    post:
+      operationId: updateTaskStatus
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StatusInput' } } } }
+      responses:
+        '200': { description: 更新済み }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: タスクなし }
+  /mcp:
+    post:
+      operationId: invokeMcpBridge
+      security: [{ McpApiKey: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/McpInput' } } } }
+      responses:
+        '200': { description: 受付済み }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    WebhookApiKey: { type: apiKey, in: header, name: X-API-Key }
+    McpApiKey: { type: apiKey, in: header, name: X-API-Key }
+  responses:
+    BadRequest: { description: 入力不正 }
+    Unauthorized: { description: 認証失敗 }
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties: { status: { type: string, example: ok } }
+    Task:
+      type: object
+      required: [id, title, status, retry_count]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [未着手, 実行中, 完了, 停止, エラー, 判断待ち, 人間承認待ち, ユーザー操作待ち, タスクなし] }
+        retry_count: { type: integer, minimum: 0 }
+        approval_required: { type: boolean }
+        userActionRequired: { type: boolean }
+    TaskInput:
+      allOf:
+        - { $ref: '#/components/schemas/Task' }
+        - { required: [id, title] }
+    StatusInput:
+      type: object
+      properties:
+        status: { type: string }
+        retry_count: { type: integer, minimum: 0 }
+        approval_required: { type: boolean }
+        userActionRequired: { type: boolean }
+    TaskListResponse:
+      type: object
+      required: [status, count, tasks]
+      properties:
+        status: { type: string }
+        count: { type: integer }
+        tasks: { type: array, items: { $ref: '#/components/schemas/Task' } }
+    NextResponse:
+      type: object
+      required: [status, task]
+      properties:
+        status: { type: string }
+        task:
+          allOf: [{ $ref: '#/components/schemas/Task' }]
+          nullable: true
+    McpInput:
+      type: object
+      required: [method]
+      properties:
+        method: { type: string }
+        params: { type: object }

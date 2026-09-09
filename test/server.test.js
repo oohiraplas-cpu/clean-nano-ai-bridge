@@ -1,0 +1,86 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+const { createApp } = require('../src/server');
+
+async function createTestServer(tasks, options = {}) {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'clean-nano-ai-bridge-'));
+  const tasksFile = path.join(directory, 'tasks.json');
+  await fs.writeFile(tasksFile, `${JSON.stringify(tasks)}\n`);
+  const app = createApp({
+    corsOrigins: ['http://localhost:3000'],
+    tasksFile,
+    webhookApiKey: options.webhookApiKey || '',
+    mcpApiKey: options.mcpApiKey || ''
+  });
+  const server = await new Promise((resolve) => {
+    const instance = app.listen(0, () => resolve(instance));
+  });
+  return { baseUrl: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
+}
+
+const seedTask = { id: 'task-1', title: 'テスト', status: '未着手', retry_count: 0 };
+
+test('必須APIと状態制御を提供する', async (t) => {
+  const server = await createTestServer([seedTask]);
+  t.after(() => server.close());
+  const health = await fetch(`${server.baseUrl}/health`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { status: 'ok' });
+
+  const tasks = await fetch(`${server.baseUrl}/api/tasks`);
+  assert.equal((await tasks.json()).count, 1);
+  const next = await fetch(`${server.baseUrl}/api/next`);
+  assert.equal((await next.json()).task.id, 'task-1');
+
+  const webhook = await fetch(`${server.baseUrl}/webhooks/copilot`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: 'task-2', title: 'Webhook task' })
+  });
+  assert.equal(webhook.status, 202);
+  assert.equal((await webhook.json()).task.source, 'copilot');
+
+  const stopped = await fetch(`${server.baseUrl}/api/tasks/task-1/status`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ retry_count: 3, status: 'エラー' })
+  });
+  assert.equal((await stopped.json()).task.status, '停止');
+  const approval = await fetch(`${server.baseUrl}/api/tasks/task-2/status`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ approval_required: true })
+  });
+  assert.equal((await approval.json()).task.status, '人間承認待ち');
+  const userAction = await fetch(`${server.baseUrl}/api/tasks/task-2/status`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ approval_required: false, userActionRequired: true })
+  });
+  assert.equal((await userAction.json()).task.status, 'ユーザー操作待ち');
+  const noNext = await fetch(`${server.baseUrl}/api/next`);
+  assert.equal((await noNext.json()).status, 'タスクなし');
+});
+
+test('入力検証、APIキー、MCPを扱う', async (t) => {
+  const server = await createTestServer([seedTask], { webhookApiKey: 'webhook-secret', mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const unauthorized = await fetch(`${server.baseUrl}/webhooks/claude-code`, { method: 'POST', body: '{}' });
+  assert.equal(unauthorized.status, 401);
+  const invalid = await fetch(`${server.baseUrl}/webhooks/claude-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'webhook-secret' }, body: JSON.stringify({ id: 'x' })
+  });
+  assert.equal(invalid.status, 400);
+  const mcp = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'tasks.next', params: {} })
+  });
+  assert.equal(mcp.status, 200);
+});
+
+test('タスクが0件ならタスクなしを明示する', async (t) => {
+  const server = await createTestServer([]);
+  t.after(() => server.close());
+  const tasks = await fetch(`${server.baseUrl}/api/tasks`);
+  assert.equal((await tasks.json()).status, 'タスクなし');
+  const next = await fetch(`${server.baseUrl}/api/next`);
+  assert.deepEqual(await next.json(), { status: 'タスクなし', task: null });
+});

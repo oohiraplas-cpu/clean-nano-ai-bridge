@@ -1,0 +1,20 @@
+{
+  "name": "clean-nano-ai-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bridge API for Power Platform and external AI services",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "validate:openapi": "node --test test/openapi.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": { "@apidevtools/swagger-parser": "^10.1.0" }
+}

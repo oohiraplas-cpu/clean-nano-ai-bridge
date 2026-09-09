@@ -1,0 +1,12 @@
+[
+  {
+    "id": "demo-001",
+    "title": "Bridge APIの接続を確認",
+    "description": "Power Platformからhealthとtasksを確認する",
+    "status": "未着手",
+    "retry_count": 0,
+    "approval_required": false,
+    "userActionRequired": false,
+    "source": "local-demo"
+  }
+]
