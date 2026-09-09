@@ -7,6 +7,7 @@ function getConfig(env = process.env) {
     .split(',').map((origin) => origin.trim()).filter(Boolean);
   return {
     port: Number.parseInt(env.PORT || '3000', 10),
+    host: env.HOST || '0.0.0.0',
     nodeEnv: env.NODE_ENV || 'development',
     corsOrigins: origins,
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),

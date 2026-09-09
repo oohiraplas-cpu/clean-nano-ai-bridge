@@ -78,7 +78,7 @@ function createApp(config = getConfig(), store = new TaskStore(config.tasksFile)
 
 if (require.main === module) {
   const config = getConfig();
-  createApp(config).listen(config.port, () => console.log(`Bridge API listening on port ${config.port}`));
+  createApp(config).listen(config.port, config.host, () => console.log(`Bridge API listening on ${config.host}:${config.port}`));
 }
 
 module.exports = { apiKeyMiddleware, createApp };
