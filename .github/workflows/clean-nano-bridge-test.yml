@@ -1,0 +1,255 @@
+name: clean-nano-bridge Integration Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      HOST: 127.0.0.1
+      CORS_ORIGINS: http://localhost:3000
+      TASKS_FILE: data/tasks.json
+      WEBHOOK_API_KEY: test-webhook-secret-key
+      MCP_API_KEY: test-mcp-secret-key
+
+    steps:
+      # ステップ 1: リポジトリをチェックアウト
+      - name: "1. Checkout repository"
+        uses: actions/checkout@v4
+
+      # ステップ 2: Node.jsをセットアップ
+      - name: "2. Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ステップ 3: Node.jsバージョン確認
+      - name: "3. Check Node.js version"
+        run: node --version
+
+      # ステップ 4: npmバージョン確認
+      - name: "4. Check npm version"
+        run: npm --version
+
+      # ステップ 5: npm install
+      - name: "5. Install dependencies"
+        run: npm install
+
+      # ステップ 6: npm test (テスト実行)
+      - name: "6. Run test suite"
+        run: npm test
+
+      # ステップ 7: サーバーをバックグラウンド起動
+      - name: "7. Start server in background"
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+      # ステップ 8: サーバー起動待機（ヘルスチェック）
+      - name: "8. Wait for server to be ready"
+        run: |
+          for i in {1..30}; do
+            if curl -s -f http://127.0.0.1:3000/health > /dev/null; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Waiting for server..."
+            sleep 1
+          done
+          echo "Server failed to start"
+          cat server.log
+          exit 1
+
+      # ステップ 9: /health 疎通確認
+      - name: "9. Test /health endpoint"
+        run: |
+          echo "=== Testing GET /health ==="
+          curl -v http://127.0.0.1:3000/health
+          echo ""
+
+      # ステップ 10: GET /api/tasks
+      - name: "10. Test GET /api/tasks"
+        run: |
+          echo "=== Testing GET /api/tasks ==="
+          curl -v http://127.0.0.1:3000/api/tasks
+          echo ""
+
+      # ステップ 11: GET /api/next
+      - name: "11. Test GET /api/next"
+        run: |
+          echo "=== Testing GET /api/next ==="
+          curl -v http://127.0.0.1:3000/api/next
+          echo ""
+
+      # ステップ 12: Claude Code webhook POST試験
+      - name: "12. Test POST /webhooks/claude-code"
+        run: |
+          echo "=== Testing POST /webhooks/claude-code (without API key) ==="
+          curl -v -X POST http://127.0.0.1:3000/webhooks/claude-code \
+            -H "Content-Type: application/json" \
+            -d '{"id":"test-claude-001","title":"Test Claude Code Task"}' || true
+          echo ""
+          echo "=== Testing POST /webhooks/claude-code (with correct API key) ==="
+          curl -v -X POST http://127.0.0.1:3000/webhooks/claude-code \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: test-webhook-secret-key" \
+            -d '{"id":"test-claude-001","title":"Test Claude Code Task"}'
+          echo ""
+
+      # ステップ 13: Copilot webhook POST試験
+      - name: "13. Test POST /webhooks/copilot"
+        run: |
+          echo "=== Testing POST /webhooks/copilot (with correct API key) ==="
+          curl -v -X POST http://127.0.0.1:3000/webhooks/copilot \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: test-webhook-secret-key" \
+            -d '{"id":"test-copilot-001","title":"Test Copilot Task"}'
+          echo ""
+
+      # ステップ 14: /mcp 疎通確認
+      - name: "14. Test POST /mcp"
+        run: |
+          echo "=== Testing POST /mcp (without API key) ==="
+          curl -v -X POST http://127.0.0.1:3000/mcp \
+            -H "Content-Type: application/json" \
+            -d '{"method":"tasks.next"}' || true
+          echo ""
+          echo "=== Testing POST /mcp (with correct API key) ==="
+          curl -v -X POST http://127.0.0.1:3000/mcp \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: test-mcp-secret-key" \
+            -d '{"method":"tasks.next","params":{}}'
+          echo ""
+
+      # ステップ 15: X-API-Key認証試験（3パターン）
+      - name: "15. Test X-API-Key authentication (3 patterns)"
+        run: |
+          echo "=== Pattern 1: Correct API Key ==="
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:3000/webhooks/claude-code \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: test-webhook-secret-key" \
+            -d '{"id":"auth-test-1","title":"Auth Test"}')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" -ne 202 ]; then
+            echo "ERROR: Expected 202, got $HTTP_CODE"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== Pattern 2: No API Key ==="
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:3000/webhooks/claude-code \
+            -H "Content-Type: application/json" \
+            -d '{"id":"auth-test-2","title":"Auth Test"}')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" -ne 401 ]; then
+            echo "ERROR: Expected 401, got $HTTP_CODE"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== Pattern 3: Wrong API Key ==="
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:3000/webhooks/claude-code \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: wrong-key-value" \
+            -d '{"id":"auth-test-3","title":"Auth Test"}')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" -ne 401 ]; then
+            echo "ERROR: Expected 401, got $HTTP_CODE"
+            exit 1
+          fi
+
+      # ステップ 16: 状態更新API試験
+      - name: "16. Test status update API"
+        run: |
+          echo "=== Testing POST /api/tasks/:id/status ==="
+          curl -v -X POST http://127.0.0.1:3000/api/tasks/demo-001/status \
+            -H "Content-Type: application/json" \
+            -d '{"status":"実行中"}'
+          echo ""
+
+      # ステップ 17: retry_count >= 3 → 停止
+      - name: "17. Test retry_count >= 3 triggers stopped status"
+        run: |
+          echo "=== Testing retry_count >= 3 → 停止 ==="
+          RESPONSE=$(curl -s -X POST http://127.0.0.1:3000/api/tasks/demo-001/status \
+            -H "Content-Type: application/json" \
+            -d '{"retry_count":3,"status":"エラー"}')
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | head -1)
+          echo "Task status: $STATUS"
+          if echo "$STATUS" | grep -q "停止"; then
+            echo "✓ retry_count >= 3 correctly triggered 停止 status"
+          else
+            echo "✗ FAILED: retry_count >= 3 did not trigger 停止 status"
+          fi
+
+      # ステップ 18: approval_required → 人間承認待ち
+      - name: "18. Test approval_required triggers 人間承認待ち status"
+        run: |
+          echo "=== Testing approval_required → 人間承認待ち ==="
+          RESPONSE=$(curl -s -X POST http://127.0.0.1:3000/api/tasks/test-claude-001/status \
+            -H "Content-Type: application/json" \
+            -d '{"approval_required":true}')
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | head -1)
+          echo "Task status: $STATUS"
+          if echo "$STATUS" | grep -q "人間承認待ち"; then
+            echo "✓ approval_required correctly triggered 人間承認待ち status"
+          else
+            echo "✗ FAILED: approval_required did not trigger 人間承認待ち status"
+          fi
+
+      # ステップ 19: userActionRequired → ユーザー操作待ち
+      - name: "19. Test userActionRequired triggers ユーザー操作待ち status"
+        run: |
+          echo "=== Testing userActionRequired → ユーザー操作待ち ==="
+          RESPONSE=$(curl -s -X POST http://127.0.0.1:3000/api/tasks/test-copilot-001/status \
+            -H "Content-Type: application/json" \
+            -d '{"userActionRequired":true,"approval_required":false}')
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | head -1)
+          echo "Task status: $STATUS"
+          if echo "$STATUS" | grep -q "ユーザー操作待ち"; then
+            echo "✓ userActionRequired correctly triggered ユーザー操作待ち status"
+          else
+            echo "✗ FAILED: userActionRequired did not trigger ユーザー操作待ち status"
+          fi
+
+      # ステップ 20: サーバーログ出力
+      - name: "20. Output server logs"
+        if: always()
+        run: |
+          echo "=== Server Log ==="
+          cat server.log || echo "No server log available"
+          echo ""
+          echo "=== Process Status ==="
+          ps aux | grep "node src/server.js" | grep -v grep || echo "Server process not found"
+
+      # クリーンアップ: サーバープロセス停止
+      - name: "Cleanup: Stop server"
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) || true
+            sleep 1
+            kill -9 $(cat server.pid) 2>/dev/null || true
+          fi
