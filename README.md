@@ -23,6 +23,8 @@ npm start
 
 `GET /health`、`GET /api/tasks`、`GET /api/next`、`POST /webhooks/claude-code`、`POST /webhooks/copilot`、`POST /api/tasks/:id/status`、`POST /mcp` を提供します。`retry_count >= 3` は自動的に `停止`、承認要求とユーザー操作要求はそれぞれ待機状態になり、完了・停止・待機中のタスクは `/api/next` から除外されます。対象がなければ `タスクなし` を返します。
 
+`POST /mcp` はChatGPT・Claude Code・CN_総合秘書AIが共通で使うMCP風エントリポイントです。`{"method": "health_check" | "get_tasks" | "get_next_task"}` を受け付け、対応するREST APIと同じ結果を `result` に返します（3AI共通Bridge標準機能）。それ以外の `method` は `400` です。
+
 ## Power Platform
 
 OpenAPI 3.x定義は [openapi.yaml](openapi.yaml) です。公開ホストが未確定のため `servers` は未指定です。Custom Connector作成時に実際のHTTPS Hostを設定し、まず `GET /health` を接続試験に使ってください。TLS終端、DNS、ファイアウォール、認証キーの安全な登録、SharePoint Listsアダプターの実装は公開前に別途必要です。

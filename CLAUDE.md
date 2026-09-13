@@ -22,6 +22,7 @@ There is no lint/build step and no test-name filtering script configured — use
 ## Architecture
 
 - `src/config.js` — reads all runtime config from `process.env` via `getConfig(env)`. Nothing else in the app reads `process.env` directly; tests pass config objects in instead of setting env vars.
+- `src/sharePointTaskStore.js` — SharePoint Lists-backed alternative to `TaskStore`, same interface (`list/upsert/update/next`). Auth is client-credentials against Microsoft Graph (`SHAREPOINT_*` env vars); list column names are configurable (`fieldMap`) since the production list's actual internal column names aren't known from this repo. Selected via `TASK_STORE_BACKEND=sharepoint` (default remains `file`).
 - `src/taskStore.js` — file-backed task persistence (`data/tasks.json` by default). Owns the task status state machine:
   - `resolveStatus(task)` derives the authoritative `status` on every read/write, in priority order: `retry_count >= 3` → `停止` (stopped), else `approval_required === true` → `人間承認待ち` (awaiting human approval), else `userActionRequired === true` → `ユーザー操作待ち` (awaiting user action), else the task's own `status` (default `未着手`, not-started).
   - `normalizeTask` runs this on every read/write, so status is never trusted as input — it's always recomputed.
@@ -33,7 +34,7 @@ There is no lint/build step and no test-name filtering script configured — use
   - `GET /api/tasks`, `GET /api/next`
   - `POST /webhooks/claude-code`, `POST /webhooks/copilot` — API-key gated (`WEBHOOK_API_KEY`), upsert a task, tag it with `source` derived from the path
   - `POST /api/tasks/:id/status` — patches a task's status-relevant fields (not API-key gated)
-  - `POST /mcp` — API-key gated (`MCP_API_KEY`), currently just validates `{method, params}` and echoes acceptance; no actual method dispatch yet
+  - `POST /mcp` — API-key gated (`MCP_API_KEY`), the common MCP-style entry point for ChatGPT / Claude Code / CN_総合秘書AI. Dispatches the three standard methods (`health_check`, `get_tasks`, `get_next_task`, exported as `MCP_METHODS` in `src/server.js`) to the same logic behind `GET /health`, `GET /api/tasks`, `GET /api/next`, returning `{accepted, method, result}`. Any other `method` value is a `400`.
   - API key checks use `crypto.timingSafeEqual` after a length check (see `apiKeyMiddleware`); an empty configured key disables auth for that route entirely
   - Central error handler returns Japanese error messages and never leaks internals (`内部エラーが発生しました`)
 - `openapi.yaml` — the OpenAPI 3.x contract for the Power Platform Custom Connector. Every operation must have an `operationId` (enforced by `test/openapi.test.js` via `@apidevtools/swagger-parser`). `servers` is intentionally left unset until a public host is chosen. Keep this in sync with `src/server.js` and `src/validation.js` when changing routes/schemas.

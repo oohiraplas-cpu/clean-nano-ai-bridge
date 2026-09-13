@@ -63,10 +63,18 @@ paths:
   /mcp:
     post:
       operationId: invokeMcpBridge
+      description: |
+        ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。
+        method は health_check・get_tasks・get_next_task のいずれかを指定します。
+        それぞれ GET /health・GET /api/tasks・GET /api/next と同じ結果を result に返します。
       security: [{ McpApiKey: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/McpInput' } } } }
       responses:
-        '200': { description: 受付済み }
+        '200':
+          description: 実行結果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 components:
@@ -122,5 +130,12 @@ components:
       type: object
       required: [method]
       properties:
-        method: { type: string }
+        method: { type: string, enum: [health_check, get_tasks, get_next_task], description: 3AI共通Bridgeが対応する標準メソッド }
         params: { type: object }
+    McpResponse:
+      type: object
+      required: [accepted, method, result]
+      properties:
+        accepted: { type: boolean }
+        method: { type: string }
+        result: { type: object, description: health_checkはHealthResponse、get_tasksはTaskListResponse、get_next_taskはNextResponseと同じ形状 }
