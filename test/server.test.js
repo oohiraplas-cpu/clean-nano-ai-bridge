@@ -70,10 +70,26 @@ test('入力検証、APIキー、MCPを扱う', async (t) => {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'webhook-secret' }, body: JSON.stringify({ id: 'x' })
   });
   assert.equal(invalid.status, 400);
-  const mcp = await fetch(`${server.baseUrl}/mcp`, {
+  const mcpUnknown = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'tasks.next', params: {} })
   });
-  assert.equal(mcp.status, 200);
+  assert.equal(mcpUnknown.status, 400);
+});
+
+test('MCPの標準メソッドをBridge経由で実行できる', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const health = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'health_check' }) });
+  assert.equal(health.status, 200);
+  assert.deepEqual((await health.json()).result, { status: 'ok' });
+
+  const tasks = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_tasks' }) });
+  assert.equal((await tasks.json()).result.count, 1);
+
+  const next = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_next_task' }) });
+  assert.equal((await next.json()).result.task.id, 'task-1');
 });
 
 test('タスクが0件ならタスクなしを明示する', async (t) => {

@@ -18,6 +18,18 @@ function apiKeyMiddleware(getKey) {
   };
 }
 
+const MCP_METHODS = Object.freeze(['health_check', 'get_tasks', 'get_next_task']);
+
+async function tasksPayload(store) {
+  const tasks = await store.list();
+  return { status: tasks.length ? 'ok' : 'タスクなし', count: tasks.length, tasks };
+}
+
+async function nextPayload(store) {
+  const task = await store.next();
+  return task ? { status: 'ok', task } : { status: 'タスクなし', task: null };
+}
+
 function createApp(config = getConfig(), store = new TaskStore(config.tasksFile)) {
   const app = express();
   app.disable('x-powered-by');
@@ -27,17 +39,11 @@ function createApp(config = getConfig(), store = new TaskStore(config.tasksFile)
   app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
   app.get('/api/tasks', async (req, res, next) => {
-    try {
-      const tasks = await store.list();
-      return res.status(200).json({ status: tasks.length ? 'ok' : 'タスクなし', count: tasks.length, tasks });
-    } catch (error) { return next(error); }
+    try { return res.status(200).json(await tasksPayload(store)); } catch (error) { return next(error); }
   });
 
   app.get('/api/next', async (req, res, next) => {
-    try {
-      const task = await store.next();
-      return res.status(200).json(task ? { status: 'ok', task } : { status: 'タスクなし', task: null });
-    } catch (error) { return next(error); }
+    try { return res.status(200).json(await nextPayload(store)); } catch (error) { return next(error); }
   });
 
   const webhookAuth = apiKeyMiddleware(() => config.webhookApiKey);
@@ -62,10 +68,18 @@ function createApp(config = getConfig(), store = new TaskStore(config.tasksFile)
     } catch (error) { return next(error); }
   });
 
-  app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), (req, res) => {
+  app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), async (req, res, next) => {
     const errorMessage = validateMcpInput(req.body);
     if (errorMessage) return res.status(400).json({ error: errorMessage });
-    return res.status(200).json({ accepted: true, method: req.body.method });
+    const { method } = req.body;
+    if (!MCP_METHODS.includes(method)) return res.status(400).json({ error: `不明なmethodです（対応: ${MCP_METHODS.join(', ')}）` });
+    try {
+      let result;
+      if (method === 'health_check') result = { status: 'ok' };
+      else if (method === 'get_tasks') result = await tasksPayload(store);
+      else result = await nextPayload(store);
+      return res.status(200).json({ accepted: true, method, result });
+    } catch (error) { return next(error); }
   });
 
   app.use((error, req, res, next) => {

@@ -33,7 +33,7 @@ There is no lint/build step and no test-name filtering script configured — use
   - `GET /api/tasks`, `GET /api/next`
   - `POST /webhooks/claude-code`, `POST /webhooks/copilot` — API-key gated (`WEBHOOK_API_KEY`), upsert a task, tag it with `source` derived from the path
   - `POST /api/tasks/:id/status` — patches a task's status-relevant fields (not API-key gated)
-  - `POST /mcp` — API-key gated (`MCP_API_KEY`), currently just validates `{method, params}` and echoes acceptance; no actual method dispatch yet
+  - `POST /mcp` — API-key gated (`MCP_API_KEY`), the common MCP-style entry point for ChatGPT / Claude Code / CN_総合秘書AI. Dispatches the three standard methods (`health_check`, `get_tasks`, `get_next_task`, exported as `MCP_METHODS` in `src/server.js`) to the same logic behind `GET /health`, `GET /api/tasks`, `GET /api/next`, returning `{accepted, method, result}`. Any other `method` value is a `400`.
   - API key checks use `crypto.timingSafeEqual` after a length check (see `apiKeyMiddleware`); an empty configured key disables auth for that route entirely
   - Central error handler returns Japanese error messages and never leaks internals (`内部エラーが発生しました`)
 - `openapi.yaml` — the OpenAPI 3.x contract for the Power Platform Custom Connector. Every operation must have an `operationId` (enforced by `test/openapi.test.js` via `@apidevtools/swagger-parser`). `servers` is intentionally left unset until a public host is chosen. Keep this in sync with `src/server.js` and `src/validation.js` when changing routes/schemas.
