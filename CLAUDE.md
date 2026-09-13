@@ -22,6 +22,7 @@ There is no lint/build step and no test-name filtering script configured — use
 ## Architecture
 
 - `src/config.js` — reads all runtime config from `process.env` via `getConfig(env)`. Nothing else in the app reads `process.env` directly; tests pass config objects in instead of setting env vars.
+- `src/sharePointTaskStore.js` — SharePoint Lists-backed alternative to `TaskStore`, same interface (`list/upsert/update/next`). Auth is client-credentials against Microsoft Graph (`SHAREPOINT_*` env vars); list column names are configurable (`fieldMap`) since the production list's actual internal column names aren't known from this repo. Selected via `TASK_STORE_BACKEND=sharepoint` (default remains `file`).
 - `src/taskStore.js` — file-backed task persistence (`data/tasks.json` by default). Owns the task status state machine:
   - `resolveStatus(task)` derives the authoritative `status` on every read/write, in priority order: `retry_count >= 3` → `停止` (stopped), else `approval_required === true` → `人間承認待ち` (awaiting human approval), else `userActionRequired === true` → `ユーザー操作待ち` (awaiting user action), else the task's own `status` (default `未着手`, not-started).
   - `normalizeTask` runs this on every read/write, so status is never trusted as input — it's always recomputed.

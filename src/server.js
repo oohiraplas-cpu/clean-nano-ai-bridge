@@ -5,7 +5,13 @@ const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
 const { TaskStore } = require('./taskStore');
+const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { validateMcpInput, validateStatusInput, validateTaskInput } = require('./validation');
+
+function createDefaultStore(config) {
+  if (config.taskStoreBackend === 'sharepoint') return new SharePointTaskStore(config.sharepoint);
+  return new TaskStore(config.tasksFile);
+}
 
 function apiKeyMiddleware(getKey) {
   return (req, res, next) => {
@@ -30,7 +36,8 @@ async function nextPayload(store) {
   return task ? { status: 'ok', task } : { status: 'タスクなし', task: null };
 }
 
-function createApp(config = getConfig(), store = new TaskStore(config.tasksFile)) {
+function createApp(config = getConfig(), injectedStore) {
+  const store = injectedStore || createDefaultStore(config);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
