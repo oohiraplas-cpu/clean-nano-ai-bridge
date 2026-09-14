@@ -76,9 +76,6 @@ class PowerAppsStore {
     this._tokenCache = new TokenCache();
   }
 
-  /**
-   * 管理APIへのリクエスト送信
-   */
   async _managementFetch(path, options = {}) {
     const token = await this._tokenCache.getToken(
       this._fetch,
@@ -106,9 +103,6 @@ class PowerAppsStore {
     return response.status === 204 ? null : response.json();
   }
 
-  /**
-   * 操作ログをJSONL形式で記録
-   */
   async _recordOperation(operationId, operation, environmentId, appId, entry) {
     try {
       const logEntry = JSON.stringify({
@@ -125,9 +119,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 対象Power Appsアプリの基本情報を取得
-   */
   async getAppInfo() {
     if (!this.environmentId || !this.appId) {
       throw new Error('environmentIdおよびappIdが未設定です');
@@ -151,9 +142,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 対象Power Appsアプリの現在の完全な状態を取得
-   */
   async getAppState() {
     if (!this.environmentId || !this.appId) {
       throw new Error('environmentIdおよびappIdが未設定です');
@@ -190,9 +178,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 対象Power Appsアプリの定義・データソース等を更新
-   */
   async updateApp(updateData) {
     if (!this.environmentId || !this.appId) {
       throw new Error('environmentIdおよびappIdが未設定です');
@@ -247,9 +232,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 対象Power Appsアプリの保存（下書き保存）
-   */
   async saveApp() {
     if (!this.environmentId || !this.appId) {
       throw new Error('environmentIdおよびappIdが未設定です');
@@ -261,7 +243,7 @@ class PowerAppsStore {
       const newVersionNumber = `${parseFloat(currentState.versionNumber) + 0.1}`;
 
       const path = `/subscriptions/undefined/resourceGroups/undefined/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2024-06-15`;
-      const saveResult = await this._managementFetch(path, {
+      await this._managementFetch(path, {
         method: 'PATCH',
         body: JSON.stringify({
           properties: {
@@ -298,9 +280,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 対象Power Appsアプリを公開
-   */
   async publishApp() {
     if (!this.environmentId || !this.appId) {
       throw new Error('environmentIdおよびappIdが未設定です');
@@ -311,7 +290,7 @@ class PowerAppsStore {
       const beforePublish = await this.getAppState();
 
       const path = `/subscriptions/undefined/resourceGroups/undefined/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2024-06-15`;
-      const publishResult = await this._managementFetch(path, {
+      await this._managementFetch(path, {
         method: 'POST',
         body: JSON.stringify({ strategy: 'immediate' })
       });
@@ -320,7 +299,7 @@ class PowerAppsStore {
         status: 'success',
         changesBefore: { versionNumber: beforePublish.versionNumber },
         result: {
-          publishedVersion: publishResult.properties?.publishedVersion || beforePublish.versionNumber,
+          publishedVersion: beforePublish.versionNumber,
           publishedAt: new Date().toISOString()
         }
       });
@@ -330,7 +309,7 @@ class PowerAppsStore {
         operationId,
         appId: this.appId,
         environmentId: this.environmentId,
-        publishedVersion: publishResult.properties?.publishedVersion || beforePublish.versionNumber,
+        publishedVersion: beforePublish.versionNumber,
         publishedAt: new Date().toISOString(),
         message: '公開に成功しました。エンドユーザーが利用できます。'
       };
@@ -343,9 +322,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 指定operationIdの操作結果を取得
-   */
   async getOperationResult(operationId) {
     if (!operationId || typeof operationId !== 'string') {
       throw new Error('operationIdが必要です');
@@ -382,9 +358,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 対象アプリの操作ログを取得（最新N件）
-   */
   async getOperationLog(limit = 50) {
     try {
       const content = await fs.readFile(this.logPath, 'utf8');
@@ -407,9 +380,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 指定されたoperationIdの操作をロールバック
-   */
   async rollbackOperation(operationId) {
     if (!operationId || typeof operationId !== 'string') {
       throw new Error('operationIdが必要です');
@@ -455,9 +425,6 @@ class PowerAppsStore {
     }
   }
 
-  /**
-   * 認可情報を無効化（ログアウト）
-   */
   invalidateAuth() {
     this._tokenCache.invalidate();
   }
