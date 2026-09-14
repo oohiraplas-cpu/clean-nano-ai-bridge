@@ -51,7 +51,7 @@ class PowerAppsStore {
     this.environmentId = config.environmentId || '';
     this.appId = config.appId || '';
     this.logPath = config.logPath || 'data/powerapps-operations.jsonl';
-    this.managementApiBaseUrl = config.managementApiBaseUrl || 'https://management.azure.com';
+    this.managementApiBaseUrl = config.managementApiBaseUrl || 'https://api.powerapps.com';
     this.tokenUrl = config.tokenUrl || `https://login.microsoftonline.com/${this.tenantId}/oauth2/v2.0/token`;
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new TokenCache();
@@ -106,7 +106,7 @@ class PowerAppsStore {
     }
 
     try {
-      const path = `/subscriptions/undefined/resourceGroups/undefined/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2024-06-15`;
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
       const data = await this._managementFetch(path);
       return {
         status: 'ok',
@@ -130,7 +130,7 @@ class PowerAppsStore {
 
     const operationId = crypto.randomUUID();
     try {
-      const path = `/subscriptions/undefined/resourceGroups/undefined/providers/Microsoft.PowerApps/apps/${this.appId}/definition?api-version=2024-06-15`;
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/definition?api-version=2016-11-01`;
       const state = await this._managementFetch(path);
 
       await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, {
@@ -223,7 +223,7 @@ class PowerAppsStore {
       const currentState = await this.getAppState();
       const newVersionNumber = `${parseFloat(currentState.versionNumber) + 0.1}`;
 
-      const path = `/subscriptions/undefined/resourceGroups/undefined/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2024-06-15`;
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
       await this._managementFetch(path, {
         method: 'PATCH',
         body: JSON.stringify({
@@ -270,7 +270,7 @@ class PowerAppsStore {
     try {
       const beforePublish = await this.getAppState();
 
-      const path = `/subscriptions/undefined/resourceGroups/undefined/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2024-06-15`;
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2016-11-01`;
       await this._managementFetch(path, {
         method: 'POST',
         body: JSON.stringify({ strategy: 'immediate' })
