@@ -21,6 +21,15 @@ function getConfig(env = process.env) {
       clientSecret: env.SHAREPOINT_CLIENT_SECRET || '',
       siteId: env.SHAREPOINT_SITE_ID || '',
       listId: env.SHAREPOINT_LIST_ID || ''
+    },
+    // Power Apps統合設定
+    powerApps: {
+      tenantId: env.POWERAPPS_TENANT_ID || '',
+      clientId: env.POWERAPPS_CLIENT_ID || '',
+      clientSecret: env.POWERAPPS_CLIENT_SECRET || '',
+      environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
+      appId: env.POWERAPPS_APP_ID || '',
+      logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl')
     }
   };
 }
