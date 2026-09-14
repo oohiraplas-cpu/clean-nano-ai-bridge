@@ -27,7 +27,14 @@ function getConfig(env = process.env) {
       clientSecret: env.POWERAPPS_CLIENT_SECRET || '',
       environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
       appId: env.POWERAPPS_APP_ID || '',
-      logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl')
+      logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
+      orgUrl: env.POWERAPPS_ORG_URL || '',
+      solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || '',
+      githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
+      githubOwner: env.POWERAPPS_GITHUB_OWNER || '',
+      githubRepo: env.POWERAPPS_GITHUB_REPO || '',
+      githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
+      githubRoot: env.POWERAPPS_GITHUB_ROOT || ''
     }
   };
 }
