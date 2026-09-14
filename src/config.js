@@ -22,9 +22,9 @@ function getConfig(env = process.env) {
       listId: env.SHAREPOINT_LIST_ID || ''
     },
     powerApps: {
-      tenantId: env.POWERAPPS_TENANT_ID || '',
-      clientId: env.POWERAPPS_CLIENT_ID || '',
-      clientSecret: env.POWERAPPS_CLIENT_SECRET || '',
+      tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
+      clientId: env.POWERAPPS_CLIENT_ID || env.AZURE_CLIENT_ID || '',
+      clientSecret: env.POWERAPPS_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
       environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
       appId: env.POWERAPPS_APP_ID || '',
       logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
