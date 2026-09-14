@@ -128,7 +128,6 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore) 
     if (!MCP_METHODS.includes(method)) return res.status(400).json({ error: `不明なmethodです（対応: ${MCP_METHODS.join(', ')}）` });
     try {
       let result;
-      // タスク関連メソッド
       if (method === 'health_check') result = { status: 'ok' };
       else if (method === 'get_tasks') result = await tasksPayload(store);
       else if (method === 'get_next_task') result = await nextPayload(store);
@@ -148,9 +147,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore) 
         const task = await getTaskResultPayload(store, params.task_id);
         if (!task) return res.status(404).json({ error: 'タスクが見つかりません' });
         result = { task_id: task.id, status: task.status, result: task.result ?? null };
-      }
-      // Power Apps メソッド
-      else if (method === 'get_powerapps_app') {
+      } else if (method === 'get_powerapps_app') {
         const paramError = validateGetPowerAppsAppParams(params);
         if (paramError) return res.status(400).json({ error: paramError });
         result = await powerAppsStore.getAppInfo();
