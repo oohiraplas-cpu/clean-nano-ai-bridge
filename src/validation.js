@@ -31,4 +31,33 @@ function validateMcpInput(body) {
   return null;
 }
 
-module.exports = { validateMcpInput, validateStatusInput, validateTaskInput };
+function validateCreateTaskParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (typeof params.title !== 'string' || params.title.length < 1 || params.title.length > 500) return 'titleは1から500文字の文字列が必要です';
+  if (params.description !== undefined && (typeof params.description !== 'string' || params.description.length > 2000)) return 'descriptionは2000文字以内の文字列が必要です';
+  if (params.priority !== undefined && (typeof params.priority !== 'string' || params.priority.length < 1 || params.priority.length > 50)) return 'priorityは1から50文字の文字列が必要です';
+  return null;
+}
+
+function validateUpdateTaskStatusParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (typeof params.task_id !== 'string' || params.task_id.length < 1 || params.task_id.length > 100) return 'task_idは1から100文字の文字列が必要です';
+  if (typeof params.status !== 'string' || !STATUSES.includes(params.status)) return 'statusが不正です';
+  if (params.result !== undefined && (typeof params.result !== 'string' || params.result.length > 5000)) return 'resultは5000文字以内の文字列が必要です';
+  return null;
+}
+
+function validateGetTaskResultParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (typeof params.task_id !== 'string' || params.task_id.length < 1 || params.task_id.length > 100) return 'task_idは1から100文字の文字列が必要です';
+  return null;
+}
+
+module.exports = {
+  validateMcpInput,
+  validateStatusInput,
+  validateTaskInput,
+  validateCreateTaskParams,
+  validateUpdateTaskStatusParams,
+  validateGetTaskResultParams
+};

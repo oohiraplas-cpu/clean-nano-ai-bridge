@@ -8,7 +8,9 @@ const DEFAULT_FIELD_MAP = Object.freeze({
   retry_count: 'RetryCount',
   approval_required: 'ApprovalRequired',
   userActionRequired: 'UserActionRequired',
-  source: 'Source'
+  source: 'Source',
+  priority: 'Priority',
+  result: 'Result'
 });
 
 function toBoolean(value) {

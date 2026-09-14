@@ -65,8 +65,16 @@ paths:
       operationId: invokeMcpBridge
       description: |
         ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。
-        method は health_check・get_tasks・get_next_task のいずれかを指定します。
-        それぞれ GET /health・GET /api/tasks・GET /api/next と同じ結果を result に返します。
+        method は health_check・get_tasks・get_next_task・create_task・update_task_status・
+        get_task_result のいずれかを指定します。
+        health_check・get_tasks・get_next_task はそれぞれ GET /health・GET /api/tasks・
+        GET /api/next と同じ結果を result に返します。
+        create_task は params.title（必須）・params.description（任意）・params.priority（任意、
+        既定値 normal）で新規タスクを登録し、result.task_id と result.task を返します。
+        update_task_status は params.task_id（必須）・params.status（必須）・params.result（任意）
+        でタスクの状態と結果を更新し、result.task を返します。
+        get_task_result は params.task_id（必須）で現在の status・result を返します。
+        task_idが存在しない場合は404を返します。
       security: [{ McpApiKey: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/McpInput' } } } }
       responses:
@@ -77,6 +85,7 @@ paths:
               schema: { $ref: '#/components/schemas/McpResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: task_idが見つからない（update_task_status・get_task_result） }
 components:
   securitySchemes:
     WebhookApiKey: { type: apiKey, in: header, name: X-API-Key }
@@ -100,6 +109,8 @@ components:
         retry_count: { type: integer, minimum: 0 }
         approval_required: { type: boolean }
         userActionRequired: { type: boolean }
+        priority: { type: string, description: create_task経由で登録したタスクの優先度（既定値 normal） }
+        result: { type: string, description: update_task_status経由で書き戻された実行結果 }
     TaskInput:
       allOf:
         - { $ref: '#/components/schemas/Task' }
@@ -130,7 +141,10 @@ components:
       type: object
       required: [method]
       properties:
-        method: { type: string, enum: [health_check, get_tasks, get_next_task], description: 3AI共通Bridgeが対応する標準メソッド }
+        method:
+          type: string
+          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result]
+          description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:
       type: object
@@ -138,4 +152,9 @@ components:
       properties:
         accepted: { type: boolean }
         method: { type: string }
-        result: { type: object, description: health_checkはHealthResponse、get_tasksはTaskListResponse、get_next_taskはNextResponseと同じ形状 }
+        result:
+          type: object
+          description: |
+            health_checkはHealthResponse、get_tasksはTaskListResponse、get_next_taskはNextResponseと同じ形状。
+            create_taskは { task_id, task }、update_task_statusは { task }、
+            get_task_resultは { task_id, status, result } を返す。
