@@ -1,18 +1,9 @@
 /**
  * Power Apps管理モジュール
- *
- * Power Apps/Power Platformとの連携を管理するクラス。
- * 認証、メタデータ取得、アプリケーション操作（編集・保存・公開）、
- * 変更履歴・ログ記録、ロールバック機構を提供する。
  */
-
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 
-/**
- * Power Platform認可トークンキャッシュ
- * client_credentials flowで取得したアクセストークンを保持
- */
 class TokenCache {
   constructor() {
     this._token = null;
@@ -52,16 +43,6 @@ class TokenCache {
   }
 }
 
-/**
- * Power Appsアプリケーション操作クラス
- *
- * Power Platform Management APIを使用して：
- * - アプリメタデータ取得
- * - アプリの現在状態取得
- * - アプリ定義の更新・保存
- * - 公開処理
- * - 操作ログ・履歴記録
- */
 class PowerAppsStore {
   constructor(config = {}) {
     this.tenantId = config.tenantId || '';

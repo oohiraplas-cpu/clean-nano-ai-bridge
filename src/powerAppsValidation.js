@@ -26,7 +26,6 @@ function validatePowerAppsMcpInput(body) {
  */
 function validateGetPowerAppsAppParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
-  // environmentId と appId は config から取得するため、params では不要
   return null;
 }
 
