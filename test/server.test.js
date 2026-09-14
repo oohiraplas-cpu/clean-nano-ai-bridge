@@ -92,6 +92,66 @@ test('MCPの標準メソッドをBridge経由で実行できる', async (t) => {
   assert.equal((await next.json()).result.task.id, 'task-1');
 });
 
+test('MCPの新規3ツール（create_task/update_task_status/get_task_result）を実行できる', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const created = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'create_task', params: { title: '新規タスク', description: '説明', priority: 'high' } })
+  });
+  assert.equal(created.status, 200);
+  const createdBody = await created.json();
+  assert.equal(createdBody.result.task.status, '未着手');
+  assert.equal(createdBody.result.task.title, '新規タスク');
+  assert.equal(createdBody.result.task.priority, 'high');
+  const taskId = createdBody.result.task_id;
+  assert.ok(taskId);
+
+  const updated = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'update_task_status', params: { task_id: taskId, status: '完了', result: '完了しました' } })
+  });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).result.task.status, '完了');
+
+  const resultPayload = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_task_result', params: { task_id: taskId } })
+  });
+  assert.equal(resultPayload.status, 200);
+  const resultBody = (await resultPayload.json()).result;
+  assert.equal(resultBody.status, '完了');
+  assert.equal(resultBody.result, '完了しました');
+
+  const missingUpdate = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'update_task_status', params: { task_id: 'no-such-task', status: '完了' } })
+  });
+  assert.equal(missingUpdate.status, 404);
+
+  const missingResult = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_task_result', params: { task_id: 'no-such-task' } })
+  });
+  assert.equal(missingResult.status, 404);
+
+  const invalidCreate = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'create_task', params: {} })
+  });
+  assert.equal(invalidCreate.status, 400);
+
+  // 既存3ツールにデグレがないことを確認する
+  const health = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'health_check' }) });
+  assert.deepEqual((await health.json()).result, { status: 'ok' });
+  const tasks = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_tasks' }) });
+  assert.equal((await tasks.json()).result.count, 2);
+  const next = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_next_task' }) });
+  assert.equal((await next.json()).result.task.id, 'task-1');
+});
+
 test('タスクが0件ならタスクなしを明示する', async (t) => {
   const server = await createTestServer([]);
   t.after(() => server.close());

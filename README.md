@@ -25,6 +25,12 @@ npm start
 
 `POST /mcp` はChatGPT・Claude Code・CN_総合秘書AIが共通で使うMCP風エントリポイントです。`{"method": "health_check" | "get_tasks" | "get_next_task"}` を受け付け、対応するREST APIと同じ結果を `result` に返します（3AI共通Bridge標準機能）。それ以外の `method` は `400` です。
 
+`create_task` / `update_task_status` / `get_task_result` の3ツールも同じ `POST /mcp` から利用できます。
+
+- `create_task`: `params.title`（必須）・`params.description`（任意）・`params.priority`（任意、既定値 `normal`）で新規タスクを登録し、`result.task_id` と `result.task` を返します。初期ステータスは `未着手` です。
+- `update_task_status`: `params.task_id`（必須）・`params.status`（必須、既存のstatus一覧のいずれか）・`params.result`（任意）でタスクの状態と結果を更新し、`result.task` を返します。`task_id` が存在しない場合は `404` です。
+- `get_task_result`: `params.task_id`（必須）で現在の `status`・`result` を返します。`task_id` が存在しない場合は `404` です。
+
 ## Power Platform
 
 OpenAPI 3.x定義は [openapi.yaml](openapi.yaml) です。公開ホストが未確定のため `servers` は未指定です。Custom Connector作成時に実際のHTTPS Hostを設定し、まず `GET /health` を接続試験に使ってください。TLS終端、DNS、ファイアウォール、認証キーの安全な登録、SharePoint Listsアダプターの実装は公開前に別途必要です。
