@@ -15,7 +15,7 @@ concurrency:
 
 env:
   NODE_VERSION: '20.x'
-  AZURE_WEBAPP_NAME: clean-nano-ai-bridge-c7evcxhtergad9b0
+  AZURE_WEBAPP_NAME: clean-nano-ai-bridge
 
 jobs:
   test:
