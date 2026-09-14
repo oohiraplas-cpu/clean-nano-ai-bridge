@@ -9,11 +9,22 @@ async function createTestServer(tasks, options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'clean-nano-ai-bridge-'));
   const tasksFile = path.join(directory, 'tasks.json');
   await fs.writeFile(tasksFile, `${JSON.stringify(tasks)}\n`);
+  const logFile = path.join(directory, 'powerapps-operations.jsonl');
   const app = createApp({
     corsOrigins: ['http://localhost:3000'],
     tasksFile,
     webhookApiKey: options.webhookApiKey || '',
-    mcpApiKey: options.mcpApiKey || ''
+    mcpApiKey: options.mcpApiKey || '',
+    powerApps: {
+      tenantId: 'test-tenant',
+      clientId: 'test-client',
+      clientSecret: 'test-secret',
+      environmentId: 'test-env',
+      appId: 'test-app',
+      logPath: logFile,
+      managementApiBaseUrl: 'https://management.azure.com',
+      fetchImpl: options.fetchImpl
+    }
   });
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
@@ -92,7 +103,7 @@ test('MCPの標準メソッドをBridge経由で実行できる', async (t) => {
   assert.equal((await next.json()).result.task.id, 'task-1');
 });
 
-test('MCPの新規3ツール（create_task/update_task_status/get_task_result）を実行できる', async (t) => {
+test('MCPの新览3ツール（create_task/update_task_status/get_task_result）を実行できる', async (t) => {
   const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
   const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
@@ -143,13 +154,56 @@ test('MCPの新規3ツール（create_task/update_task_status/get_task_result）
   });
   assert.equal(invalidCreate.status, 400);
 
-  // 既存3ツールにデグレがないことを確認する
   const health = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'health_check' }) });
   assert.deepEqual((await health.json()).result, { status: 'ok' });
-  const tasks = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_tasks' }) });
-  assert.equal((await tasks.json()).result.count, 2);
-  const next = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_next_task' }) });
-  assert.equal((await next.json()).result.task.id, 'task-1');
+  const tasksList = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_tasks' }) });
+  assert.equal((await tasksList.json()).result.count, 2);
+  const nextTask = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_next_task' }) });
+  assert.equal((await nextTask.json()).result.task.id, 'task-1');
+});
+
+test('Power Apps MCPメソッドを実行できる', async (t) => {
+  const mockFetch = async (url, options) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({
+        access_token: 'mock-token',
+        expires_in: 3600
+      }), { status: 200 });
+    }
+    if (url.includes('/apps/test-app')) {
+      return new Response(JSON.stringify({
+        properties: {
+          displayName: 'Test App',
+          publisher: 'Test',
+          appType: 'CanvasApp',
+          versionNumber: '1.0'
+        }
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+  };
+
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret', fetchImpl: mockFetch });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const appInfo = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_powerapps_app', params: {} })
+  });
+  assert.equal(appInfo.status, 200);
+  const appResult = await appInfo.json();
+  assert.equal(appResult.result.status, 'ok');
+  assert.equal(appResult.result.displayName, 'Test App');
+
+  const state = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_powerapps_state', params: {} })
+  });
+  assert.equal(state.status, 200);
+  const stateResult = await state.json();
+  assert.equal(stateResult.result.status, 'ok');
+  assert.ok(stateResult.result.operationId);
 });
 
 test('タスクが0件ならタスクなしを明示する', async (t) => {
