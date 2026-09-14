@@ -1,0 +1,1 @@
+Azure Web App deployment workflow prepared on feat/azure-webapp-deploy.
