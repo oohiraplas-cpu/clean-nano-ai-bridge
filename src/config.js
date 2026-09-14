@@ -13,7 +13,6 @@ function getConfig(env = process.env) {
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     mcpApiKey: env.MCP_API_KEY || '',
-    // 'file' (default, data/tasks.json) or 'sharepoint' (SharePoint Listsを正本にする場合)
     taskStoreBackend: env.TASK_STORE_BACKEND || 'file',
     sharepoint: {
       tenantId: env.SHAREPOINT_TENANT_ID || '',
@@ -22,7 +21,6 @@ function getConfig(env = process.env) {
       siteId: env.SHAREPOINT_SITE_ID || '',
       listId: env.SHAREPOINT_LIST_ID || ''
     },
-    // Power Apps統合設定
     powerApps: {
       tenantId: env.POWERAPPS_TENANT_ID || '',
       clientId: env.POWERAPPS_CLIENT_ID || '',

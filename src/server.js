@@ -6,6 +6,7 @@ const cors = require('cors');
 const { getConfig } = require('./config');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
+const { PowerAppsStore } = require('./powerAppsStore');
 const {
   validateMcpInput,
   validateStatusInput,
@@ -14,6 +15,15 @@ const {
   validateUpdateTaskStatusParams,
   validateGetTaskResultParams
 } = require('./validation');
+const {
+  validatePowerAppsMcpInput,
+  validateGetPowerAppsAppParams,
+  validateGetPowerAppsStateParams,
+  validateUpdatePowerAppsAppParams,
+  validateSavePowerAppsAppParams,
+  validatePublishPowerAppsAppParams,
+  validateGetPowerAppsOperationResultParams
+} = require('./powerAppsValidation');
 
 function createDefaultStore(config) {
   if (config.taskStoreBackend === 'sharepoint') return new SharePointTaskStore(config.sharepoint);
@@ -33,7 +43,9 @@ function apiKeyMiddleware(getKey) {
 
 const MCP_METHODS = Object.freeze([
   'health_check', 'get_tasks', 'get_next_task',
-  'create_task', 'update_task_status', 'get_task_result'
+  'create_task', 'update_task_status', 'get_task_result',
+  'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
+  'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result'
 ]);
 
 async function tasksPayload(store) {
@@ -68,8 +80,9 @@ async function getTaskResultPayload(store, taskId) {
   return tasks.find((task) => task.id === taskId) || null;
 }
 
-function createApp(config = getConfig(), injectedStore) {
+function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore) {
   const store = injectedStore || createDefaultStore(config);
+  const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
@@ -115,6 +128,7 @@ function createApp(config = getConfig(), injectedStore) {
     if (!MCP_METHODS.includes(method)) return res.status(400).json({ error: `不明なmethodです（対応: ${MCP_METHODS.join(', ')}）` });
     try {
       let result;
+      // タスク関連メソッド
       if (method === 'health_check') result = { status: 'ok' };
       else if (method === 'get_tasks') result = await tasksPayload(store);
       else if (method === 'get_next_task') result = await nextPayload(store);
@@ -128,12 +142,38 @@ function createApp(config = getConfig(), injectedStore) {
         const task = await updateTaskStatusPayload(store, params);
         if (!task) return res.status(404).json({ error: 'タスクが見つかりません' });
         result = { task };
-      } else {
+      } else if (method === 'get_task_result') {
         const paramError = validateGetTaskResultParams(params);
         if (paramError) return res.status(400).json({ error: paramError });
         const task = await getTaskResultPayload(store, params.task_id);
         if (!task) return res.status(404).json({ error: 'タスクが見つかりません' });
         result = { task_id: task.id, status: task.status, result: task.result ?? null };
+      }
+      // Power Apps メソッド
+      else if (method === 'get_powerapps_app') {
+        const paramError = validateGetPowerAppsAppParams(params);
+        if (paramError) return res.status(400).json({ error: paramError });
+        result = await powerAppsStore.getAppInfo();
+      } else if (method === 'get_powerapps_state') {
+        const paramError = validateGetPowerAppsStateParams(params);
+        if (paramError) return res.status(400).json({ error: paramError });
+        result = await powerAppsStore.getAppState();
+      } else if (method === 'update_powerapps_app') {
+        const paramError = validateUpdatePowerAppsAppParams(params);
+        if (paramError) return res.status(400).json({ error: paramError });
+        result = await powerAppsStore.updateApp(params.updateData);
+      } else if (method === 'save_powerapps_app') {
+        const paramError = validateSavePowerAppsAppParams(params);
+        if (paramError) return res.status(400).json({ error: paramError });
+        result = await powerAppsStore.saveApp();
+      } else if (method === 'publish_powerapps_app') {
+        const paramError = validatePublishPowerAppsAppParams(params);
+        if (paramError) return res.status(400).json({ error: paramError });
+        result = await powerAppsStore.publishApp();
+      } else if (method === 'get_powerapps_operation_result') {
+        const paramError = validateGetPowerAppsOperationResultParams(params);
+        if (paramError) return res.status(400).json({ error: paramError });
+        result = await powerAppsStore.getOperationResult(params.operationId);
       }
       return res.status(200).json({ accepted: true, method, result });
     } catch (error) { return next(error); }
