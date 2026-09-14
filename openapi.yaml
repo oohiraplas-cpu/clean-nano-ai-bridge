@@ -66,7 +66,7 @@ paths:
       description: |
         ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。
         method は health_check・get_tasks・get_next_task・create_task・update_task_status・
-        get_task_result のいずれかを指定します。
+        get_task_result、およびPower Apps取得・ソース編集・保存・公開メソッドのいずれかを指定します。
         health_check・get_tasks・get_next_task はそれぞれ GET /health・GET /api/tasks・
         GET /api/next と同じ結果を result に返します。
         create_task は params.title（必須）・params.description（任意）・params.priority（任意、
@@ -143,7 +143,7 @@ components:
       properties:
         method:
           type: string
-          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result]
+          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result]
           description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:
