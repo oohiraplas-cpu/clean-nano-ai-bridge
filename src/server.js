@@ -166,13 +166,13 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       } else if (method === 'update_powerapps_app') {
         const paramError = validateUpdatePowerAppsAppParams(params);
         if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message);
+        result = params.updateData
+          ? await powerAppsStore.updateApp(params.updateData)
+          : await powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message);
       } else if (method === 'save_powerapps_app') {
         const paramError = validateSavePowerAppsAppParams(params);
         if (paramError) return res.status(400).json({ error: paramError });
-        const refresh = await powerAppsGitStore.refreshFromGit();
-        const pull = await powerAppsGitStore.pullFromGit();
-        result = { status: 'ok', refresh, pull, saved: true };
+        result = await powerAppsStore.saveApp();
       } else if (method === 'publish_powerapps_app') {
         const paramError = validatePublishPowerAppsAppParams(params);
         if (paramError) return res.status(400).json({ error: paramError });
