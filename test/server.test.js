@@ -214,3 +214,33 @@ test('タスクが0件ならタスクなしを明示する', async (t) => {
   const next = await fetch(`${server.baseUrl}/api/next`);
   assert.deepEqual(await next.json(), { status: 'タスクなし', task: null });
 });
+
+
+test('MCPツール一覧で既存3ツールとPower Apps 6ツールを公開する', async (t) => {
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+
+  const unauthorized = await fetch(`${server.baseUrl}/mcp/tools/list`);
+  assert.equal(unauthorized.status, 401);
+
+  const response = await fetch(`${server.baseUrl}/mcp/tools/list`, {
+    headers: { 'x-api-key': 'mcp-secret' }
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body.tools.map((tool) => tool.name), [
+    'health_check',
+    'get_tasks',
+    'get_next_task',
+    'get_powerapps_app',
+    'get_powerapps_state',
+    'get_powerapps_source',
+    'update_powerapps_app',
+    'save_powerapps_app',
+    'publish_powerapps_app'
+  ]);
+  for (const tool of body.tools) {
+    assert.equal(typeof tool.description, 'string');
+    assert.equal(tool.inputSchema.type, 'object');
+  }
+});
