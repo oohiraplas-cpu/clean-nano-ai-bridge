@@ -10,14 +10,14 @@ class TokenCache {
     this._expiresAt = 0;
   }
 
-  async getToken(fetchFn, tokenUrl, clientId, clientSecret) {
+  async getToken(fetchFn, tokenUrl, clientId, clientSecret, scope = 'https://service.powerapps.com/.default') {
     const now = Date.now();
     if (this._token && now < this._expiresAt - 30000) return this._token;
 
     const body = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
-      scope: 'https://service.powerapps.com/.default',
+      scope,
       grant_type: 'client_credentials'
     });
 
@@ -50,11 +50,13 @@ class PowerAppsStore {
     this.clientSecret = config.clientSecret || '';
     this.environmentId = config.environmentId || '';
     this.appId = config.appId || '';
+    this.orgUrl = (config.orgUrl || '').replace(/\/$/, '');
     this.logPath = config.logPath || 'data/powerapps-operations.jsonl';
     this.managementApiBaseUrl = config.managementApiBaseUrl || 'https://api.powerapps.com';
     this.tokenUrl = config.tokenUrl || `https://login.microsoftonline.com/${this.tenantId}/oauth2/v2.0/token`;
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new TokenCache();
+    this._dataverseTokenCache = new TokenCache();
   }
 
   async _managementFetch(path, options = {}) {
@@ -84,6 +86,41 @@ class PowerAppsStore {
     return response.status === 204 ? null : response.json();
   }
 
+  async _dataverseFetch(path, options = {}) {
+    if (!this.orgUrl) throw new Error('POWERAPPS_ORG_URLが未設定です');
+    const token = await this._dataverseTokenCache.getToken(
+      this._fetch,
+      this.tokenUrl,
+      this.clientId,
+      this.clientSecret,
+      `${this.orgUrl}/.default`
+    );
+    const response = await this._fetch(`${this.orgUrl}/api/data/v9.2/${path}`, {
+      ...options,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'odata-version': '4.0',
+        'if-none-match': 'null',
+        ...(options.headers || {})
+      }
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`Dataverse API エラー (${response.status}): ${detail.slice(0, 300)}`);
+    }
+    if (response.status === 204) return null;
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  async _getCanvasRecord() {
+    return this._dataverseFetch(
+      `canvasapps(${this.appId})?$select=canvasappid,uniquecanvasappid,displayname,description,commitmessage,status,appversion,createdtime,lastmodifiedtime,lastpublishtime,publisher`
+    );
+  }
+
   async _recordOperation(operationId, operation, environmentId, appId, entry) {
     try {
       const logEntry = JSON.stringify({
@@ -108,15 +145,19 @@ class PowerAppsStore {
     try {
       const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
       const data = await this._managementFetch(path);
+      const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
       return {
         status: 'ok',
         appId: this.appId,
         environmentId: this.environmentId,
-        displayName: data.properties?.displayName || 'Unknown',
-        publisher: data.properties?.publisher || 'Unknown',
-        createdTime: data.properties?.createdTime || null,
-        modifiedTime: data.properties?.modifiedTime || null,
-        appType: data.properties?.appType || 'Unknown'
+        displayName: canvas.displayname || data.properties?.displayName || 'Unknown',
+        description: canvas.description || data.properties?.description || null,
+        publisher: canvas.publisher || data.properties?.publisher || 'Unknown',
+        createdTime: canvas.createdtime || data.properties?.createdTime || null,
+        modifiedTime: canvas.lastmodifiedtime || data.properties?.lastModifiedTime || null,
+        publishedTime: canvas.lastpublishtime || null,
+        versionNumber: canvas.appversion || data.properties?.appVersion || null,
+        appType: data.properties?.appType || 'canvas'
       };
     } catch (error) {
       throw new Error(`アプリ情報取得に失敗しました: ${error.message}`);
@@ -130,12 +171,14 @@ class PowerAppsStore {
 
     const operationId = crypto.randomUUID();
     try {
-      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/definition?api-version=2016-11-01`;
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
       const state = await this._managementFetch(path);
+      const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
+      const properties = state.properties || {};
 
       await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, {
         status: 'success',
-        result: { versionNumber: state.properties?.versionNumber || '1.0' }
+        result: { versionNumber: canvas.appversion || properties.appVersion || null }
       });
 
       return {
@@ -143,12 +186,13 @@ class PowerAppsStore {
         operationId,
         appId: this.appId,
         environmentId: this.environmentId,
-        versionNumber: state.properties?.versionNumber || '1.0',
-        definition: state.properties?.definition || {},
-        connectors: state.properties?.connectors || {},
-        screens: state.properties?.screens || [],
-        variables: state.properties?.variables || {},
-        lastModified: state.properties?.modifiedTime || null
+        versionNumber: canvas.appversion || properties.appVersion || null,
+        displayName: canvas.displayname || properties.displayName || 'Unknown',
+        description: canvas.description || properties.description || null,
+        status: canvas.status || null,
+        connectors: properties.connectionReferences || {},
+        lastModified: canvas.lastmodifiedtime || properties.lastModifiedTime || null,
+        lastPublished: canvas.lastpublishtime || null
       };
     } catch (error) {
       await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, {
@@ -170,21 +214,28 @@ class PowerAppsStore {
 
     const operationId = crypto.randomUUID();
     try {
+      const allowed = new Set(['description', 'commitMessage']);
+      const fields = Object.keys(updateData);
+      if (!fields.length || fields.some((field) => !allowed.has(field))) {
+        throw new Error('updateDataで編集できるのはdescriptionおよびcommitMessageのみです');
+      }
       const currentState = await this.getAppState();
       const changesBefore = {
         versionNumber: currentState.versionNumber,
-        screenCount: currentState.screens.length,
-        connectorCount: Object.keys(currentState.connectors).length
+        description: currentState.description
       };
 
-      const updatedState = {
-        ...currentState,
-        ...updateData,
-        pendingChanges: true
-      };
+      const patch = {};
+      if (Object.hasOwn(updateData, 'description')) patch.description = updateData.description;
+      if (Object.hasOwn(updateData, 'commitMessage')) patch.commitmessage = updateData.commitMessage;
+      await this._dataverseFetch(`canvasapps(${this.appId})`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+      });
+      const updatedState = await this._getCanvasRecord();
 
       const changesApplied = {
-        fields: Object.keys(updateData),
+        fields,
         timestamp: new Date().toISOString()
       };
 
@@ -192,7 +243,7 @@ class PowerAppsStore {
         status: 'success',
         changesBefore,
         changesApplied,
-        result: { pendingChanges: true }
+        result: { pendingPublish: true }
       });
 
       return {
@@ -200,8 +251,8 @@ class PowerAppsStore {
         operationId,
         appId: this.appId,
         environmentId: this.environmentId,
-        pendingChanges: true,
-        versionNumber: updatedState.versionNumber,
+        pendingPublish: true,
+        versionNumber: updatedState.appversion || currentState.versionNumber,
         changesApplied
       };
     } catch (error) {
@@ -221,24 +272,13 @@ class PowerAppsStore {
     const operationId = crypto.randomUUID();
     try {
       const currentState = await this.getAppState();
-      const newVersionNumber = `${parseFloat(currentState.versionNumber) + 0.1}`;
-
-      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
-      await this._managementFetch(path, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          properties: {
-            definition: currentState.definition,
-            versionNumber: newVersionNumber
-          }
-        })
-      });
+      const savedAt = new Date().toISOString();
 
       await this._recordOperation(operationId, 'save', this.environmentId, this.appId, {
         status: 'success',
         result: {
-          versionNumber: newVersionNumber,
-          savedAt: new Date().toISOString(),
+          versionNumber: currentState.versionNumber,
+          savedAt,
           pendingPublish: true
         }
       });
@@ -248,9 +288,9 @@ class PowerAppsStore {
         operationId,
         appId: this.appId,
         environmentId: this.environmentId,
-        versionNumber: newVersionNumber,
-        savedAt: new Date().toISOString(),
-        message: '下書きの保存に成功しました。公開はまだです。'
+        versionNumber: currentState.versionNumber,
+        savedAt,
+        message: '保存済みの変更を確認しました。公開はまだです。'
       };
     } catch (error) {
       await this._recordOperation(operationId, 'save', this.environmentId, this.appId, {
@@ -408,6 +448,7 @@ class PowerAppsStore {
 
   invalidateAuth() {
     this._tokenCache.invalidate();
+    this._dataverseTokenCache.invalidate();
   }
 }
 
