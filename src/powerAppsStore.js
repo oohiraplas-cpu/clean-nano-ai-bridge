@@ -189,7 +189,7 @@ class PowerAppsStore {
         versionNumber: canvas.appversion || properties.appVersion || null,
         displayName: canvas.displayname || properties.displayName || 'Unknown',
         description: canvas.description || properties.description || null,
-        status: canvas.status || null,
+        appStatus: canvas.status || null,
         connectors: properties.connectionReferences || {},
         lastModified: canvas.lastmodifiedtime || properties.lastModifiedTime || null,
         lastPublished: canvas.lastpublishtime || null
