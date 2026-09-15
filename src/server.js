@@ -51,6 +51,68 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_source'
 ]);
 
+const MCP_PUBLIC_TOOLS = Object.freeze([
+  {
+    name: 'health_check',
+    description: 'Bridgeの稼働状態を確認します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_tasks',
+    description: 'タスク一覧を取得します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_next_task',
+    description: '次に実行可能なタスクを取得します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_app',
+    description: '既存Power Appsアプリの情報を取得します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_state',
+    description: '既存Power Appsアプリの現在状態を取得します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_source',
+    description: '既存Power Appsソースの指定ファイルを取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: { relativePath: { type: 'string', description: '取得するソースファイルの相対パス' } },
+      required: ['relativePath'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'update_powerapps_app',
+    description: '既存Power Appsアプリまたはソースファイルを更新します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        updateData: { type: 'object', description: 'Power Apps管理APIへ送る更新内容' },
+        relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
+        content: { type: 'string', description: '更新後のファイル内容' },
+        message: { type: 'string', description: '更新のコミットメッセージ' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'save_powerapps_app',
+    description: '既存Power Appsアプリを保存します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'publish_powerapps_app',
+    description: '既存Power Appsアプリを公開します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  }
+]);
+
 async function tasksPayload(store) {
   const tasks = await store.list();
   return { status: tasks.length ? 'ok' : 'タスクなし', count: tasks.length, tasks };
@@ -122,6 +184,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const task = await store.update(req.params.id, req.body);
       return task ? res.status(200).json({ task }) : res.status(404).json({ error: 'タスクが見つかりません' });
     } catch (error) { return next(error); }
+  });
+
+  app.get('/mcp/tools/list', apiKeyMiddleware(() => config.mcpApiKey), (req, res) => {
+    res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
   });
 
   app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), async (req, res, next) => {
