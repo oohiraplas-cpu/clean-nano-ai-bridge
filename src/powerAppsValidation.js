@@ -16,6 +16,13 @@ const validateGetPowerAppsAppParams = plain;
 const validateGetPowerAppsStateParams = plain;
 function validateUpdatePowerAppsAppParams(params) {
   if (!isPlainObject(params)) return plain(params);
+  if (isPlainObject(params.updateData)) {
+    const keys = Object.keys(params.updateData);
+    if (!keys.length || keys.some((key) => !['description', 'commitMessage'].includes(key))) return 'updateDataで指定できるのはdescriptionおよびcommitMessageのみです';
+    if (params.updateData.description !== undefined && typeof params.updateData.description !== 'string') return 'descriptionは文字列である必要があります';
+    if (params.updateData.commitMessage !== undefined && typeof params.updateData.commitMessage !== 'string') return 'commitMessageは文字列である必要があります';
+    return null;
+  }
   if (typeof params.relativePath !== 'string' || !params.relativePath.trim()) return 'relativePathが必要です';
   if (typeof params.content !== 'string') return 'content（文字列）が必要です';
   return null;
