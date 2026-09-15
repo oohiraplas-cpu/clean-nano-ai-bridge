@@ -60,6 +60,21 @@ paths:
         '200': { description: 更新済み }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { description: タスクなし }
+  /mcp/tools/list:
+    get:
+      operationId: listMcpTools
+      description: |
+        MCP bridge が対応するすべてのツール定義を返す。
+        ChatGPT / Claude Code / CN_総合秘書AI が tools/list エンドポイントから
+        利用可能な9つのメソッドとそのパラメータを取得する。
+      security: [{ McpApiKey: [] }]
+      responses:
+        '200':
+          description: MCPツール一覧
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpToolsList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /mcp:
     post:
       operationId: invokeMcpBridge
@@ -158,3 +173,21 @@ components:
             health_checkはHealthResponse、get_tasksはTaskListResponse、get_next_taskはNextResponseと同じ形状。
             create_taskは { task_id, task }、update_task_statusは { task }、
             get_task_resultは { task_id, status, result } を返す。
+            Power Appsメソッドはそれぞれの操作結果を返す。
+    McpToolsList:
+      type: object
+      required: [tools]
+      properties:
+        tools:
+          type: array
+          items:
+            type: object
+            required: [name, description]
+            properties:
+              name: { type: string }
+              description: { type: string }
+              inputSchema:
+                type: object
+                properties:
+                  type: { type: string }
+                  properties: { type: object }
