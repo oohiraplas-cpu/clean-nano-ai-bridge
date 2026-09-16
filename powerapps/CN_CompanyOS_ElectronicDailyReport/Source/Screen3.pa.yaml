@@ -1,0 +1,327 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  Screen3:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+    Children:
+      - RectQuickActionBar2:
+          Control: Rectangle@2.3.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Fill: =RGBA(56, 96, 178, 1)
+            Height: =88
+            Width: =Parent.Width
+      - LblAppName2:
+          Control: Label@2.5.1
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(58, 58, 58, 0)
+            Font: =Font.'Open Sans'
+            Height: =88
+            PaddingLeft: =0
+            Size: =27
+            Text: ="電子メール"
+            Width: =356
+            Wrap: =false
+            X: =32
+      - iconMail1:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            DisabledFill: =RGBA(240, 240, 240, 0.5)
+            DisplayMode: |-
+              =/*Email must have a subject and recipients to be sent*/
+              If(Len(Trim(TextEmailSubject1.Text)) > 0 && !IsEmpty(MyPeople), DisplayMode.Edit, DisplayMode.Disabled)
+            Height: =88
+            Icon: =Icon.Send
+            OnSelect: |+
+              =Set(_emailRecipientString,Concat(MyPeople,Mail & ";"));Office365Outlook.SendEmailV2(_emailRecipientString,TextEmailSubject1.Text,TextEmailMessage1.Text,{Importance:"Normal",Attachments:Table({Name:"電子日報_" & Text(Now(),"yyyymmdd_hhmm") & ".pdf",ContentBytes:PDF(Screen2,{ExpandContainers:true})},{Name:"元請け電子署名_" & Text(Now(),"yyyymmdd_hhmm") & ".pdf",ContentBytes:PDF(scrSignature,{ExpandContainers:true})})});Reset(TextEmailSubject1);Reset(TextEmailMessage1);Clear(MyPeople);Navigate(ホーム,ScreenTransition.UnCover)
+            PaddingBottom: =24
+            PaddingLeft: =24
+            PaddingRight: =24
+            PaddingTop: =24
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Tooltip: ="メッセージの送信"
+            Width: =88
+            X: =Parent.Width - Self.Width
+      - LblRecipientCount1:
+          Control: Label@2.5.1
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 1)
+            Font: =Font.'Open Sans'
+            Height: =40
+            PaddingLeft: =0
+            Size: =18
+            Text: ="*終了日 (" &CountRows(MyPeople) & ")"
+            Width: =EmailPeopleGallery1.Width
+            Wrap: =false
+            X: =32
+            Y: =RectQuickActionBar2.Height + 15
+      - TextSearchBox1:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            AccessibleLabel: ="ユーザーを検索するか、電子メール アドレスを追加してください。正常に送信するには、少なくとも 1 人の受信者が必要です。"
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Default: =""
+            Font: =Font.'Open Sans'
+            HintText: ="ユーザーを検索したり、電子メール アドレスを追加したりします"
+            HoverBorderColor: =RGBA(0, 18, 107, 1)
+            HoverFill: =RGBA(186, 202, 226, 1)
+            PaddingLeft: =70
+            Width: =Parent.Width - Self.X * 2
+            X: =32
+            Y: =LblRecipientCount1.Y + LblRecipientCount1.Height + 6
+      - SearchIcon1:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(0, 18, 107, 1)
+            Height: =Self.Width
+            Icon: =Icon.Search
+            PaddingBottom: =18
+            PaddingLeft: =18
+            PaddingRight: =18
+            PaddingTop: =18
+            Tooltip: ="検索"
+            Width: =TextSearchBox1.Height
+            X: =TextSearchBox1.X
+            Y: =TextSearchBox1.Y
+      - AddIcon1:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(0, 18, 107, 1)
+            Height: =TextSearchBox1.Height
+            Icon: =Icon.Add
+            OnSelect: |-
+              =Collect(MyPeople,           
+              {DisplayName: TextSearchBox1.Text, UserPrincipalName: TextSearchBox1.Text, Mail: TextSearchBox1.Text});           
+              Reset(TextSearchBox1)
+            PaddingBottom: =15
+            PaddingLeft: =15
+            PaddingRight: =15
+            PaddingTop: =15
+            TabIndex: =0
+            Tooltip: ="ユーザーをコレクションに追加する場合に選択します"
+            Visible: |-
+              =!IsBlank(TextSearchBox1.Text) &&           
+
+              /*Is user entry a valid email address*/           
+              IsMatch(TextSearchBox1.Text, Match.Email)           &&
+
+              Not(Trim(TextSearchBox1.Text) in MyPeople.UserPrincipalName)
+            Width: =70
+            X: =TextSearchBox1.X + TextSearchBox1.Width - Self.Width - 10
+            Y: =TextSearchBox1.Y
+      - EmailPeopleGallery1:
+          Control: Gallery@2.15.0
+          Variant: SelectedUsersGallery
+          Properties:
+            BorderColor: =TextSearchBox1.BorderColor
+            Fill: =TextSearchBox1.Fill
+            Height: |-
+              =/*Height adjusts to number of items in gallery*/
+              Min((Self.TemplateHeight + Self.TemplatePadding * 2) * RoundUp(CountRows(Self.AllItems) / 2, 0), 304)
+            Items: |-
+              =/*Collection of user selected people*/
+              MyPeople
+            ShowScrollbar: =Self.Height >= 304
+            Width: =Parent.Width - Self.X * 2
+            WrapCount: =2
+            X: =27
+            Y: =TextSearchBox1.Y + TextSearchBox1.Height + 8
+          Children:
+            - Rectangle2:
+                Control: Rectangle@2.3.0
+                Properties:
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  Fill: =RGBA(56, 96, 178, 1)
+                  Height: =Parent.TemplateHeight
+                  OnSelect: =Select(Parent)
+                  Width: =Parent.TemplateWidth
+            - Title2:
+                Control: Label@2.5.1
+                Properties:
+                  BorderColor: =RGBA(0, 0, 0, 1)
+                  Color: =RGBA(255, 255, 255, 1)
+                  FocusedBorderThickness: =2
+                  Font: =Font.'Open Sans'
+                  Height: =EmailPeopleGallery1.TemplateHeight
+                  OnSelect: =Set(_selectedUser, ThisItem)
+                  PaddingLeft: =10
+                  Size: =18
+                  TabIndex: =If(PeopleBrowseGallery1.Visible, -1, 0)
+                  Text: =ThisItem.DisplayName
+                  Width: =EmailPeopleGallery1.TemplateWidth - iconRemove1.Width + 10
+                  Wrap: =false
+            - iconRemove1:
+                Control: Classic/Icon@2.5.0
+                Properties:
+                  AccessibleLabel: =iconRemove1.Tooltip
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  Color: =Title2.Color
+                  Height: =EmailPeopleGallery1.TemplateHeight
+                  Icon: =Icon.Cancel
+                  OnSelect: =Remove(MyPeople, LookUp(MyPeople, UserPrincipalName = ThisItem.UserPrincipalName))
+                  PaddingBottom: =9
+                  PaddingLeft: =9
+                  PaddingRight: =9
+                  PaddingTop: =9
+                  TabIndex: =If(PeopleBrowseGallery1.Visible, -1, 0)
+                  Tooltip: ="ユーザーをコレクションから削除する場合に選択します"
+                  Width: =Self.Height
+                  X: =EmailPeopleGallery1.TemplateWidth - Self.Width
+      - LblEmailSubject1:
+          Control: Label@2.5.1
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 1)
+            Font: =Font.'Open Sans'
+            Height: =40
+            PaddingLeft: =0
+            Size: =18
+            Text: ="*サブジェクト"
+            Width: =Parent.Width - Self.X * 2
+            Wrap: =false
+            X: =32
+            Y: =EmailPeopleGallery1.Y + EmailPeopleGallery1.Height + 16
+      - TextEmailSubject1:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            AccessibleLabel: ="電子メールを送信するには、件名が必要です。"
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Default: |
+              ="電子日報 " & Text(Gallery1.Selected.作業日,"yyyy/mm/dd")
+            Font: =Font.'Open Sans'
+            HintText: ="件名を追加します"
+            HoverBorderColor: =RGBA(0, 18, 107, 1)
+            HoverFill: =RGBA(186, 202, 226, 1)
+            TabIndex: =If(PeopleBrowseGallery1.Visible, -1, 0)
+            Width: =Parent.Width - Self.X * 2
+            X: =32
+            Y: =LblEmailSubject1.Y + LblEmailSubject1.Height + 6
+      - LblEmailMessage1:
+          Control: Label@2.5.1
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 1)
+            Font: =Font.'Open Sans'
+            Height: =40
+            PaddingLeft: =0
+            Size: =18
+            Text: ="Message"
+            Width: =200
+            Wrap: =false
+            X: =32
+            Y: =TextEmailSubject1.Y + TextEmailSubject1.Height + 16
+      - TextEmailMessage1:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            AccessibleLabel: ="メッセージを追加します"
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Default: |
+              ="電子日報を送付いたします。ご確認をお願いいたします。"
+            Font: =Font.'Open Sans'
+            Height: =350
+            HintText: ="メッセージを追加します"
+            HoverBorderColor: =RGBA(0, 18, 107, 1)
+            HoverFill: =RGBA(186, 202, 226, 1)
+            Mode: =TextMode.MultiLine
+            TabIndex: =If(PeopleBrowseGallery1.Visible, -1, 0)
+            Width: =Parent.Width - Self.X * 2
+            X: =32
+            Y: =LblEmailMessage1.Y + LblEmailMessage1.Height + 6
+      - PeopleBrowseGallery1:
+          Control: Gallery@2.15.0
+          Variant: PeoplePickerGallerySmall
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            BorderThickness: =2
+            Fill: =Parent.Fill
+            Height: =If(Self.Visible, Parent.Height / 2 + 200, 0)
+            Items: |-
+              =/*Only use Office 365 Users operation if user has started searching*/
+              If(!IsBlank(Trim(TextSearchBox1.Text)), 'Office365ユーザー'.SearchUser({searchTerm: Trim(TextSearchBox1.Text), top: 15}))
+            TemplatePadding: =0
+            Visible: =!IsBlank(Trim(TextSearchBox1.Text))
+            Width: =Parent.Width - Self.X * 2
+            X: =32
+            Y: =TextSearchBox1.Y + TextSearchBox1.Height
+          Children:
+            - Rectangle3:
+                Control: Rectangle@2.3.0
+                Properties:
+                  BorderColor: =Title3.Color
+                  BorderThickness: =If(ThisItem.UserPrincipalName in MyPeople.UserPrincipalName, 4, 0)
+                  Fill: =RGBA(0,0,0,0)
+                  Height: =Parent.TemplateHeight
+                  HoverFill: =RGBA(0,0,0,0)
+                  OnSelect: =Select(Title3)
+                  Width: =Parent.TemplateWidth
+            - Title3:
+                Control: Label@2.5.1
+                Properties:
+                  BorderColor: =Self.Color
+                  FocusedBorderThickness: =2
+                  Font: =Font.'Open Sans'
+                  Height: =40
+                  OnSelect: |-
+                    =/*Select user, clear search contents and if this user hasn't been added to MyPeople collection, add them*/
+                    Concurrent(
+                    Set(_selectedUser, ThisItem),
+                    Reset(TextSearchBox1),
+                    If(Not(ThisItem.UserPrincipalName in MyPeople.UserPrincipalName), Collect(MyPeople, ThisItem)))
+                  TabIndex: =0
+                  Text: =ThisItem.DisplayName
+                  Width: =PeopleBrowseGallery1.TemplateWidth - 2 * Self.X
+                  Wrap: =false
+                  X: =16
+                  Y: =4
+            - Subtitle2:
+                Control: Label@2.5.1
+                Properties:
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  Color: =ColorFade(Title3.Color, 0.20)
+                  FocusedBorderThickness: =2
+                  Font: =Font.'Open Sans'
+                  Height: =40
+                  OnSelect: =Select(Title3)
+                  Text: =ThisItem.UserPrincipalName
+                  Width: =PeopleBrowseGallery1.TemplateWidth - 2 * Self.X
+                  Wrap: =false
+                  X: =Title3.X
+                  Y: =Title3.Y + Title3.Height + 3
+            - Separator3:
+                Control: Rectangle@2.3.0
+                Properties:
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  Fill: =RGBA(0, 18, 107, 1)
+                  Height: =1
+                  OnSelect: =Select(Parent)
+                  Width: =Parent.TemplateWidth
+                  Y: =Parent.TemplateHeight - 1
+      - Button10:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =ColorFade(Self.Fill, -15%)
+            Color: =RGBA(255, 255, 255, 1)
+            DisabledBorderColor: =RGBA(166, 166, 166, 1)
+            Fill: =RGBA(56, 96, 178, 1)
+            Font: =Font.'Open Sans'
+            HoverBorderColor: =ColorFade(Self.BorderColor, 20%)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =ColorFade(RGBA(56, 96, 178, 1), -20%)
+            OnSelect: =Back()
+            PressedBorderColor: =Self.Fill
+            PressedColor: =Self.Fill
+            PressedFill: =Self.Color
+            Text: ="← 戻る"
+            X: =40
+            Y: =40
