@@ -1,0 +1,105 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  Screen1:
+    Properties:
+      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+    Children:
+      - TutorialNavigator1:
+          Control: Gallery@2.15.0
+          Variant: TutorialGalleryHorizontal
+          Properties:
+            AccessibleLabel: ="Layouts_Tutorial_Gallery_Accessible_Text"
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Items: |-
+              =Table(           
+               {Step: 0, Text:"ユーザーにアプリの使用方法を説明するチュートリアルを作成します。", Image: SampleImage},           
+               {Step: 1, Text:"数式バーからテキストをカスタマイズします。数式バーを開くには、画面インジケーターのドットを選択します。", Image: SampleImage},           
+               {Step: 2, Text:"アプリのスクリーンショットを使用して、主要な機能とインターフェイスを紹介します。", Image: SampleImage},           
+               {Step: 3, Text:"チュートリアル画面は、数式の 0 から始まります。チュートリアルを正しく進行させるために、これは 0 のままにしてください。", Image: SampleImage}
+              )
+            Y: =1051
+          Children:
+            - Circle3:
+                Control: Circle@2.3.0
+                Properties:
+                  BorderColor: =RGBA(0, 18, 107, 1)
+                  BorderThickness: =2
+                  Fill: =If(Or(ThisItem.Step = 0 && IsBlank(_guideStep), ThisItem.Step = _guideStep), iconPrev1.Color, RGBA(0,0,0,0))
+                  FocusedBorderThickness: =4
+                  Height: =Circle3.Width
+                  OnSelect: =Set(_guideStep, ThisItem.Step)
+                  TabIndex: =0
+                  Width: =Parent.TemplateWidth - 5
+                  X: =Parent.TemplateWidth/2 - Self.Width/2
+                  Y: =Parent.TemplateHeight/2 - Self.Height/2
+      - TutorialImage1:
+          Control: Image@2.2.3
+          Properties:
+            AccessibleLabel: ="Layouts_Tutorial_Image_Accessible_Text"
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Height: =450
+            Image: =If(IsBlank(_guideStep), First(TutorialNavigator1.AllItems).Image, LookUp(TutorialNavigator1.AllItems, Step = _guideStep).Image)
+            Width: =Parent.Width
+            Y: =50
+      - TutorialText1:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            BorderColor: =RGBA(0, 0, 0, 1)
+            Font: =Font.'Open Sans'
+            Height: =270
+            LineHeight: =1.3
+            PaddingLeft: =20
+            PaddingRight: =20
+            Size: =20
+            Text: =If(IsBlank(_guideStep), First(TutorialNavigator1.AllItems).Text, LookUp(TutorialNavigator1.AllItems, Step = _guideStep).Text)
+            Width: =420
+            X: =(Parent.Width - Self.Width)/2
+            Y: =650
+      - iconPrev1:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(0, 18, 107, 1)
+            Icon: =Icon.ChevronLeft
+            OnSelect: =Set(_guideStep, Max(_guideStep-1, First(TutorialNavigator1.AllItems).Step))
+            TabIndex: =0
+            Tooltip: ="前の手順"
+            Visible: =_guideStep > 0
+            X: =TutorialText1.X - iconPrev1.Width
+            Y: =TutorialText1.Y + TutorialText1.Height / 2 - Self.Height/2
+      - iconNext1:
+          Control: Classic/Icon@2.5.0
+          Properties:
+            BorderColor: =RGBA(0, 18, 107, 1)
+            Color: =RGBA(0, 18, 107, 1)
+            Icon: =Icon.ChevronRight
+            OnSelect: =Set(_guideStep, Min(_guideStep+1, Last(TutorialNavigator1.AllItems).Step))
+            TabIndex: =0
+            Tooltip: ="次のステップ"
+            Visible: =Last(TutorialNavigator1.AllItems).Step > _guideStep
+            X: =TutorialText1.X + TutorialText1.Width
+            Y: =iconPrev1.Y
+      - LabelSkip1:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            BorderColor: =Self.Color
+            Color: =RGBA(0, 134, 208, 1)
+            FocusedBorderThickness: =2
+            Font: =Font.'Open Sans'
+            Height: =55
+            OnSelect: =Set(_guideStep, Last(TutorialNavigator1.AllItems).Step)
+            Size: =16
+            TabIndex: =0
+            Text: ="スキップ"
+            Width: =100
+            X: =Parent.Width - Self.Width
+            Y: =Parent.Height - Self.Height
