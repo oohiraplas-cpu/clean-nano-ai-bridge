@@ -1,0 +1,102 @@
+name: Power Apps ソース同期 (CN_CompanyOS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      direction:
+        description: "pull: 環境の最新をGitHubへ取得 / push: GitHubの内容を環境へ反映して公開"
+        required: true
+        type: choice
+        options:
+          - pull
+          - push
+
+env:
+  ENVIRONMENT_URL: https://orgcf455a58.crm7.dynamics.com
+  SOLUTION_NAME: CN_CompanyOS
+  SOURCE_PATH: powerapps/CN_CompanyOS
+
+jobs:
+  pull:
+    if: ${{ github.event.inputs.direction == 'pull' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Export Solution
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          solution-output-file: out/${{ env.SOLUTION_NAME }}.zip
+
+      - name: Unpack Solution
+        uses: microsoft/powerplatform-actions/unpack-solution@v1
+        with:
+          solution-file: out/${{ env.SOLUTION_NAME }}.zip
+          solution-folder: ${{ env.SOURCE_PATH }}/solution
+          solution-type: Unmanaged
+          overwrite-files: true
+
+      - name: Unpack canvas app into editable source (pa.yaml)
+        run: |
+          set -e
+          MSAPP=$(find "${{ env.SOURCE_PATH }}/solution" -iname "*.msapp" | head -n 1)
+          echo "found msapp: $MSAPP"
+          pac canvas unpack --msapp "$MSAPP" --sources "${{ env.SOURCE_PATH }}/canvas-src" --layout SourceCode --overwrite
+
+      - name: Commit updated source to repo
+        run: |
+          git config user.name "clean-nano-ai-bridge bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add "${{ env.SOURCE_PATH }}"
+          git diff --cached --quiet || git commit -m "chore(powerapps): pull latest source from environment"
+          git push
+
+  push:
+    if: ${{ github.event.inputs.direction == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Pack canvas app from edited source
+        run: |
+          set -e
+          MSAPP=$(find "${{ env.SOURCE_PATH }}/solution" -iname "*.msapp" | head -n 1)
+          echo "packing into: $MSAPP"
+          pac canvas pack --sources "${{ env.SOURCE_PATH }}/canvas-src" --msapp "$MSAPP" --layout SourceCode --overwrite
+
+      - name: Pack Solution
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: ${{ env.SOURCE_PATH }}/solution
+          solution-file: out/${{ env.SOLUTION_NAME }}.zip
+          solution-type: Unmanaged
+
+      - name: Import Solution
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          solution-file: out/${{ env.SOLUTION_NAME }}.zip
+
+      - name: Publish customizations
+        uses: microsoft/powerplatform-actions/publish-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
