@@ -244,3 +244,62 @@ test('MCPツール一覧で既存3ツールとPower Apps 6ツールを公開す�
     assert.equal(tool.inputSchema.type, 'object');
   }
 });
+
+
+test('JSON-RPCの初期化・9ツール一覧・実呼び出しを同じMCP経路で処理する', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const call = async (method, params = {}, id = 7) => {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer mcp-secret' },
+      body: JSON.stringify({ jsonrpc: '2.0', id, method, params })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.jsonrpc, '2.0');
+    assert.equal(body.id, id);
+    return body;
+  };
+  const init = await call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+  assert.equal(init.result.protocolVersion, '2025-11-25');
+  const list = await call('tools/list');
+  assert.equal(list.result.tools.length, 9);
+  assert.ok(list.result.tools.some(tool => tool.name === 'publish_powerapps_app'));
+  const result = await call('tools/call', { name: 'get_tasks', arguments: {} }, 'read-1');
+  assert.equal(JSON.parse(result.result.content[0].text).tasks[0].id, 'task-1');
+  const unknown = await call('tools/call', { name: 'not_a_tool' });
+  assert.equal(unknown.error.code, -32602);
+  const invalid = await call('tools/call', { name: 'get_powerapps_source', arguments: {} });
+  assert.equal(invalid.result.isError, true);
+});
+
+test('認証なし・誤ったBearer・異なるOriginはMCPを実行できない', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  for (const headers of [{}, { authorization: 'Bearer wrong' }, { authorization: 'Basic mcp-secret' }]) {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+    });
+    assert.equal(response.status, 401);
+  }
+  const blocked = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer mcp-secret', origin: 'https://untrusted.example' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+  });
+  assert.equal(blocked.status, 403);
+});
+
+test('MCP通知は処理を起動せず202を返し、SSE未提供GETは405を返す', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
+  });
+  assert.equal(response.status, 202);
+  assert.equal(await response.text(), '');
+  const get = await fetch(`${server.baseUrl}/mcp`, { headers: { 'x-api-key': 'mcp-secret' } });
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get('allow'), 'POST');
+});
