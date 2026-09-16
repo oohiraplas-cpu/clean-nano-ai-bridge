@@ -31,10 +31,10 @@ function getConfig(env = process.env) {
       orgUrl: env.POWERAPPS_ORG_URL || '',
       solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || '',
       githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
-      githubOwner: env.POWERAPPS_GITHUB_OWNER || '',
-      githubRepo: env.POWERAPPS_GITHUB_REPO || '',
+      githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
+      githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
       githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
-      githubRoot: env.POWERAPPS_GITHUB_ROOT || ''
+      githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source'
     }
   };
 }
