@@ -36,8 +36,12 @@ function apiKeyMiddleware(getKey) {
   return (req, res, next) => {
     const expected = getKey();
     if (!expected) return next();
-    const actual = req.get('x-api-key') || '';
-    const valid = actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+    const authorization = req.get('authorization') || '';
+    const bearer = /^Bearer\s+(.+)$/i.exec(authorization)?.[1]?.trim() || '';
+    const actual = req.get('x-api-key') || bearer;
+    const actualBytes = Buffer.from(actual);
+    const expectedBytes = Buffer.from(expected);
+    const valid = actualBytes.length === expectedBytes.length && crypto.timingSafeEqual(actualBytes, expectedBytes);
     if (!valid) return res.status(401).json({ error: '認証に失敗しました' });
     return next();
   };
@@ -186,11 +190,57 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     } catch (error) { return next(error); }
   });
 
+  // Stateless JSON-response transport. Legacy Power Platform requests remain supported.
+  app.use('/mcp', (req, res, next) => {
+    const origin = req.get('origin');
+    if (origin && !config.corsOrigins.includes(origin)) return res.sendStatus(403);
+    return next();
+  });
   app.get('/mcp/tools/list', apiKeyMiddleware(() => config.mcpApiKey), (req, res) => {
     res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
   });
 
+  app.get('/mcp', apiKeyMiddleware(() => config.mcpApiKey), (req, res) => {
+    return res.set('Allow', 'POST').sendStatus(405);
+  });
+
   app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), async (req, res, next) => {
+    if (req.body && Object.hasOwn(req.body, 'jsonrpc')) {
+      const request = req.body;
+      const id = request.id;
+      const sendError = (code, message) => res.json({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
+      if (request.jsonrpc !== '2.0' || typeof request.method !== 'string' ||
+          (id !== undefined && typeof id !== 'string' && !Number.isInteger(id))) {
+        return sendError(-32600, 'Invalid Request');
+      }
+      // Notifications never dispatch application tools or produce JSON-RPC responses.
+      if (id === undefined) return res.status(202).end();
+      if (request.method === 'initialize') {
+        return res.json({ jsonrpc: '2.0', id, result: {
+          protocolVersion: '2025-11-25', capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.0.0' }
+        } });
+      }
+      if (request.method === 'ping') return res.json({ jsonrpc: '2.0', id, result: {} });
+      if (request.method === 'tools/list') return res.json({ jsonrpc: '2.0', id, result: { tools: MCP_PUBLIC_TOOLS } });
+      if (request.method !== 'tools/call') return sendError(-32601, 'Method not found');
+      const params = request.params;
+      if (!params || !MCP_PUBLIC_TOOLS.some((tool) => tool.name === params.name) ||
+          (params.arguments !== undefined && (!params.arguments || typeof params.arguments !== 'object' || Array.isArray(params.arguments)))) {
+        return sendError(-32602, 'Invalid tool name or arguments');
+      }
+      req.body = { method: params.name, params: params.arguments || {} };
+      // Adapt the existing validated dispatch, including its error responses.
+      const json = res.json.bind(res);
+      res.json = (payload) => {
+        const isError = res.statusCode >= 400;
+        res.status(200);
+        return json({ jsonrpc: '2.0', id, result: {
+          content: [{ type: 'text', text: JSON.stringify(isError ? payload : payload.result) }],
+          ...(isError ? { isError: true } : {})
+        } });
+      };
+    }
     const errorMessage = validateMcpInput(req.body);
     if (errorMessage) return res.status(400).json({ error: errorMessage });
     const { method } = req.body;
@@ -266,3 +316,4 @@ if (require.main === module) {
 }
 
 module.exports = { apiKeyMiddleware, createApp };
+
