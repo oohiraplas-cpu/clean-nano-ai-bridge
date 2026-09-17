@@ -268,18 +268,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     } catch (error) { return next(error); }
   });
 
-  app.get('/mcp/tools/list', apiKeyMiddleware(() => config.mcpApiKey), (req, res) => {
+  app.get('/mcp/tools/list', (req, res) => {
     res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
   });
 
-  app.post('/mcp', (req, res, next) => {
-    // Standard ChatGPT MCP traffic cannot carry the legacy X-API-Key header.
-    // The legacy MCP endpoint contract remains protected below.
-    if (req.body?.jsonrpc !== '2.0') {
-      return apiKeyMiddleware(() => config.mcpApiKey)(req, res, () => handleMcpRequest(req, res, next));
-    }
-    return handleMcpRequest(req, res, next);
-  });
+  app.post('/mcp', (req, res, next) => handleMcpRequest(req, res, next));
 
   async function handleMcpRequest(req, res, next) {
     const body = req.body || {};
