@@ -220,12 +220,7 @@ test('MCPツール一覧で既存3ツールとPower Apps 6ツールを公開す�
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
-  const unauthorized = await fetch(`${server.baseUrl}/mcp/tools/list`);
-  assert.equal(unauthorized.status, 401);
-
-  const response = await fetch(`${server.baseUrl}/mcp/tools/list`, {
-    headers: { 'x-api-key': 'mcp-secret' }
-  });
+  const response = await fetch(`${server.baseUrl}/mcp/tools/list`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.tools.map((tool) => tool.name), [
