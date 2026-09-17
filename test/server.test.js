@@ -244,3 +244,48 @@ test('MCPツール一覧で既存3ツールとPower Apps 6ツールを公開す�
     assert.equal(tool.inputSchema.type, 'object');
   }
 });
+
+
+test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応する', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = {
+    'content-type': 'application/json',
+    'accept': 'application/json, text/event-stream',
+    'x-api-key': 'mcp-secret'
+  };
+
+  const initialized = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } }
+    })
+  });
+  assert.equal(initialized.status, 200);
+  const initializedBody = await initialized.json();
+  assert.equal(initializedBody.jsonrpc, '2.0');
+  assert.equal(initializedBody.result.serverInfo.name, 'clean-nano-ai-bridge');
+  assert.equal(initializedBody.result.protocolVersion, '2025-06-18');
+
+  const listed = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
+  });
+  assert.equal(listed.status, 200);
+  const listedBody = await listed.json();
+  assert.equal(listedBody.result.tools.length, 9);
+  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
+  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'health_check', arguments: {} } })
+  });
+  assert.equal(called.status, 200);
+  const calledBody = await called.json();
+  assert.equal(calledBody.result.isError, false);
+  assert.deepEqual(calledBody.result.structuredContent, { status: 'ok' });
+});
