@@ -272,7 +272,16 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
   });
 
-  app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), async (req, res, next) => {
+  app.post('/mcp', (req, res, next) => {
+    // Standard ChatGPT MCP traffic cannot carry the legacy X-API-Key header.
+    // The legacy MCP endpoint contract remains protected below.
+    if (req.body?.jsonrpc !== '2.0') {
+      return apiKeyMiddleware(() => config.mcpApiKey)(req, res, () => handleMcpRequest(req, res, next));
+    }
+    return handleMcpRequest(req, res, next);
+  });
+
+  async function handleMcpRequest(req, res, next) {
     const body = req.body || {};
 
     // ChatGPT Apps use MCP Streamable HTTP with JSON-RPC 2.0.
@@ -329,7 +338,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (error.status) return res.status(error.status).json({ error: error.message });
       return next(error);
     }
-  });
+  }
 
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
