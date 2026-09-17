@@ -145,6 +145,88 @@ async function getTaskResultPayload(store, taskId) {
   return tasks.find((task) => task.id === taskId) || null;
 }
 
+function requestError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore) {
+  if (!MCP_METHODS.includes(method)) {
+    throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
+  }
+
+  if (method === 'health_check') return { status: 'ok' };
+  if (method === 'get_tasks') return tasksPayload(store);
+  if (method === 'get_next_task') return nextPayload(store);
+  if (method === 'create_task') {
+    const paramError = validateCreateTaskParams(params);
+    if (paramError) throw requestError(paramError);
+    return createTaskPayload(store, params);
+  }
+  if (method === 'update_task_status') {
+    const paramError = validateUpdateTaskStatusParams(params);
+    if (paramError) throw requestError(paramError);
+    const task = await updateTaskStatusPayload(store, params);
+    if (!task) throw requestError('タスクが見つかりません', 404);
+    return { task };
+  }
+  if (method === 'get_task_result') {
+    const paramError = validateGetTaskResultParams(params);
+    if (paramError) throw requestError(paramError);
+    const task = await getTaskResultPayload(store, params.task_id);
+    if (!task) throw requestError('タスクが見つかりません', 404);
+    return { task_id: task.id, status: task.status, result: task.result ?? null };
+  }
+  if (method === 'get_powerapps_source') {
+    const paramError = validateGetPowerAppsSourceParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsGitStore.getSourceFile(params.relativePath);
+  }
+  if (method === 'get_powerapps_app') {
+    const paramError = validateGetPowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsStore.getAppInfo();
+  }
+  if (method === 'get_powerapps_state') {
+    const paramError = validateGetPowerAppsStateParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsStore.getAppState();
+  }
+  if (method === 'update_powerapps_app') {
+    const paramError = validateUpdatePowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    return params.updateData
+      ? powerAppsStore.updateApp(params.updateData)
+      : powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message);
+  }
+  if (method === 'save_powerapps_app') {
+    const paramError = validateSavePowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsStore.saveApp();
+  }
+  if (method === 'publish_powerapps_app') {
+    const paramError = validatePublishPowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsStore.publishApp();
+  }
+  if (method === 'get_powerapps_operation_result') {
+    const paramError = validateGetPowerAppsOperationResultParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsStore.getOperationResult(params.operationId);
+  }
+}
+
+function jsonRpcResult(id, result) {
+  return { jsonrpc: '2.0', id, result };
+}
+
+function jsonRpcError(id, code, message, data) {
+  const error = { code, message };
+  if (data !== undefined) error.data = data;
+  return { jsonrpc: '2.0', id: id ?? null, error };
+}
+
 function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore) {
   const store = injectedStore || createDefaultStore(config);
   const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
@@ -191,65 +273,62 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
 
   app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), async (req, res, next) => {
-    const errorMessage = validateMcpInput(req.body);
-    if (errorMessage) return res.status(400).json({ error: errorMessage });
-    const { method } = req.body;
-    const params = req.body.params || {};
-    if (!MCP_METHODS.includes(method)) return res.status(400).json({ error: `不明なmethodです（対応: ${MCP_METHODS.join(', ')}）` });
-    try {
-      let result;
-      if (method === 'health_check') result = { status: 'ok' };
-      else if (method === 'get_tasks') result = await tasksPayload(store);
-      else if (method === 'get_next_task') result = await nextPayload(store);
-      else if (method === 'create_task') {
-        const paramError = validateCreateTaskParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await createTaskPayload(store, params);
-      } else if (method === 'update_task_status') {
-        const paramError = validateUpdateTaskStatusParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        const task = await updateTaskStatusPayload(store, params);
-        if (!task) return res.status(404).json({ error: 'タスクが見つかりません' });
-        result = { task };
-      } else if (method === 'get_task_result') {
-        const paramError = validateGetTaskResultParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        const task = await getTaskResultPayload(store, params.task_id);
-        if (!task) return res.status(404).json({ error: 'タスクが見つかりません' });
-        result = { task_id: task.id, status: task.status, result: task.result ?? null };
-      } else if (method === 'get_powerapps_source') {
-        const paramError = validateGetPowerAppsSourceParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsGitStore.getSourceFile(params.relativePath);
-      } else if (method === 'get_powerapps_app') {
-        const paramError = validateGetPowerAppsAppParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsStore.getAppInfo();
-      } else if (method === 'get_powerapps_state') {
-        const paramError = validateGetPowerAppsStateParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsStore.getAppState();
-      } else if (method === 'update_powerapps_app') {
-        const paramError = validateUpdatePowerAppsAppParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = params.updateData
-          ? await powerAppsStore.updateApp(params.updateData)
-          : await powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message);
-      } else if (method === 'save_powerapps_app') {
-        const paramError = validateSavePowerAppsAppParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsStore.saveApp();
-      } else if (method === 'publish_powerapps_app') {
-        const paramError = validatePublishPowerAppsAppParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsStore.publishApp();
-      } else if (method === 'get_powerapps_operation_result') {
-        const paramError = validateGetPowerAppsOperationResultParams(params);
-        if (paramError) return res.status(400).json({ error: paramError });
-        result = await powerAppsStore.getOperationResult(params.operationId);
+    const body = req.body || {};
+
+    // ChatGPT Apps use MCP Streamable HTTP with JSON-RPC 2.0.
+    // Keep the existing legacy { method, params } contract below for current clients.
+    if (body.jsonrpc === '2.0') {
+      const id = body.id;
+      const params = body.params || {};
+
+      if (body.method === 'notifications/initialized') return res.status(202).end();
+      if (body.method === 'ping') return res.status(200).json(jsonRpcResult(id, {}));
+      if (body.method === 'initialize') {
+        return res.status(200).json(jsonRpcResult(id, {
+          protocolVersion: params.protocolVersion || '2025-06-18',
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.0.0' }
+        }));
       }
+      if (body.method === 'tools/list') {
+        return res.status(200).json(jsonRpcResult(id, { tools: MCP_PUBLIC_TOOLS }));
+      }
+      if (body.method === 'tools/call') {
+        const name = params.name;
+        const toolParams = params.arguments || {};
+        if (typeof name !== 'string') {
+          return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
+        }
+        try {
+          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore);
+          return res.status(200).json(jsonRpcResult(id, {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+            structuredContent: result,
+            isError: false
+          }));
+        } catch (error) {
+          if (!error.status) return next(error);
+          return res.status(200).json(jsonRpcResult(id, {
+            content: [{ type: 'text', text: error.message }],
+            structuredContent: { error: error.message },
+            isError: true
+          }));
+        }
+      }
+      return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${body.method || ''}`));
+    }
+
+    const errorMessage = validateMcpInput(body);
+    if (errorMessage) return res.status(400).json({ error: errorMessage });
+    const { method } = body;
+    const params = body.params || {};
+    try {
+      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore);
       return res.status(200).json({ accepted: true, method, result });
-    } catch (error) { return next(error); }
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
   });
 
   app.use((error, req, res, next) => {
