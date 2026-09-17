@@ -34,7 +34,8 @@ function getConfig(env = process.env) {
       githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
       githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
       githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
-      githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source'
+      githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source',
+      githubRequestTimeoutMs: Number.parseInt(env.POWERAPPS_GITHUB_TIMEOUT_MS || '20000', 10)
     }
   };
 }

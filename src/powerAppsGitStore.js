@@ -1,5 +1,7 @@
 const crypto = require('node:crypto');
 
+const GITHUB_REQUEST_TIMEOUT_MS = 20000;
+
 class OAuthTokenCache {
   constructor() {
     this.token = null;
@@ -47,6 +49,7 @@ class PowerAppsGitStore {
     this.githubRepo = config.githubRepo || '';
     this.githubBranch = config.githubBranch || 'main';
     this.githubRoot = (config.githubRoot || '').replace(/^\/+|\/+$/g, '');
+    this.githubRequestTimeoutMs = config.githubRequestTimeoutMs || GITHUB_REQUEST_TIMEOUT_MS;
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new OAuthTokenCache();
   }
@@ -85,16 +88,25 @@ class PowerAppsGitStore {
 
   async _githubRequest(path, options = {}) {
     this._assertGitHubConfig();
-    const response = await this._fetch(`https://api.github.com${path}`, {
-      ...options,
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Bearer ${this.githubToken}`,
-        'x-github-api-version': '2022-11-28',
-        'content-type': 'application/json',
-        ...(options.headers || {})
+    let response;
+    try {
+      response = await this._fetch(`https://api.github.com${path}`, {
+        ...options,
+        signal: options.signal || AbortSignal.timeout(this.githubRequestTimeoutMs),
+        headers: {
+          accept: 'application/vnd.github+json',
+          authorization: `Bearer ${this.githubToken}`,
+          'x-github-api-version': '2022-11-28',
+          'content-type': 'application/json',
+          ...(options.headers || {})
+        }
+      });
+    } catch (error) {
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+        throw new Error(`GitHub APIへの接続がタイムアウトしました（${this.githubRequestTimeoutMs}ms）。Azure App ServiceからGitHub APIへの送信アクセスを確認してください。`);
       }
-    });
+      throw new Error(`GitHub APIへの接続に失敗しました: ${error.message}`);
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
