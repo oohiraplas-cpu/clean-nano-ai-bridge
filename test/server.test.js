@@ -23,7 +23,8 @@ async function createTestServer(tasks, options = {}) {
       appId: 'test-app',
       logPath: logFile,
       managementApiBaseUrl: 'https://management.azure.com',
-      fetchImpl: options.fetchImpl
+      fetchImpl: options.fetchImpl,
+      ...options.powerAppsOverrides
     }
   });
   const server = await new Promise((resolve) => {
@@ -204,6 +205,77 @@ test('Power Apps MCPメソッドを実行できる', async (t) => {
   const stateResult = await state.json();
   assert.equal(stateResult.result.status, 'ok');
   assert.ok(stateResult.result.operationId);
+});
+
+test('get_powerapps_sourceはGitHub設定不足時も生の500/502で落ちずJSON-RPCエラーとして応答する', async (t) => {
+  // GitHub連携設定（POWERAPPS_GITHUB_TOKEN等）が未設定の状態を再現する。
+  // 修正前はpowerAppsGitStoreが投げるErrorにstatusが付かず、/mcpのtools/callハンドラが
+  // next(error)経由の汎用500に丸めてしまい、一部のMCPリレーがそれを502として扱っていた。
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'get_powerapps_source', arguments: { relativePath: 'Screen3.pa.yaml' } }
+    })
+  });
+  // tools/callは常にHTTP 200で返し、成否はresult.isErrorで表現する（他のツールと同じ規約）。
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.isError, true);
+  assert.match(body.result.structuredContent.error, /GitHub設定が不足しています/);
+
+  // レガシー{method, params}形式でもres.headersSent前に必ずJSONで応答し、
+  // 素の502/500として観測されないことを確認する。
+  const legacy = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_powerapps_source', params: { relativePath: 'Screen3.pa.yaml' } })
+  });
+  assert.equal(legacy.status, 502);
+  const legacyBody = await legacy.json();
+  assert.match(legacyBody.error, /GitHub設定が不足しています/);
+});
+
+test('get_powerapps_sourceはGitHub設定が揃っていれば正常応答する', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/contents/')) {
+      return new Response(JSON.stringify({
+        type: 'file',
+        sha: 'abc123',
+        content: Buffer.from('Screen3のPower Fxソース', 'utf8').toString('base64')
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: 'unexpected url' }), { status: 404 });
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    powerAppsOverrides: {
+      githubToken: 'dummy-token',
+      githubOwner: 'oohiraplas-cpu',
+      githubRepo: 'clean-nano-ai-bridge',
+      githubBranch: 'main',
+      githubRoot: 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source',
+      fetchImpl: mockFetch
+    }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'get_powerapps_source', arguments: { relativePath: 'Screen3.pa.yaml' } }
+    })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.isError, false);
+  assert.equal(body.result.structuredContent.status, 'ok');
+  assert.equal(body.result.structuredContent.content, 'Screen3のPower Fxソース');
 });
 
 test('タスクが0件ならタスクなしを明示する', async (t) => {
