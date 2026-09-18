@@ -151,6 +151,21 @@ function requestError(message, status = 400) {
   return error;
 }
 
+// powerAppsGitStore (GitHub Contents API経由)の呼び出しは、設定不足やGitHub側のエラーを
+// プレーンなErrorとして投げる。error.statusが未設定のまま/mcpのtools/callハンドラに届くと
+// 中央エラーハンドラの汎用500応答に丸められ、実際の原因（設定不足、404など）が失われるうえ、
+// 一部のMCPリレー/プロキシは200以外のHTTPステータスを「オリジン異常」とみなして
+// 502に置き換えてしまうことがある。ここでerror.statusを必ず設定し、
+// tools/callが常にHTTP 200 + isError:trueで詳細メッセージを返せるようにする。
+async function withUpstreamErrorStatus(promise, status = 502) {
+  try {
+    return await promise;
+  } catch (error) {
+    if (!error.status) error.status = status;
+    throw error;
+  }
+}
+
 async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
@@ -181,7 +196,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_powerapps_source') {
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsGitStore.getSourceFile(params.relativePath);
+    return withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(params.relativePath));
   }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
@@ -198,7 +213,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return params.updateData
       ? powerAppsStore.updateApp(params.updateData)
-      : powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message);
+      : withUpstreamErrorStatus(powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message));
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
