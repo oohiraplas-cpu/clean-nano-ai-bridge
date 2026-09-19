@@ -8,6 +8,8 @@ const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
+const { SharePointReader } = require('./sharePointReader');
+const { PowerAutomateRunner } = require('./powerAutomateRunner');
 const {
   validateMcpInput,
   validateStatusInput,
@@ -26,6 +28,10 @@ const {
   validateGetPowerAppsOperationResultParams,
   validateGetPowerAppsSourceParams
 } = require('./powerAppsValidation');
+const {
+  validateGetSharePointListParams,
+  validateRunPowerAutomateFlowParams
+} = require('./bridgeExtensionsValidation');
 
 function createDefaultStore(config) {
   if (config.taskStoreBackend === 'sharepoint') return new SharePointTaskStore(config.sharepoint);
@@ -48,7 +54,8 @@ const MCP_METHODS = Object.freeze([
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
-  'get_powerapps_source'
+  'get_powerapps_source',
+  'get_sharepoint_list', 'run_power_automate_flow'
 ]);
 
 const MCP_PUBLIC_TOOLS = Object.freeze([
@@ -110,6 +117,34 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     name: 'publish_powerapps_app',
     description: '既存Power Appsアプリを公開します。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_sharepoint_list',
+    description: 'SharePointリストの項目を読み取り専用で取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: '取得するSharePointリストのID' },
+        listName: { type: 'string', description: 'listId未指定時に表示名で検索するためのリスト名' },
+        siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' },
+        top: { type: 'number', description: '取得件数の上限（既定50、最大200）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'run_power_automate_flow',
+    description: '登録済みのPower AutomateフローをHTTPトリガー経由で実行します。人間承認（approvedByHuman:true）が必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowKey: { type: 'string', description: '実行するフローの登録キー' },
+        payload: { type: 'object', description: 'フローに渡す入力データ' },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（true必須）' }
+      },
+      required: ['flowKey', 'approvedByHuman'],
+      additionalProperties: false
+    }
   }
 ]);
 
@@ -166,7 +201,7 @@ async function withUpstreamErrorStatus(promise, status = 502) {
   }
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -230,6 +265,19 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return powerAppsStore.getOperationResult(params.operationId);
   }
+  if (method === 'get_sharepoint_list') {
+    const paramError = validateGetSharePointListParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.listItems(params));
+  }
+  if (method === 'run_power_automate_flow') {
+    // approvedByHuman:trueはvalidateRunPowerAutomateFlowParamsで必須チェック済み。
+    // Bridge全体の方針（更新・実行系は人間承認必須）に合わせ、ここでも他の
+    // パラメータ検証と同様400として扱う（フラグが無い＝入力不備という位置づけ）。
+    const paramError = validateRunPowerAutomateFlowParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(powerAutomateRunner.runFlow(params.flowKey, params.payload));
+  }
 }
 
 function jsonRpcResult(id, result) {
@@ -242,10 +290,12 @@ function jsonRpcError(id, code, message, data) {
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
 
-function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore) {
+function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner) {
   const store = injectedStore || createDefaultStore(config);
   const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
   const powerAppsGitStore = injectedPowerAppsGitStore || new PowerAppsGitStore(config.powerApps);
+  const sharePointReader = injectedSharePointReader || new SharePointReader(config.sharepoint);
+  const powerAutomateRunner = injectedPowerAutomateRunner || new PowerAutomateRunner(config.powerAutomate);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
@@ -317,7 +367,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
         try {
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore);
+          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(result) }],
             structuredContent: result,
@@ -340,7 +390,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const { method } = body;
     const params = body.params || {};
     try {
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore);
+      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner);
       return res.status(200).json({ accepted: true, method, result });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: error.message });

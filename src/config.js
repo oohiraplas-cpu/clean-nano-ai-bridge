@@ -2,6 +2,18 @@ const path = require('node:path');
 
 const DEFAULT_ORIGINS = ['http://localhost:3000'];
 
+// POWER_AUTOMATE_FLOWSはJSON文字列（{"flowKey": "トリガーURL"}）としてのみ環境変数で渡す。
+// パース不能・未設定の場合は空オブジェクト扱いとし、起動を落とさない。
+function parsePowerAutomateFlows(value) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function getConfig(env = process.env) {
   const origins = (env.CORS_ORIGINS || DEFAULT_ORIGINS.join(','))
     .split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -35,6 +47,9 @@ function getConfig(env = process.env) {
       githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
       githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
       githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source'
+    },
+    powerAutomate: {
+      flows: parsePowerAutomateFlows(env.POWER_AUTOMATE_FLOWS)
     }
   };
 }
