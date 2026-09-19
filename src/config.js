@@ -27,9 +27,9 @@ function getConfig(env = process.env) {
     mcpApiKey: env.MCP_API_KEY || '',
     taskStoreBackend: env.TASK_STORE_BACKEND || 'file',
     sharepoint: {
-      tenantId: env.SHAREPOINT_TENANT_ID || '',
-      clientId: env.SHAREPOINT_CLIENT_ID || '',
-      clientSecret: env.SHAREPOINT_CLIENT_SECRET || '',
+      tenantId: env.SHAREPOINT_TENANT_ID || env.AZURE_TENANT_ID || '',
+      clientId: env.SHAREPOINT_CLIENT_ID || env.AZURE_CLIENT_ID || '',
+      clientSecret: env.SHAREPOINT_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
       siteId: env.SHAREPOINT_SITE_ID || '',
       listId: env.SHAREPOINT_LIST_ID || ''
     },
