@@ -66,7 +66,8 @@ paths:
       description: |
         ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。
         method は health_check・get_tasks・get_next_task・create_task・update_task_status・
-        get_task_result、およびPower Apps取得・ソース編集・保存・公開メソッドのいずれかを指定します。
+        get_task_result、Power Apps取得・ソース編集・保存・公開メソッド、
+        get_sharepoint_list、run_power_automate_flow のいずれかを指定します。
         health_check・get_tasks・get_next_task はそれぞれ GET /health・GET /api/tasks・
         GET /api/next と同じ結果を result に返します。
         create_task は params.title（必須）・params.description（任意）・params.priority（任意、
@@ -75,6 +76,13 @@ paths:
         でタスクの状態と結果を更新し、result.task を返します。
         get_task_result は params.task_id（必須）で現在の status・result を返します。
         task_idが存在しない場合は404を返します。
+        get_sharepoint_list は params.listId または params.listName のいずれか（必須）・
+        params.siteId（任意、省略時は既定サイト）・params.top（任意、既定50、最大200）で
+        SharePointリストの項目を読み取り専用で取得します。
+        run_power_automate_flow は params.flowKey（必須、あらかじめ環境変数で登録されたフローのキー）・
+        params.payload（任意）・params.approvedByHuman（必須、true固定）で登録済みPower Automate
+        フローを実行します。approvedByHumanがtrueでない場合はエラーになり、実行されません
+        （更新・実行系の操作は人間の承認を必須とする方針のため）。
       security: [{ McpApiKey: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/McpInput' } } } }
       responses:
@@ -143,7 +151,7 @@ components:
       properties:
         method:
           type: string
-          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result]
+          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, run_power_automate_flow]
           description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:
