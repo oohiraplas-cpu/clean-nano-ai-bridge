@@ -75,6 +75,46 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'create_task',
+    description: 'ChatGPTからPower Appsへ渡す編集タスクを新規作成します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '編集タスクのタイトル' },
+        description: { type: 'string', description: 'Power Appsへ渡す具体的な編集内容' },
+        priority: { type: 'string', description: '優先度（省略時normal）' }
+      },
+      required: ['title'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'update_task_status',
+    description: '編集タスクの状態と実行結果を更新します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', description: '対象タスクID' },
+        status: { type: 'string', description: '更新後の状態' },
+        result: { description: '実行結果' }
+      },
+      required: ['task_id', 'status'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_task_result',
+    description: '編集タスクの状態と実行結果を取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', description: '対象タスクID' }
+      },
+      required: ['task_id'],
+      additionalProperties: false
+    }
+  },
+  {
     name: 'get_powerapps_app',
     description: '既存Power Appsアプリの情報を取得します。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
