@@ -25,6 +25,19 @@ async function createTestServer(tasks, options = {}) {
       managementApiBaseUrl: 'https://management.azure.com',
       fetchImpl: options.fetchImpl,
       ...options.powerAppsOverrides
+    },
+    sharepoint: {
+      tenantId: 'test-tenant',
+      clientId: 'test-client',
+      clientSecret: 'test-secret',
+      siteId: 'test-site',
+      fetchImpl: options.fetchImpl,
+      ...options.sharepointOverrides
+    },
+    powerAutomate: {
+      flows: {},
+      fetchImpl: options.fetchImpl,
+      ...options.powerAutomateOverrides
     }
   });
   const server = await new Promise((resolve) => {
@@ -288,7 +301,7 @@ test('タスクが0件ならタスクなしを明示する', async (t) => {
 });
 
 
-test('MCPツール一覧で既存3ツールとPower Apps 6ツールを公開する', async (t) => {
+test('MCPツール一覧で既存3ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツールを公開する', async (t) => {
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
@@ -304,12 +317,136 @@ test('MCPツール一覧で既存3ツールとPower Apps 6ツールを公開す�
     'get_powerapps_source',
     'update_powerapps_app',
     'save_powerapps_app',
-    'publish_powerapps_app'
+    'publish_powerapps_app',
+    'get_sharepoint_list',
+    'run_power_automate_flow'
   ]);
   for (const tool of body.tools) {
     assert.equal(typeof tool.description, 'string');
     assert.equal(tool.inputSchema.type, 'object');
   }
+});
+
+test('get_sharepoint_listはSharePoint設定不足時もJSON-RPCエラーとして応答する', async (t) => {
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { tenantId: '', clientId: '', clientSecret: '' }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'get_sharepoint_list', arguments: { listName: 'CN_電子日報台帳' } }
+    })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.isError, true);
+  assert.match(body.result.structuredContent.error, /SharePoint設定が不足しています/);
+});
+
+test('get_sharepoint_listはlistId/listNameいずれも未指定なら400を返す', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_sharepoint_list', params: {} })
+  });
+  assert.equal(called.status, 400);
+  assert.match((await called.json()).error, /listIdまたはlistName/);
+});
+
+test('get_sharepoint_listは設定が揃っていれば項目を取得できる', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (url.includes('/lists?')) {
+      return new Response(JSON.stringify({ value: [{ id: 'list-1', displayName: 'CN_電子日報台帳' }] }), { status: 200 });
+    }
+    if (url.includes('/items?')) {
+      return new Response(JSON.stringify({ value: [{ id: 'item-1', fields: { Title: '2026-09-18分' } }] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: 'unexpected url' }), { status: 404 });
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_sharepoint_list', params: { listName: 'CN_電子日報台帳' } })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.status, 'ok');
+  assert.equal(body.result.count, 1);
+  assert.equal(body.result.items[0].fields.Title, '2026-09-18分');
+});
+
+test('run_power_automate_flowはapprovedByHuman未指定だと実行されず400を返す', async (t) => {
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    powerAutomateOverrides: { flows: { daily_report_reminder: 'https://example.com/trigger' } }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'run_power_automate_flow', params: { flowKey: 'daily_report_reminder' } })
+  });
+  assert.equal(called.status, 400);
+  assert.match((await called.json()).error, /approvedByHuman/);
+});
+
+test('run_power_automate_flowは未登録のflowKeyを明確なエラーで返す', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'run_power_automate_flow', arguments: { flowKey: 'no-such-flow', approvedByHuman: true } }
+    })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.isError, true);
+  assert.match(body.result.structuredContent.error, /指定されたflowKeyのPower Automateフローが設定されていません/);
+});
+
+test('run_power_automate_flowはapprovedByHuman:true指定かつ登録済みなら実行される', async (t) => {
+  const mockFetch = async () => new Response(JSON.stringify({ received: true }), { status: 202 });
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    powerAutomateOverrides: { flows: { daily_report_reminder: 'https://example.com/trigger' }, fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'run_power_automate_flow',
+      params: { flowKey: 'daily_report_reminder', payload: { message: 'テスト' }, approvedByHuman: true }
+    })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.status, 'ok');
+  assert.equal(body.result.httpStatus, 202);
+  assert.deepEqual(body.result.result, { received: true });
 });
 
 
@@ -343,7 +480,7 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  assert.equal(listedBody.result.tools.length, 9);
+  assert.equal(listedBody.result.tools.length, 11);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
 
