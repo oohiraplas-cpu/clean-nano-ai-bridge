@@ -4,6 +4,28 @@
 
 既存の `clean-nano-ai-bridge` リポジトリに **Power Apps 書き込み経路** を追加し、ChatGPT から Power Platform 上の既存 Power Apps を実際に編集・保存・公開できる機能を実装します。
 
+## 編集端末に関する運用方針
+
+Power Apps StudioはiPadでは編集不可であることを確認済みです。原因は権限設定ではなく、Microsoft公式の対応ブラウザー制限（Power Apps Studioの編集機能はiOS Safari等のモバイルブラウザーに対応していない）によるものです。
+
+### 対応方針
+
+- Power Apps編集（make.powerapps.com でのアプリ編集作業）はWindows上のEdgeまたはChromeで実施する
+- iPhone/iPadはアプリの利用・動作テスト専用とする（編集は行わない）
+- SharePoint Lists正本の方針は変更なし
+- Power Automate構成も変更なし
+
+### 次工程
+
+1. Windows PCで make.powerapps.com へログイン
+2. clean nanoアプリを作成・編集
+3. iPhone/iPadで動作確認
+4. 修正後に本番公開
+
+### 結論
+
+Power Apps採用を継続する。編集端末のみPCへ切り替える。この方針は本リポジトリが提供するBridge API（`src/powerAppsStore.js` 等）のインターフェースや後方互換性には影響しない。
+
 ## 実装ステータス
 
 ### ✅ 完了した実装
