@@ -301,7 +301,7 @@ test('タスクが0件ならタスクなしを明示する', async (t) => {
 });
 
 
-test('MCPツール一覧で既存3ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツールを公開する', async (t) => {
+test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツールを公開する', async (t) => {
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
@@ -312,6 +312,9 @@ test('MCPツール一覧で既存3ツール、Power Apps 6ツール、SharePoint
     'health_check',
     'get_tasks',
     'get_next_task',
+    'create_task',
+    'update_task_status',
+    'get_task_result',
     'get_powerapps_app',
     'get_powerapps_state',
     'get_powerapps_source',
@@ -480,7 +483,8 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  assert.equal(listedBody.result.tools.length, 11);
+  assert.equal(listedBody.result.tools.length, 14);
+  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
 
