@@ -33,7 +33,8 @@ function getConfig(env = process.env) {
       clientId: env.SHAREPOINT_CLIENT_ID || env.AZURE_CLIENT_ID || '',
       clientSecret: env.SHAREPOINT_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
       siteId: env.SHAREPOINT_SITE_ID || '',
-      listId: env.SHAREPOINT_LIST_ID || ''
+      listId: env.SHAREPOINT_LIST_ID || '',
+      employeeLedgerListId: env.SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID || ''
     },
     powerApps: {
       tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
