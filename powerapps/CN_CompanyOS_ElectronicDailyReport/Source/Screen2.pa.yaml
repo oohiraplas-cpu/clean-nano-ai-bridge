@@ -727,7 +727,7 @@ Screens:
                       MetadataKey: DateFieldValue
                       Properties:
                         BorderColor: =If(IsBlank(Parent.Error), Parent.BorderColor, Color.Red)
-                        DefaultDate: =Parent.Default
+                        DefaultDate: =Coalesce(Parent.Default, varReportDate, _dateSelected, Today())
                         DisplayMode: =Parent.DisplayMode
                         EndYear: =Year(Today())+100
                         Font: =Font.'Open Sans'
@@ -750,8 +750,7 @@ Screens:
                         ChevronFill: =RGBA(255, 255, 255, 1)
                         ChevronHoverBackground: =ColorFade(RGBA(56, 96, 178, 1), -20%)
                         ChevronHoverFill: =RGBA(255, 255, 255, 1)
-                        Default: |
-                          =Hour(Parent.Default)
+                        Default: =If(IsBlank(Parent.Default), "08", Text(Hour(Parent.Default), "00"))
                         DisplayMode: =Parent.DisplayMode
                         Font: =Font.'Open Sans'
                         Height: =DateValue1.Height
@@ -797,8 +796,7 @@ Screens:
                         ChevronFill: =RGBA(255, 255, 255, 1)
                         ChevronHoverBackground: =ColorFade(RGBA(56, 96, 178, 1), -20%)
                         ChevronHoverFill: =RGBA(255, 255, 255, 1)
-                        Default: |
-                          =Minute(Parent.Default)
+                        Default: =If(IsBlank(Parent.Default), "00", Text(Minute(Parent.Default), "00"))
                         DisplayMode: =Parent.DisplayMode
                         Font: =Font.'Open Sans'
                         Height: =HourValue1.Height
@@ -1055,7 +1053,7 @@ Screens:
                       MetadataKey: DateFieldValue
                       Properties:
                         BorderColor: =If(IsBlank(Parent.Error), Parent.BorderColor, Color.Red)
-                        DefaultDate: =Parent.Default
+                        DefaultDate: =Coalesce(Parent.Default, varReportDate, _dateSelected, Today())
                         DisplayMode: =Parent.DisplayMode
                         EndYear: =Year(Today())+100
                         Font: =Font.'Open Sans'
@@ -1078,7 +1076,7 @@ Screens:
                         ChevronFill: =RGBA(255, 255, 255, 1)
                         ChevronHoverBackground: =ColorFade(RGBA(56, 96, 178, 1), -20%)
                         ChevronHoverFill: =RGBA(255, 255, 255, 1)
-                        Default: =Text(Hour(Parent.Default),"00")
+                        Default: =If(IsBlank(Parent.Default), "17", Text(Hour(Parent.Default), "00"))
                         DisplayMode: =Parent.DisplayMode
                         Font: =Font.'Open Sans'
                         Height: =DateValue4.Height
@@ -1124,7 +1122,7 @@ Screens:
                         ChevronFill: =RGBA(255, 255, 255, 1)
                         ChevronHoverBackground: =ColorFade(RGBA(56, 96, 178, 1), -20%)
                         ChevronHoverFill: =RGBA(255, 255, 255, 1)
-                        Default: =Text(Minute(Parent.Default),"00")
+                        Default: =If(IsBlank(Parent.Default), "00", Text(Minute(Parent.Default), "00"))
                         DisplayMode: =Parent.DisplayMode
                         Font: =Font.'Open Sans'
                         Height: =HourValue4.Height
@@ -1875,7 +1873,7 @@ Screens:
                       MetadataKey: FieldValue
                       Properties:
                         BorderColor: =If(IsBlank(Parent.Error), Parent.BorderColor, Color.Red)
-                        Default: =Parent.Default
+                        Default: =If(EditForm1.Mode = FormMode.New, User().FullName, Parent.Default)
                         DelayOutput: =true
                         DisplayMode: =Parent.DisplayMode
                         Font: =Font.'Open Sans'
