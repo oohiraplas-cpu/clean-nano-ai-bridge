@@ -9,6 +9,7 @@ const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
 const { SharePointReader } = require('./sharePointReader');
+const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
 const {
   validateMcpInput,
@@ -30,7 +31,9 @@ const {
 } = require('./powerAppsValidation');
 const {
   validateGetSharePointListParams,
-  validateRunPowerAutomateFlowParams
+  validateRunPowerAutomateFlowParams,
+  validateCreateEmployeeLedgerEntryParams,
+  validateUpdateEmployeeLedgerEntryParams
 } = require('./bridgeExtensionsValidation');
 
 function createDefaultStore(config) {
@@ -55,8 +58,19 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'run_power_automate_flow'
+  'get_sharepoint_list', 'run_power_automate_flow',
+  'create_employee_ledger_entry', 'update_employee_ledger_entry'
 ]);
+
+const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
+  name: { type: 'string', description: '氏名' },
+  employeeId: { type: 'string', description: '社員ID' },
+  department: { type: 'string', description: '所属' },
+  employmentStatus: { type: 'string', description: '状態' },
+  progressStatus: { type: 'string', description: '進捗状況' },
+  hireDate: { type: 'string', description: '入社日（YYYY-MM-DD）' },
+  remarks: { type: 'string', description: '備考' }
+});
 
 const MCP_PUBLIC_TOOLS = Object.freeze([
   {
@@ -185,6 +199,43 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['flowKey', 'approvedByHuman'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'create_employee_ledger_entry',
+    description: 'CN_社員台帳へ新しい社員情報を1件登録します。列内部名は実環境で確認済みの固定マッピングを使用します。人間承認（approvedByHuman:true）が必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record: {
+          type: 'object',
+          description: '登録する項目',
+          properties: EMPLOYEE_LEDGER_RECORD_PROPERTIES,
+          additionalProperties: false
+        },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（true必須）' }
+      },
+      required: ['record', 'approvedByHuman'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'update_employee_ledger_entry',
+    description: 'CN_社員台帳の既存社員情報を部分更新します。人間承認（approvedByHuman:true）が必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: '更新対象のSharePointアイテムID' },
+        record: {
+          type: 'object',
+          description: '更新する項目（部分更新、指定したキーのみ上書き）',
+          properties: EMPLOYEE_LEDGER_RECORD_PROPERTIES,
+          additionalProperties: false
+        },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（true必須）' }
+      },
+      required: ['itemId', 'record', 'approvedByHuman'],
+      additionalProperties: false
+    }
   }
 ]);
 
@@ -241,7 +292,33 @@ async function withUpstreamErrorStatus(promise, status = 502) {
   }
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner) {
+// CN_社員台帳のsiteId/employeeLedgerListIdをSharePointListWriterに束縛し、未設定時は
+// SharePointReader/SharePointTaskStoreと同じ文言でエラーにする（呼び出し元にconfigを
+// 露出させない）。
+function createEmployeeLedgerEntries(writer, sharepointConfig) {
+  function assertConfigured() {
+    const missingEnvNames = [];
+    if (!sharepointConfig.siteId) missingEnvNames.push('SHAREPOINT_SITE_ID');
+    if (!sharepointConfig.employeeLedgerListId) missingEnvNames.push('SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID');
+    if (missingEnvNames.length) {
+      throw new Error(`SharePoint設定が不足しています: ${missingEnvNames.join(', ')}`);
+    }
+  }
+  return {
+    // assertConfigured()の同期throwがwithUpstreamErrorStatus()の外で発生しない
+    // よう（=error.statusが設定されないまま素通りしないよう）async関数にしている。
+    async createEntry(record) {
+      assertConfigured();
+      return writer.createItem(sharepointConfig.siteId, sharepointConfig.employeeLedgerListId, record);
+    },
+    async updateEntry(itemId, record) {
+      assertConfigured();
+      return writer.updateItem(sharepointConfig.siteId, sharepointConfig.employeeLedgerListId, itemId, record);
+    }
+  };
+}
+
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -321,6 +398,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(powerAutomateRunner.runFlow(params.flowKey, params.payload));
   }
+  if (method === 'create_employee_ledger_entry') {
+    // approvedByHuman:trueはvalidateCreateEmployeeLedgerEntryParamsで必須チェック済み。
+    // run_power_automate_flowと同じ方針（AI単独承認禁止）。
+    const paramError = validateCreateEmployeeLedgerEntryParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(employeeLedgerEntries.createEntry(params.record));
+  }
+  if (method === 'update_employee_ledger_entry') {
+    const paramError = validateUpdateEmployeeLedgerEntryParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(employeeLedgerEntries.updateEntry(params.itemId, params.record));
+  }
 }
 
 function jsonRpcResult(id, result) {
@@ -333,12 +422,15 @@ function jsonRpcError(id, code, message, data) {
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
 
-function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner) {
+function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner, injectedEmployeeLedgerWriter) {
   const store = injectedStore || createDefaultStore(config);
   const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
   const powerAppsGitStore = injectedPowerAppsGitStore || new PowerAppsGitStore(config.powerApps);
   const sharePointReader = injectedSharePointReader || new SharePointReader(config.sharepoint);
   const powerAutomateRunner = injectedPowerAutomateRunner || new PowerAutomateRunner(config.powerAutomate);
+  const employeeLedgerWriter = injectedEmployeeLedgerWriter
+    || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
+  const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
@@ -410,7 +502,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
         try {
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner);
+          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(result) }],
             structuredContent: result,
@@ -433,7 +525,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const { method } = body;
     const params = body.params || {};
     try {
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner);
+      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
       return res.status(200).json({ accepted: true, method, result });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: error.message });
