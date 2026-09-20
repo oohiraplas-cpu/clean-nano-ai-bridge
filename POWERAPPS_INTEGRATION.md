@@ -49,6 +49,7 @@
   - `get_powerapps_app`: アプリ情報取得（読み取り専用）
   - `get_powerapps_state`: アプリ状態取得（読み取り専用）
   - `update_powerapps_app`: アプリ更新（ソース更新時はGitHub保存後にPower Platformへ同期）
+  - `save_powerapps_app`: GitHubの既存ソースをPower Platformへ同期して保存状態を確認
   - `save_powerapps_app`: 保存実行（書き込み）
   - `publish_powerapps_app`: 公開実行（書き込み）
   - `get_powerapps_operation_result`: 操作結果取得（読み取り専用）
