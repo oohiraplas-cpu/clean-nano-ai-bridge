@@ -26,4 +26,26 @@ function validateRunPowerAutomateFlowParams(params) {
   return null;
 }
 
-module.exports = { validateGetSharePointListParams, validateRunPowerAutomateFlowParams };
+// CN_社員台帳への書き込み（create/update）は、他の更新・実行系（run_power_automate_flow等）と
+// 同じくBridge全体の方針（AI単独承認禁止）に合わせ、approvedByHuman:trueを必須にする。
+function validateCreateEmployeeLedgerEntryParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (!isPlainObject(params.record)) return 'recordが必要です（JSONオブジェクト）';
+  if (params.approvedByHuman !== true) return 'approvedByHuman:trueが必要です（人間承認が必要な操作です）';
+  return null;
+}
+
+function validateUpdateEmployeeLedgerEntryParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (typeof params.itemId !== 'string' || !params.itemId.trim()) return 'itemIdが必要です';
+  if (!isPlainObject(params.record)) return 'recordが必要です（JSONオブジェクト）';
+  if (params.approvedByHuman !== true) return 'approvedByHuman:trueが必要です（人間承認が必要な操作です）';
+  return null;
+}
+
+module.exports = {
+  validateGetSharePointListParams,
+  validateRunPowerAutomateFlowParams,
+  validateCreateEmployeeLedgerEntryParams,
+  validateUpdateEmployeeLedgerEntryParams
+};
