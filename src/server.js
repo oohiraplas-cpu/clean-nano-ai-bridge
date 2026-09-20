@@ -150,7 +150,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'save_powerapps_app',
-    description: '既存Power Appsアプリを保存します。',
+    description: 'GitHubの既存Power AppsソースをPower Platformへ同期し、保存状態を確認します。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -293,6 +293,8 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
+    await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     return powerAppsStore.saveApp();
   }
   if (method === 'publish_powerapps_app') {
