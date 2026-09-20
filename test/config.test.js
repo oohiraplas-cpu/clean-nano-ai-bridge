@@ -16,3 +16,13 @@ test('環境変数でPower Apps Git同期先を上書きできる', () => {
   assert.equal(config.powerApps.orgUrl, 'https://override.crm.dynamics.com');
   assert.equal(config.powerApps.solutionUniqueName, 'OverrideSolution');
 });
+
+test('SHAREPOINT_EMPLOYEE_LEDGER_LIST_IDが未設定なら空文字になる', () => {
+  const config = getConfig({});
+  assert.equal(config.sharepoint.employeeLedgerListId, '');
+});
+
+test('環境変数でCN_社員台帳のリストIDを設定できる', () => {
+  const config = getConfig({ SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID: 'list-employee-ledger-1' });
+  assert.equal(config.sharepoint.employeeLedgerListId, 'list-employee-ledger-1');
+});

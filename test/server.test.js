@@ -349,7 +349,7 @@ test('タスクが0件ならタスクなしを明示する', async (t) => {
 });
 
 
-test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツールを公開する', async (t) => {
+test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツール、CN_社員台帳2ツールを公開する', async (t) => {
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
@@ -370,7 +370,9 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
     'save_powerapps_app',
     'publish_powerapps_app',
     'get_sharepoint_list',
-    'run_power_automate_flow'
+    'run_power_automate_flow',
+    'create_employee_ledger_entry',
+    'update_employee_ledger_entry'
   ]);
   for (const tool of body.tools) {
     assert.equal(typeof tool.description, 'string');
@@ -500,6 +502,121 @@ test('run_power_automate_flowはapprovedByHuman:true指定かつ登録済みな�
   assert.deepEqual(body.result.result, { received: true });
 });
 
+test('create_employee_ledger_entryはapprovedByHuman未指定だと実行されず400を返す', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'create_employee_ledger_entry', params: { record: { name: 'テスト太郎' } } })
+  });
+  assert.equal(called.status, 400);
+  assert.match((await called.json()).error, /approvedByHuman/);
+});
+
+test('create_employee_ledger_entryはSharePoint設定不足時もJSON-RPCエラーとして応答する', async (t) => {
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { siteId: '', employeeLedgerListId: '' }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'create_employee_ledger_entry', arguments: { record: { name: 'テスト太郎' }, approvedByHuman: true } }
+    })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.isError, true);
+  assert.match(body.result.structuredContent.error, /SharePoint設定が不足しています/);
+  assert.match(body.result.structuredContent.error, /SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID/);
+});
+
+test('create_employee_ledger_entryは承認済みかつ設定が揃っていればCN_社員台帳へ登録できる', async (t) => {
+  const writes = [];
+  const mockFetch = async (url, options = {}) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (options.method === 'POST') {
+      writes.push({ url, body: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ id: 'new-item-1' }), { status: 201 });
+    }
+    throw new Error(`予期しないリクエスト: ${url}`);
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { siteId: 'site-1', employeeLedgerListId: 'list-employee-1', fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'create_employee_ledger_entry',
+      params: { record: { name: '山田太郎', employeeId: 'EMP010', department: '現場' }, approvedByHuman: true }
+    })
+  });
+  assert.equal(called.status, 200);
+  assert.equal(writes.length, 1);
+  assert.ok(writes[0].url.includes('/sites/site-1/lists/list-employee-1/items'));
+  assert.deepEqual(writes[0].body, { fields: { Title: '山田太郎', EmployeeID: 'EMP010', Department: '現場' } });
+});
+
+test('update_employee_ledger_entryはitemId未指定だと400を返す', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'update_employee_ledger_entry',
+      params: { record: { employmentStatus: '退職' }, approvedByHuman: true }
+    })
+  });
+  assert.equal(called.status, 400);
+  assert.match((await called.json()).error, /itemId/);
+});
+
+test('update_employee_ledger_entryは承認済みかつ設定が揃っていればCN_社員台帳を更新できる', async (t) => {
+  const writes = [];
+  const mockFetch = async (url, options = {}) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (options.method === 'PATCH') {
+      writes.push({ url, body: JSON.parse(options.body) });
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`予期しないリクエスト: ${url}`);
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { siteId: 'site-1', employeeLedgerListId: 'list-employee-1', fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'update_employee_ledger_entry',
+      params: { itemId: 'item-9', record: { employmentStatus: '退職' }, approvedByHuman: true }
+    })
+  });
+  assert.equal(called.status, 200);
+  assert.equal(writes.length, 1);
+  assert.ok(writes[0].url.includes('/sites/site-1/lists/list-employee-1/items/item-9/fields'));
+  assert.deepEqual(writes[0].body, { EmploymentStatus: '退職' });
+});
+
 
 test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応する', async (t) => {
   const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
@@ -531,7 +648,7 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  assert.equal(listedBody.result.tools.length, 14);
+  assert.equal(listedBody.result.tools.length, 16);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
