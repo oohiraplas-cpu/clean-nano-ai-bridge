@@ -1,6 +1,8 @@
 const path = require('node:path');
 
 const DEFAULT_ORIGINS = ['http://localhost:3000'];
+const DEFAULT_POWERAPPS_ORG_URL = 'https://orgcf455a58.crm7.dynamics.com';
+const DEFAULT_POWERAPPS_SOLUTION = 'CN_CompanyOS';
 
 // POWER_AUTOMATE_FLOWSはJSON文字列（{"flowKey": "トリガーURL"}）としてのみ環境変数で渡す。
 // パース不能・未設定の場合は空オブジェクト扱いとし、起動を落とさない。
@@ -40,8 +42,8 @@ function getConfig(env = process.env) {
       environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
       appId: env.POWERAPPS_APP_ID || '',
       logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
-      orgUrl: env.POWERAPPS_ORG_URL || '',
-      solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || '',
+      orgUrl: env.POWERAPPS_ORG_URL || DEFAULT_POWERAPPS_ORG_URL,
+      solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || DEFAULT_POWERAPPS_SOLUTION,
       githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
       githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
       githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
