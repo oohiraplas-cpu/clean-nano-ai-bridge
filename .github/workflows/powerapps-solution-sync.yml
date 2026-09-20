@@ -10,15 +10,21 @@ on:
         options:
           - pull
           - push
+  push:
+    branches:
+      - main
+    paths:
+      - "powerapps/CN_CompanyOS_ElectronicDailyReport/Source/**"
+      - ".github/workflows/powerapps-solution-sync.yml"
 
 env:
   ENVIRONMENT_URL: https://orgcf455a58.crm7.dynamics.com
   SOLUTION_NAME: CN_CompanyOS
-  SOURCE_PATH: powerapps/CN_CompanyOS
+  SOURCE_PATH: powerapps/CN_CompanyOS_ElectronicDailyReport
 
 jobs:
   pull:
-    if: ${{ github.event.inputs.direction == 'pull' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.direction == 'pull' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -42,27 +48,28 @@ jobs:
         uses: microsoft/powerplatform-actions/unpack-solution@v1
         with:
           solution-file: out/${{ env.SOLUTION_NAME }}.zip
-          solution-folder: ${{ env.SOURCE_PATH }}/solution
+          solution-folder: out/solution
           solution-type: Unmanaged
           overwrite-files: true
 
-      - name: Unpack canvas app into editable source (pa.yaml)
+      - name: Unpack canvas app into editable source
         run: |
           set -e
-          MSAPP=$(find "${{ env.SOURCE_PATH }}/solution" -iname "*.msapp" | head -n 1)
-          echo "found msapp: $MSAPP"
-          pac canvas unpack --msapp "$MSAPP" --sources "${{ env.SOURCE_PATH }}/canvas-src" --layout SourceCode --overwrite
+          MSAPP=$(find "out/solution" -iname "*.msapp" | head -n 1)
+          test -n "$MSAPP"
+          rm -rf "${{ env.SOURCE_PATH }}/Source"
+          pac canvas unpack --msapp "$MSAPP" --sources "${{ env.SOURCE_PATH }}/Source" --layout SourceCode --overwrite
 
       - name: Commit updated source to repo
         run: |
           git config user.name "clean-nano-ai-bridge bot"
           git config user.email "actions@users.noreply.github.com"
-          git add "${{ env.SOURCE_PATH }}"
+          git add "${{ env.SOURCE_PATH }}/Source"
           git diff --cached --quiet || git commit -m "chore(powerapps): pull latest source from environment"
           git push
 
   push:
-    if: ${{ github.event.inputs.direction == 'push' }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.direction == 'push') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,17 +77,35 @@ jobs:
       - name: Install Power Platform Tools
         uses: microsoft/powerplatform-actions/actions-install@v1
 
+      - name: Export current solution
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          solution-output-file: out/base.zip
+
+      - name: Unpack current solution
+        uses: microsoft/powerplatform-actions/unpack-solution@v1
+        with:
+          solution-file: out/base.zip
+          solution-folder: out/solution
+          solution-type: Unmanaged
+          overwrite-files: true
+
       - name: Pack canvas app from edited source
         run: |
           set -e
-          MSAPP=$(find "${{ env.SOURCE_PATH }}/solution" -iname "*.msapp" | head -n 1)
-          echo "packing into: $MSAPP"
-          pac canvas pack --sources "${{ env.SOURCE_PATH }}/canvas-src" --msapp "$MSAPP" --layout SourceCode --overwrite
+          MSAPP=$(find "out/solution" -iname "*.msapp" | head -n 1)
+          test -n "$MSAPP"
+          pac canvas pack --sources "${{ env.SOURCE_PATH }}/Source" --msapp "$MSAPP" --layout SourceCode --overwrite
 
       - name: Pack Solution
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
-          solution-folder: ${{ env.SOURCE_PATH }}/solution
+          solution-folder: out/solution
           solution-file: out/${{ env.SOLUTION_NAME }}.zip
           solution-type: Unmanaged
 
