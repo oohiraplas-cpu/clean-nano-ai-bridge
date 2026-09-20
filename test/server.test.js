@@ -233,6 +233,12 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     if (url.includes('/canvasapps(')) {
       return new Response(JSON.stringify({ displayname: 'Test App', appversion: '1.1' }), { status: 200 });
     }
+    if (url.includes('/solutions?')) {
+      return new Response(JSON.stringify({ value: [{
+        solutionid: 'solution-1', uniquename: 'ActualSolution',
+        friendlyname: 'Actual Solution', version: '1.0.0.0', ismanaged: false
+      }] }), { status: 200 });
+    }
     if (url.includes('/apps/test-app')) {
       return new Response(JSON.stringify({ properties: { displayName: 'Test App', appVersion: '1.1' } }), { status: 200 });
     }
