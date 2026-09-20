@@ -28,19 +28,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Power Platform Tools
         uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
 
       - name: Export Solution
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
           environment-url: ${{ env.ENVIRONMENT_URL }}
-          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
-          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          app-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
           solution-name: ${{ env.SOLUTION_NAME }}
           solution-output-file: out/${{ env.SOLUTION_NAME }}.zip
 
@@ -71,19 +73,23 @@ jobs:
   push:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.direction == 'push') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Power Platform Tools
         uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
 
       - name: Export current solution
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
           environment-url: ${{ env.ENVIRONMENT_URL }}
-          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
-          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          app-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
           solution-name: ${{ env.SOLUTION_NAME }}
           solution-output-file: out/base.zip
 
@@ -113,15 +119,13 @@ jobs:
         uses: microsoft/powerplatform-actions/import-solution@v1
         with:
           environment-url: ${{ env.ENVIRONMENT_URL }}
-          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
-          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          app-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
           solution-file: out/${{ env.SOLUTION_NAME }}.zip
 
       - name: Publish customizations
         uses: microsoft/powerplatform-actions/publish-solution@v1
         with:
           environment-url: ${{ env.ENVIRONMENT_URL }}
-          app-id: ${{ secrets.POWERAPPS_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERAPPS_CLIENT_SECRET }}
-          tenant-id: ${{ secrets.POWERAPPS_TENANT_ID }}
+          app-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
