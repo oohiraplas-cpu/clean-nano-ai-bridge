@@ -97,7 +97,7 @@ Screens:
             PressedBorderColor: =Self.Fill
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
-            Text: ="cleantime,tree"
+            Text: ="共有カレンダー"
             Width: =226
             X: =414
             Y: =779
@@ -132,9 +132,11 @@ Screens:
             HoverBorderColor: =ColorFade(Self.BorderColor, 20%)
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =ColorFade(RGBA(56, 96, 178, 1), -20%)
+            OnSelect: =Set(varReportDate, Today()); Set(gblAttendance, Blank()); NewForm(EditForm1); Navigate(Screen2, ScreenTransition.Cover)
             PressedBorderColor: =Self.Fill
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
+            Text: ="新規日報"
             Width: =206
             Y: =931
       - Button3:
@@ -155,3 +157,15 @@ Screens:
             Text: ="AI編集確認"
             Width: =206
             Y: =993
+      - lblConnectionStatus:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            BorderColor: =RGBA(0, 0, 0, 0)
+            Color: =If(Connection.Connected, RGBA(20, 120, 55, 1), RGBA(168, 0, 0, 1))
+            Font: =Font.'Open Sans'
+            FontWeight: =FontWeight.Semibold
+            Height: =44
+            Text: =If(Connection.Connected, "オンライン｜保存できます", "オフライン｜保存できません")
+            Width: =Parent.Width
+            Y: =887
