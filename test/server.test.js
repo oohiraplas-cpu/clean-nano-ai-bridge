@@ -255,7 +255,10 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     body: JSON.stringify({ method: 'save_powerapps_app', params: {} })
   });
   assert.equal(saved.status, 200);
-  assert.equal((await saved.json()).result.status, 'ok');
+  const savedBody = await saved.json();
+  assert.equal(savedBody.result.status, 'ok');
+  assert.equal(savedBody.result.sync.refresh.action, 'RefreshChangesFromGit');
+  assert.equal(savedBody.result.sync.pull.action, 'PullChangesFromGit');
   assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
 });
 
