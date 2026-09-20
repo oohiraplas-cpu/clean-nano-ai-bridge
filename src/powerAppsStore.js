@@ -121,6 +121,18 @@ class PowerAppsStore {
     );
   }
 
+  async _getUnmanagedSolutions() {
+    const data = await this._dataverseFetch(
+      'solutions?$select=solutionid,uniquename,friendlyname,version,ismanaged&$filter=ismanaged eq false&$orderby=friendlyname'
+    );
+    return (data?.value || []).map((solution) => ({
+      solutionId: solution.solutionid,
+      uniqueName: solution.uniquename,
+      friendlyName: solution.friendlyname,
+      version: solution.version
+    }));
+  }
+
   async _recordOperation(operationId, operation, environmentId, appId, entry) {
     try {
       const logEntry = JSON.stringify({
@@ -174,6 +186,7 @@ class PowerAppsStore {
       const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
       const state = await this._managementFetch(path);
       const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
+      const unmanagedSolutions = this.orgUrl ? await this._getUnmanagedSolutions() : [];
       const properties = state.properties || {};
 
       await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, {
@@ -191,6 +204,7 @@ class PowerAppsStore {
         description: canvas.description || properties.description || null,
         appStatus: canvas.status || null,
         connectors: properties.connectionReferences || {},
+        unmanagedSolutions,
         lastModified: canvas.lastmodifiedtime || properties.lastModifiedTime || null,
         lastPublished: canvas.lastpublishtime || null
       };
