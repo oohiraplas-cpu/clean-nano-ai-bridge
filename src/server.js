@@ -293,9 +293,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
-    await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
-    return powerAppsStore.saveApp();
+    const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
+    const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
+    const saved = await powerAppsStore.saveApp();
+    return { ...saved, sync: { refresh, pull } };
   }
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
