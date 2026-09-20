@@ -73,6 +73,7 @@ jobs:
   push:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.direction == 'push') }}
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
       id-token: write
