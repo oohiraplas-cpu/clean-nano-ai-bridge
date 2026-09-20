@@ -220,6 +220,45 @@ test('Power Apps MCPメソッドを実行できる', async (t) => {
   assert.ok(stateResult.result.operationId);
 });
 
+test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保存確認する', async (t) => {
+  const actions = [];
+  const mockFetch = async (url, options = {}) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (url.endsWith('/RefreshChangesFromGit') || url.endsWith('/PullChangesFromGit')) {
+      actions.push(url.split('/').pop());
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (url.includes('/canvasapps(')) {
+      return new Response(JSON.stringify({ displayname: 'Test App', appversion: '1.1' }), { status: 200 });
+    }
+    if (url.includes('/apps/test-app')) {
+      return new Response(JSON.stringify({ properties: { displayName: 'Test App', appVersion: '1.1' } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    fetchImpl: mockFetch,
+    powerAppsOverrides: {
+      orgUrl: 'https://example.crm.dynamics.com',
+      solutionUniqueName: 'CN_CompanyOS',
+      githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo'
+    }
+  });
+  t.after(() => server.close());
+
+  const saved = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ method: 'save_powerapps_app', params: {} })
+  });
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).result.status, 'ok');
+  assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
+});
+
 test('get_powerapps_sourceはGitHub設定不足時も生の500/502で落ちずJSON-RPCエラーとして応答する', async (t) => {
   // GitHub連携設定（POWERAPPS_GITHUB_TOKEN等）が未設定の状態を再現する。
   // 修正前はpowerAppsGitStoreが投げるErrorにstatusが付かず、/mcpのtools/callハンドラが
