@@ -9,10 +9,16 @@
 App:
   Properties:
     OnStart: |+
-      =Set(varBridgeHealth, CN_AI_Bridge.HealthCheck());
+      =Set(gblError, Blank());
+      Set(gblIsSaving, false);
+      Set(gblAttendance, Blank());
+      Set(varReportDate, Today());
+      Set(varSignatureConfirmed, false);
+      Set(varBridgeHealth, CN_AI_Bridge.HealthCheck());
       Set(varBridgeTasks, CN_AI_Bridge.GetTasks());
       Set(varBridgeNextTask, CN_AI_Bridge.GetNextTask());
-      Set(varBridgeReady, true)
+      Set(varBridgeReady, true);
+      If(!Connection.Connected, Notify("オフラインです。入力はできますが保存には通信が必要です。", NotificationType.Warning))
 
 
 
