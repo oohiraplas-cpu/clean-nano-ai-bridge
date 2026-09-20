@@ -44,7 +44,8 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Height: =88
             Icon: =Icon.Check
-            OnSelect: =If(!Connection.Connected, Notify("通信に接続してから保存してください。入力内容はこの画面に残っています。", NotificationType.Warning), If(EditForm1.Valid, SubmitForm(EditForm1), Notify("必須項目と入力内容を確認してください。", NotificationType.Warning)))
+            DisplayMode: =If(gblIsSaving, DisplayMode.Disabled, DisplayMode.Edit)
+            OnSelect: =If(!Connection.Connected, Notify("通信に接続してから保存してください。入力内容はこの画面に残っています。", NotificationType.Warning), If(!EditForm1.Valid, Notify("必須項目と入力内容を確認してください。", NotificationType.Warning), Set(gblIsSaving, true); Set(gblError, Blank()); SubmitForm(EditForm1)))
             PaddingBottom: =22
             PaddingLeft: =22
             PaddingRight: =22
@@ -77,8 +78,8 @@ Screens:
             Item: |
               =
               Gallery1.Selected
-            OnFailure: =Notify("日報を保存できませんでした。入力内容を確認して、もう一度保存してください。 " & EditForm1.Error, NotificationType.Error)
-            OnSuccess: =Notify("日報を保存しました。", NotificationType.Success); Navigate(ホーム, ScreenTransition.UnCover)
+            OnFailure: =Set(gblIsSaving, false); Set(gblError, EditForm1.Error); Notify("日報を保存できませんでした。入力内容を確認して、もう一度保存してください。 " & gblError, NotificationType.Error)
+            OnSuccess: =Set(gblIsSaving, false); Set(gblSavedReport, EditForm1.LastSubmit); Set(varSignatureConfirmed, false); Notify("日報を保存しました。署名へ進みます。", NotificationType.Success); Navigate(scrSignature, ScreenTransition.Cover)
             Width: =Parent.Width
             Y: =RectQuickActionBar1.Height
           Children:
@@ -115,7 +116,7 @@ Screens:
                       Properties:
                         BorderColor: =If(IsBlank(Parent.Error), Parent.BorderColor, Color.Red)
                         DefaultDate: |+
-                          =Today()
+                          =Coalesce(varReportDate, _dateSelected, Today())
                         DisplayMode: =Parent.DisplayMode
                         EndYear: =Year(Today())+100
                         Font: =Font.'Open Sans'
