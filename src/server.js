@@ -136,7 +136,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'update_powerapps_app',
-    description: '既存Power Appsアプリまたはソースファイルを更新します。',
+    description: '既存Power Appsアプリを更新します。ソース更新時はGitHubへ保存後、Power Platformへ同期します。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -288,7 +288,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return params.updateData
       ? powerAppsStore.updateApp(params.updateData)
-      : withUpstreamErrorStatus(powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message));
+      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
