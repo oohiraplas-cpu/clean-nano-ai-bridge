@@ -136,7 +136,7 @@ Screens:
             PressedBorderColor: =Self.Fill
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
-            Text: ="新規日報"
+            Text: ="申請"
             Width: =206
             Y: =931
       - Button3:
