@@ -18,7 +18,7 @@ on:
       - ".github/workflows/powerapps-solution-sync.yml"
 
 env:
-  ENVIRONMENT_URL: https://orgcf455a58.crm7.dynamics.com
+  ENVIRONMENT_URL: https://org0bbb24c5.crm7.dynamics.com
   SOLUTION_NAME: CN_CompanyOS
   SOURCE_PATH: powerapps/CN_CompanyOS_ElectronicDailyReport
 
