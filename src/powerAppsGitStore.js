@@ -192,6 +192,8 @@ class PowerAppsGitStore {
   }
 
   async applySourceFileChange(relativePath, content, message) {
+    // Fail before changing GitHub when Dataverse cannot be targeted.
+    this._assertDataverseConfig();
     const update = await this.updateSourceFile(relativePath, content, message);
     const refresh = await this.refreshFromGit();
     const pull = await this.pullFromGit();
