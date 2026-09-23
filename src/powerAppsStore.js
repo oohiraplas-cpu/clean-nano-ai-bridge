@@ -4,6 +4,31 @@
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
 
+// 上流(Entra ID / Power Apps管理API / Dataverse)の失敗を、秘密値を含めずに
+// HTTP status・error code・error message・失敗工程付きのErrorにする。
+async function buildUpstreamError(step, response) {
+  let code = null;
+  let message = null;
+  try {
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : {};
+    const err = body.error && typeof body.error === 'object' ? body.error : body;
+    code = err.code || body.error || null;
+    message = err.message || body.error_description || null;
+  } catch {
+    // 本文がJSONでない場合はstatusのみ返す
+  }
+  if (typeof message === 'string') {
+    // トークン/トレースIDなどを返さないよう先頭のみ
+    message = message.split(/\r?\n/)[0].slice(0, 300);
+  }
+  if (typeof code !== 'string') code = code == null ? null : String(code);
+  const error = new Error(`${step}に失敗しました (HTTP ${response.status}${code ? `, ${code}` : ''})${message ? `: ${message}` : ''}`);
+  error.upstream = { step, httpStatus: response.status, errorCode: code, errorMessage: message };
+  error.retryable = response.status === 429 || response.status >= 500;
+  return error;
+}
+
 class RetryStrategy {
   constructor(maxAttempts = 3, baseDelayMs = 500) {
     this.maxAttempts = maxAttempts;
@@ -15,7 +40,7 @@ class RetryStrategy {
       try {
         return await fn();
       } catch (error) {
-        if (attempt === this.maxAttempts) throw error;
+        if (attempt === this.maxAttempts || error.retryable === false) throw error;
         const delay = this.baseDelayMs * Math.pow(2, attempt - 1);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -47,7 +72,7 @@ class TokenCache {
       body: body.toString()
     });
 
-    if (!response.ok) throw new Error(`認証失敗 (${response.status})`);
+    if (!response.ok) throw await buildUpstreamError(`認証トークン取得(${scope})`, response);
     const data = await response.json();
     this._token = data.access_token;
     this._expiresAt = now + data.expires_in * 1000;
@@ -137,7 +162,7 @@ class PowerAppsStore {
       const duration = Date.now() - start;
       if (!response.ok) {
         this._metrics.record(duration, false, false);
-        throw new Error(`API エラー (${response.status})`);
+        throw await buildUpstreamError('Power Apps管理API呼び出し', response);
       }
       this._metrics.record(duration, true, false);
       return response.status === 204 ? null : response.json();
@@ -162,7 +187,7 @@ class PowerAppsStore {
       const duration = Date.now() - start;
       if (!response.ok) {
         this._metrics.record(duration, false, false);
-        throw new Error(`Dataverse エラー (${response.status})`);
+        throw await buildUpstreamError('Dataverse API呼び出し', response);
       }
       this._metrics.record(duration, true, false);
       if (response.status === 204) return null;
@@ -223,11 +248,39 @@ class PowerAppsStore {
   }
 
   async getAppInfo() {
-    if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
+    const missing = [];
+    if (!this.tenantId) missing.push('POWERAPPS_TENANT_ID/AZURE_TENANT_ID');
+    if (!this.clientId) missing.push('POWERAPPS_CLIENT_ID/AZURE_CLIENT_ID');
+    if (!this.clientSecret) missing.push('POWERAPPS_CLIENT_SECRET/AZURE_CLIENT_SECRET');
+    if (!this.environmentId) missing.push('POWERAPPS_ENVIRONMENT_ID');
+    if (!this.appId) missing.push('POWERAPPS_APP_ID');
+    if (missing.length) {
+      const error = new Error(`Bridge設定が不足しています: ${missing.join(', ')}`);
+      error.upstream = { step: 'Bridge環境変数の読み込み', httpStatus: null, errorCode: 'ConfigMissing', errorMessage: error.message };
+      throw error;
+    }
     const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
-    const data = await this._managementFetch(path);
-    const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
+    let data;
+    try {
+      data = await this._managementFetch(path);
+    } catch (error) {
+      if (!error.upstream) {
+        error.upstream = { step: 'Power Apps管理API呼び出し', httpStatus: null, errorCode: error.name || null, errorMessage: String(error.message).slice(0, 300) };
+      }
+      throw error;
+    }
+    // Dataverse側の補足情報は取得できなくてもアプリ名・App IDは返す
+    let canvas = {};
+    let dataverseWarning;
+    if (this.orgUrl) {
+      try {
+        canvas = (await this._getCanvasRecord()) || {};
+      } catch (error) {
+        dataverseWarning = error.upstream || { step: 'Dataverse API呼び出し', errorMessage: String(error.message).slice(0, 300) };
+      }
+    }
     return {
+      ...(dataverseWarning ? { warning: dataverseWarning } : {}),
       status: 'ok',
       appId: this.appId,
       environmentId: this.environmentId,
