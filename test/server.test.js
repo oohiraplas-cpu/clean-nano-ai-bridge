@@ -662,3 +662,79 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   assert.equal(calledBody.result.isError, false);
   assert.deepEqual(calledBody.result.structuredContent, { status: 'ok' });
 });
+
+test('get_powerapps_app({})はtools/callで上流エラー時もHTTP status・error code・失敗工程を返す（秘密値なし）', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: { code: 'AppNotFound', message: 'The app was not found.' } }), { status: 404 });
+  };
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret', fetchImpl: mockFetch });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_powerapps_app', arguments: {} } })
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.result.isError, true);
+  const details = body.result.structuredContent.details;
+  assert.equal(details.httpStatus, 404);
+  assert.equal(details.errorCode, 'AppNotFound');
+  assert.equal(details.step, 'Power Apps管理API呼び出し');
+  assert.equal(details.errorMessage, 'The app was not found.');
+  assert.ok(!JSON.stringify(body).includes('test-secret'));
+  assert.ok(!JSON.stringify(body).includes('mock-token'));
+});
+
+test('get_powerapps_app({})は認証トークン取得失敗を工程付きで返す', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ error: 'invalid_client', error_description: 'AADSTS7000215: Invalid client secret provided.\r\nTrace ID: x' }), { status: 401 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret', fetchImpl: mockFetch });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_powerapps_app', arguments: {} } })
+  });
+  const body = await response.json();
+  assert.equal(body.result.isError, true);
+  const details = body.result.structuredContent.details;
+  assert.equal(details.httpStatus, 401);
+  assert.equal(details.errorCode, 'invalid_client');
+  assert.match(details.step, /^認証トークン取得/);
+  assert.ok(!details.errorMessage.includes('Trace ID'));
+});
+
+test('get_powerapps_app({})はDataverse補足取得に失敗してもアプリ名とApp IDを返す', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (url.includes('/api/data/v9.2/')) {
+      return new Response(JSON.stringify({ error: { code: '0x80040220', message: 'Principal user is missing prvReadCanvasApp privilege' } }), { status: 403 });
+    }
+    return new Response(JSON.stringify({ name: 'test-app', properties: { displayName: 'Test App' } }), { status: 200 });
+  };
+  const server = await createTestServer([], {
+    mcpApiKey: 'mcp-secret', fetchImpl: mockFetch,
+    powerAppsOverrides: { orgUrl: 'https://org.example.crm7.dynamics.com' }
+  });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_powerapps_app', arguments: {} } })
+  });
+  const body = await response.json();
+  assert.equal(body.result.isError, false);
+  assert.equal(body.result.structuredContent.displayName, 'Test App');
+  assert.equal(body.result.structuredContent.appId, 'test-app');
+  assert.equal(body.result.structuredContent.warning.httpStatus, 403);
+});
