@@ -47,6 +47,8 @@ class PowerAppsGitStore {
     this.githubRepo = config.githubRepo || '';
     this.githubBranch = config.githubBranch || 'main';
     this.githubRoot = (config.githubRoot || '').replace(/^\/+|\/+$/g, '');
+    this.sourceAppId = config.sourceAppId || '';
+    this.sourceEnvironmentId = config.sourceEnvironmentId || '';
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new OAuthTokenCache();
   }
