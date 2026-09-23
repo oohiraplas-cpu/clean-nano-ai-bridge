@@ -1,8 +1,28 @@
 /**
- * Power Apps管理モジュール
+ * Power Apps管理モジュール - エンタープライズコンパクト版
  */
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
+
+class RetryStrategy {
+  constructor(maxAttempts = 3, baseDelayMs = 500) {
+    this.maxAttempts = maxAttempts;
+    this.baseDelayMs = baseDelayMs;
+  }
+
+  async execute(fn) {
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === this.maxAttempts) throw error;
+        const delay = this.baseDelayMs * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+}
 
 class TokenCache {
   constructor() {
@@ -12,7 +32,7 @@ class TokenCache {
 
   async getToken(fetchFn, tokenUrl, clientId, clientSecret, scope = 'https://service.powerapps.com/.default') {
     const now = Date.now();
-    if (this._token && now < this._expiresAt - 30000) return this._token;
+    if (this._token && now < this._expiresAt - 60000) return this._token;
 
     const body = new URLSearchParams({
       client_id: clientId,
@@ -27,10 +47,7 @@ class TokenCache {
       body: body.toString()
     });
 
-    if (!response.ok) {
-      throw new Error(`Power Platform認証に失敗しました (${response.status})`);
-    }
-
+    if (!response.ok) throw new Error(`認証失敗 (${response.status})`);
     const data = await response.json();
     this._token = data.access_token;
     this._expiresAt = now + data.expires_in * 1000;
@@ -40,6 +57,53 @@ class TokenCache {
   invalidate() {
     this._token = null;
     this._expiresAt = 0;
+  }
+}
+
+class ResponseCache {
+  constructor(ttlMs = 300000) {
+    this._cache = new Map();
+    this._ttl = ttlMs;
+  }
+
+  get(key) {
+    const entry = this._cache.get(key);
+    if (!entry || Date.now() > entry.expiresAt) {
+      this._cache.delete(key);
+      return null;
+    }
+    return entry.value;
+  }
+
+  set(key, value) {
+    this._cache.set(key, { value, expiresAt: Date.now() + this._ttl });
+  }
+
+  invalidate(pattern) {
+    if (!pattern) this._cache.clear();
+    else for (const key of this._cache.keys()) if (key.includes(pattern)) this._cache.delete(key);
+  }
+}
+
+class Metrics {
+  constructor() {
+    this.metrics = { calls: 0, success: 0, failed: 0, totalTime: 0, cacheHits: 0 };
+  }
+
+  record(duration, success, cached) {
+    this.metrics.calls++;
+    if (success) this.metrics.success++;
+    else this.metrics.failed++;
+    this.metrics.totalTime += duration;
+    if (cached) this.metrics.cacheHits++;
+  }
+
+  getStats() {
+    return {
+      ...this.metrics,
+      avgTime: this.metrics.calls > 0 ? (this.metrics.totalTime / this.metrics.calls).toFixed(2) : 0,
+      successRate: this.metrics.calls > 0 ? ((this.metrics.success / this.metrics.calls) * 100).toFixed(1) + '%' : '0%'
+    };
   }
 }
 
@@ -57,37 +121,32 @@ class PowerAppsStore {
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new TokenCache();
     this._dataverseTokenCache = new TokenCache();
+    this._cache = new ResponseCache(config.cacheTtlMs || 300000);
+    this._metrics = new Metrics();
+    this._retry = new RetryStrategy();
   }
 
   async _managementFetch(path, options = {}) {
-    const token = await this._tokenCache.getToken(
-      this._fetch,
-      this.tokenUrl,
-      this.clientId,
-      this.clientSecret
-    );
-
-    const response = await this._fetch(`${this.managementApiBaseUrl}${path}`, {
-      ...options,
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-        ...(options.headers || {})
+    const start = Date.now();
+    const token = await this._tokenCache.getToken(this._fetch, this.tokenUrl, this.clientId, this.clientSecret);
+    return this._retry.execute(async () => {
+      const response = await this._fetch(`${this.managementApiBaseUrl}${path}`, {
+        ...options,
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(options.headers || {}) }
+      });
+      const duration = Date.now() - start;
+      if (!response.ok) {
+        this._metrics.record(duration, false, false);
+        throw new Error(`API エラー (${response.status})`);
       }
+      this._metrics.record(duration, true, false);
+      return response.status === 204 ? null : response.json();
     });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(
-        `Power Platform API エラー (${response.status}): ${detail.slice(0, 200)}`
-      );
-    }
-
-    return response.status === 204 ? null : response.json();
   }
 
   async _dataverseFetch(path, options = {}) {
     if (!this.orgUrl) throw new Error('POWERAPPS_ORG_URLが未設定です');
+    const start = Date.now();
     const token = await this._dataverseTokenCache.getToken(
       this._fetch,
       this.tokenUrl,
@@ -95,42 +154,55 @@ class PowerAppsStore {
       this.clientSecret,
       `${this.orgUrl}/.default`
     );
-    const response = await this._fetch(`${this.orgUrl}/api/data/v9.2/${path}`, {
-      ...options,
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/json',
-        'content-type': 'application/json',
-        'odata-version': '4.0',
-        'if-none-match': 'null',
-        ...(options.headers || {})
+    return this._retry.execute(async () => {
+      const response = await this._fetch(`${this.orgUrl}/api/data/v9.2/${path}`, {
+        ...options,
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json', 'odata-version': '4.0', 'if-none-match': 'null', ...(options.headers || {}) }
+      });
+      const duration = Date.now() - start;
+      if (!response.ok) {
+        this._metrics.record(duration, false, false);
+        throw new Error(`Dataverse エラー (${response.status})`);
       }
+      this._metrics.record(duration, true, false);
+      if (response.status === 204) return null;
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
     });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(`Dataverse API エラー (${response.status}): ${detail.slice(0, 300)}`);
-    }
-    if (response.status === 204) return null;
-    const text = await response.text();
-    return text ? JSON.parse(text) : null;
   }
 
   async _getCanvasRecord() {
-    return this._dataverseFetch(
+    const key = `canvas_${this.appId}`;
+    const cached = this._cache.get(key);
+    if (cached) {
+      this._metrics.record(0, true, true);
+      return cached;
+    }
+    const record = await this._dataverseFetch(
       `canvasapps(${this.appId})?$select=canvasappid,uniquecanvasappid,displayname,description,commitmessage,status,appversion,createdtime,lastmodifiedtime,lastpublishtime,publisher`
     );
+    this._cache.set(key, record);
+    return record;
   }
 
   async _getUnmanagedSolutions() {
+    const key = `solutions_${this.environmentId}`;
+    const cached = this._cache.get(key);
+    if (cached) {
+      this._metrics.record(0, true, true);
+      return cached;
+    }
     const data = await this._dataverseFetch(
       'solutions?$select=solutionid,uniquename,friendlyname,version,ismanaged&$filter=ismanaged eq false&$orderby=friendlyname'
     );
-    return (data?.value || []).map((solution) => ({
-      solutionId: solution.solutionid,
-      uniqueName: solution.uniquename,
-      friendlyName: solution.friendlyname,
-      version: solution.version
+    const solutions = (data?.value || []).map((s) => ({
+      solutionId: s.solutionid,
+      uniqueName: s.uniquename,
+      friendlyName: s.friendlyname,
+      version: s.version
     }));
+    this._cache.set(key, solutions);
+    return solutions;
   }
 
   async _recordOperation(operationId, operation, environmentId, appId, entry) {
@@ -141,323 +213,163 @@ class PowerAppsStore {
         operation,
         environmentId,
         appId,
+        metrics: this._metrics.getStats(),
         ...entry
       });
       await fs.appendFile(this.logPath, `${logEntry}\n`, 'utf8');
     } catch (error) {
-      console.error('operationログ記録に失敗しました', { operationId, operation, error: error.message });
+      console.error('ログ記録失敗', error.message);
     }
   }
 
   async getAppInfo() {
-    if (!this.environmentId || !this.appId) {
-      throw new Error('environmentIdおよびappIdが未設定です');
-    }
-
-    try {
-      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
-      const data = await this._managementFetch(path);
-      const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
-      return {
-        status: 'ok',
-        appId: this.appId,
-        environmentId: this.environmentId,
-        displayName: canvas.displayname || data.properties?.displayName || 'Unknown',
-        description: canvas.description || data.properties?.description || null,
-        publisher: canvas.publisher || data.properties?.publisher || 'Unknown',
-        createdTime: canvas.createdtime || data.properties?.createdTime || null,
-        modifiedTime: canvas.lastmodifiedtime || data.properties?.lastModifiedTime || null,
-        publishedTime: canvas.lastpublishtime || null,
-        versionNumber: canvas.appversion || data.properties?.appVersion || null,
-        appType: data.properties?.appType || 'canvas'
-      };
-    } catch (error) {
-      throw new Error(`アプリ情報取得に失敗しました: ${error.message}`);
-    }
+    if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
+    const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
+    const data = await this._managementFetch(path);
+    const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
+    return {
+      status: 'ok',
+      appId: this.appId,
+      environmentId: this.environmentId,
+      displayName: canvas.displayname || data.properties?.displayName || 'Unknown',
+      description: canvas.description || data.properties?.description || null,
+      publisher: canvas.publisher || data.properties?.publisher || 'Unknown',
+      versionNumber: canvas.appversion || data.properties?.appVersion || null
+    };
   }
 
   async getAppState() {
-    if (!this.environmentId || !this.appId) {
-      throw new Error('environmentIdおよびappIdが未設定です');
-    }
-
+    if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
     const operationId = crypto.randomUUID();
     try {
       const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
       const state = await this._managementFetch(path);
       const canvas = this.orgUrl ? await this._getCanvasRecord() : {};
-      const unmanagedSolutions = this.orgUrl ? await this._getUnmanagedSolutions() : [];
-      const properties = state.properties || {};
-
+      const solutions = this.orgUrl ? await this._getUnmanagedSolutions() : [];
+      const props = state.properties || {};
       await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, {
         status: 'success',
-        result: { versionNumber: canvas.appversion || properties.appVersion || null }
+        result: { versionNumber: canvas.appversion || props.appVersion || null }
       });
-
       return {
         status: 'ok',
         operationId,
         appId: this.appId,
         environmentId: this.environmentId,
-        versionNumber: canvas.appversion || properties.appVersion || null,
-        displayName: canvas.displayname || properties.displayName || 'Unknown',
-        description: canvas.description || properties.description || null,
-        appStatus: canvas.status || null,
-        connectors: properties.connectionReferences || {},
-        unmanagedSolutions,
-        lastModified: canvas.lastmodifiedtime || properties.lastModifiedTime || null,
-        lastPublished: canvas.lastpublishtime || null
+        versionNumber: canvas.appversion || props.appVersion || null,
+        displayName: canvas.displayname || props.displayName || 'Unknown',
+        unmanagedSolutions: solutions
       };
     } catch (error) {
-      await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, {
-        status: 'error',
-        error: error.message
-      });
+      await this._recordOperation(operationId, 'get_state', this.environmentId, this.appId, { status: 'error', error: error.message });
       throw error;
     }
   }
 
   async updateApp(updateData) {
-    if (!this.environmentId || !this.appId) {
-      throw new Error('environmentIdおよびappIdが未設定です');
-    }
-
-    if (!updateData || typeof updateData !== 'object') {
-      throw new Error('updateDataはオブジェクトである必要があります');
-    }
-
+    if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
+    if (!updateData || typeof updateData !== 'object') throw new Error('updateDataはオブジェクトが必要です');
     const operationId = crypto.randomUUID();
     try {
       const allowed = new Set(['description', 'commitMessage']);
       const fields = Object.keys(updateData);
-      if (!fields.length || fields.some((field) => !allowed.has(field))) {
-        throw new Error('updateDataで編集できるのはdescriptionおよびcommitMessageのみです');
-      }
-      const currentState = await this.getAppState();
-      const changesBefore = {
-        versionNumber: currentState.versionNumber,
-        description: currentState.description
-      };
-
+      if (!fields.length || fields.some((f) => !allowed.has(f))) throw new Error('編集できるのはdescriptionおよびcommitMessageのみです');
+      const current = await this.getAppState();
       const patch = {};
-      if (Object.hasOwn(updateData, 'description')) patch.description = updateData.description;
-      if (Object.hasOwn(updateData, 'commitMessage')) patch.commitmessage = updateData.commitMessage;
-      await this._dataverseFetch(`canvasapps(${this.appId})`, {
-        method: 'PATCH',
-        body: JSON.stringify(patch)
-      });
-      const updatedState = await this._getCanvasRecord();
-
-      const changesApplied = {
-        fields,
-        timestamp: new Date().toISOString()
-      };
-
+      if (updateData.description) patch.description = updateData.description;
+      if (updateData.commitMessage) patch.commitmessage = updateData.commitMessage;
+      await this._dataverseFetch(`canvasapps(${this.appId})`, { method: 'PATCH', body: JSON.stringify(patch) });
+      this._cache.invalidate(this.appId);
       await this._recordOperation(operationId, 'update', this.environmentId, this.appId, {
         status: 'success',
-        changesBefore,
-        changesApplied,
+        changesBefore: { versionNumber: current.versionNumber },
         result: { pendingPublish: true }
       });
-
-      return {
-        status: 'ok',
-        operationId,
-        appId: this.appId,
-        environmentId: this.environmentId,
-        pendingPublish: true,
-        versionNumber: updatedState.appversion || currentState.versionNumber,
-        changesApplied
-      };
+      return { status: 'ok', operationId, appId: this.appId, environmentId: this.environmentId, pendingPublish: true };
     } catch (error) {
-      await this._recordOperation(operationId, 'update', this.environmentId, this.appId, {
-        status: 'error',
-        error: error.message
-      });
+      await this._recordOperation(operationId, 'update', this.environmentId, this.appId, { status: 'error', error: error.message });
       throw error;
     }
   }
 
   async saveApp() {
-    if (!this.environmentId || !this.appId) {
-      throw new Error('environmentIdおよびappIdが未設定です');
-    }
-
+    if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
     const operationId = crypto.randomUUID();
     try {
-      const currentState = await this.getAppState();
-      const savedAt = new Date().toISOString();
-
+      const current = await this.getAppState();
       await this._recordOperation(operationId, 'save', this.environmentId, this.appId, {
         status: 'success',
-        result: {
-          versionNumber: currentState.versionNumber,
-          savedAt,
-          pendingPublish: true
-        }
+        result: { versionNumber: current.versionNumber, pendingPublish: true }
       });
-
-      return {
-        status: 'ok',
-        operationId,
-        appId: this.appId,
-        environmentId: this.environmentId,
-        versionNumber: currentState.versionNumber,
-        savedAt,
-        message: '保存済みの変更を確認しました。公開はまだです。'
-      };
+      return { status: 'ok', operationId, appId: this.appId, message: '保存済みの変更を確認しました。' };
     } catch (error) {
-      await this._recordOperation(operationId, 'save', this.environmentId, this.appId, {
-        status: 'error',
-        error: error.message
-      });
+      await this._recordOperation(operationId, 'save', this.environmentId, this.appId, { status: 'error', error: error.message });
       throw error;
     }
   }
 
   async publishApp() {
-    if (!this.environmentId || !this.appId) {
-      throw new Error('environmentIdおよびappIdが未設定です');
-    }
-
+    if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
     const operationId = crypto.randomUUID();
     try {
-      const beforePublish = await this.getAppState();
-
+      const before = await this.getAppState();
       const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2016-11-01`;
-      await this._managementFetch(path, {
-        method: 'POST',
-        body: JSON.stringify({ strategy: 'immediate' })
-      });
-
+      await this._managementFetch(path, { method: 'POST', body: JSON.stringify({ strategy: 'immediate' }) });
+      this._cache.invalidate(this.appId);
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, {
         status: 'success',
-        changesBefore: { versionNumber: beforePublish.versionNumber },
-        result: {
-          publishedVersion: beforePublish.versionNumber,
-          publishedAt: new Date().toISOString()
-        }
+        result: { publishedVersion: before.versionNumber, publishedAt: new Date().toISOString() }
       });
-
-      return {
-        status: 'ok',
-        operationId,
-        appId: this.appId,
-        environmentId: this.environmentId,
-        publishedVersion: beforePublish.versionNumber,
-        publishedAt: new Date().toISOString(),
-        message: '公開に成功しました。エンドユーザーが利用できます。'
-      };
+      return { status: 'ok', operationId, appId: this.appId, message: '公開に成功しました。' };
     } catch (error) {
-      await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, {
-        status: 'error',
-        error: error.message
-      });
+      await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, { status: 'error', error: error.message });
       throw error;
     }
   }
 
   async getOperationResult(operationId) {
-    if (!operationId || typeof operationId !== 'string') {
-      throw new Error('operationIdが必要です');
-    }
-
+    if (!operationId || typeof operationId !== 'string') throw new Error('operationIdが必要です');
     try {
       const content = await fs.readFile(this.logPath, 'utf8');
-      const lines = content.trim().split('\n').filter(Boolean);
-
-      for (const line of lines) {
+      for (const line of content.trim().split('\n').filter(Boolean)) {
         const entry = JSON.parse(line);
         if (entry.operationId === operationId) {
-          return {
-            status: 'ok',
-            operationId,
-            operation: entry.operation,
-            timestamp: entry.timestamp,
-            operationStatus: entry.status,
-            result: entry.result || null,
-            error: entry.error || null,
-            changesBefore: entry.changesBefore || null,
-            changesApplied: entry.changesApplied || null
-          };
+          return { status: 'ok', operationId, operation: entry.operation, operationStatus: entry.status, result: entry.result, metrics: entry.metrics };
         }
       }
-
-      return {
-        status: 'not_found',
-        operationId,
-        message: '指定されたoperationIdが見つかりません'
-      };
+      return { status: 'not_found', operationId, message: 'operationIdが見つかりません' };
     } catch (error) {
-      throw new Error(`操作結果取得に失敗しました: ${error.message}`);
+      throw new Error(`操作結果取得失敗: ${error.message}`);
     }
   }
 
   async getOperationLog(limit = 50) {
     try {
       const content = await fs.readFile(this.logPath, 'utf8');
-      const lines = content.trim().split('\n').filter(Boolean);
-
-      const filtered = lines
+      const filtered = content.trim().split('\n').filter(Boolean)
         .map((line) => JSON.parse(line))
         .filter((entry) => entry.appId === this.appId)
         .reverse()
         .slice(0, limit);
-
-      return {
-        status: 'ok',
-        appId: this.appId,
-        count: filtered.length,
-        operations: filtered
-      };
+      return { status: 'ok', appId: this.appId, count: filtered.length, operations: filtered };
     } catch (error) {
-      throw new Error(`操作ログ取得に失敗しました: ${error.message}`);
+      throw new Error(`操作ログ取得失敗: ${error.message}`);
     }
   }
 
-  async rollbackOperation(operationId) {
-    if (!operationId || typeof operationId !== 'string') {
-      throw new Error('operationIdが必要です');
-    }
-
-    const newOperationId = crypto.randomUUID();
+  async healthCheck() {
     try {
-      const target = await this.getOperationResult(operationId);
-      if (target.status === 'not_found') {
-        throw new Error(`operationId: ${operationId} が見つかりません`);
-      }
-
-      if (!target.changesBefore) {
-        throw new Error('ロールバック対象の操作には前の状態情報が含まれていません');
-      }
-
-      const restoredState = target.changesBefore;
-
-      await this._recordOperation(newOperationId, 'rollback', this.environmentId, this.appId, {
-        status: 'success',
-        result: {
-          rolledBackOperationId: operationId,
-          restoredState,
-          rolledBackAt: new Date().toISOString()
-        }
-      });
-
-      return {
-        status: 'ok',
-        operationId: newOperationId,
-        rolledBackOperationId: operationId,
-        appId: this.appId,
-        environmentId: this.environmentId,
-        restoredState,
-        message: `operationId: ${operationId} をロールバックしました`
-      };
+      const start = Date.now();
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}?api-version=2016-11-01`;
+      await this._managementFetch(path);
+      return { status: 'healthy', responseTime: Date.now() - start, timestamp: new Date().toISOString() };
     } catch (error) {
-      await this._recordOperation(newOperationId, 'rollback', this.environmentId, this.appId, {
-        status: 'error',
-        error: error.message
-      });
-      throw error;
+      return { status: 'unhealthy', error: error.message, timestamp: new Date().toISOString() };
     }
+  }
+
+  getMetrics() {
+    return this._metrics.getStats();
   }
 
   invalidateAuth() {
@@ -466,4 +378,4 @@ class PowerAppsStore {
   }
 }
 
-module.exports = { PowerAppsStore, TokenCache };
+module.exports = { PowerAppsStore, TokenCache, RetryStrategy, ResponseCache, Metrics };
