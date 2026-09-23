@@ -353,7 +353,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsStore.getAppInfo();
+    return withUpstreamErrorStatus(powerAppsStore.getAppInfo());
   }
   if (method === 'get_powerapps_state') {
     const paramError = validateGetPowerAppsStateParams(params);
@@ -512,7 +512,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           if (!error.status) return next(error);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: error.message }],
-            structuredContent: { error: error.message },
+            structuredContent: { error: error.message, ...(error.upstream ? { details: error.upstream } : {}) },
             isError: true
           }));
         }
@@ -528,7 +528,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
       return res.status(200).json({ accepted: true, method, result });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ error: error.message });
+      if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}) });
       return next(error);
     }
   }
