@@ -46,3 +46,15 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
     ['RefreshChangesFromGit', 'PullChangesFromGit']
   );
 });
+
+test('同期先ソリューション未設定ならGitHub更新前に止まる', async () => {
+  const calls = [];
+  const store = new PowerAppsGitStore({
+    tenantId: 'tenant', clientId: 'client', clientSecret: 'secret',
+    orgUrl: 'https://example.crm.dynamics.com',
+    githubToken: 'github-token', githubOwner: 'owner', githubRepo: 'repo',
+    fetchImpl: async (url) => { calls.push(url); throw new Error('unexpected upstream'); }
+  });
+  await assert.rejects(store.applySourceFileChange('App.pa.yaml', 'new'), /POWERAPPS_SOLUTION_UNIQUE_NAME/);
+  assert.deepEqual(calls, []);
+});
