@@ -1,0 +1,30 @@
+name: CN AI 17-source review tests
+on:
+  push:
+    branches:
+      - fix/cn-aiiraidaicho-add-s12-s13-review-20260927
+    paths:
+      - .github/workflows/cn-ai-17-source-review-test.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Verify isolated target and all 17 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "const CN_AI_BRANCH = 'fix/cn-aiiraidaicho-add-s12-s13-review-20260927';" src/config.js
+          grep -F "const CN_AI_ROOT = 'powerapps/CN_AI依頼台帳/Source';" src/config.js
+          d='powerapps/CN_AI依頼台帳/Source'
+          test "$(find "$d" -maxdepth 1 -name '*.pa.yaml' -type f | wc -l)" -eq 17
+          for f in S12_Sites.pa.yaml S13_Apply.pa.yaml; do test -s "$d/$f"; done
+          echo "All 17 source YAML files present; review-only target verified."
