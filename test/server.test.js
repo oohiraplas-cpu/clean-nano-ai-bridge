@@ -312,6 +312,35 @@ test('編集は隔離ブランチのGitHubだけに記録し本番同期と公�
   assert.equal(requests.length, 2);
 });
 
+test('隔離ブランチ以外へのソース更新をGitHub書き込み前に拒否する', async (t) => {
+  const calls = [];
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, method: options?.method || 'GET' });
+      throw new Error('upstream must not be called');
+    },
+    powerAppsOverrides: {
+      sourceAppId: 'test-app', sourceEnvironmentId: 'test-env',
+      githubToken: 'test-token', githubOwner: 'owner', githubRepo: 'repo',
+      githubBranch: 'main',
+      githubRoot: 'powerapps/CN_AI依頼台帳/Source'
+    }
+  });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({
+      method: 'update_powerapps_app',
+      params: { relativePath: 'App.pa.yaml', content: 'after' }
+    })
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /隔離済み17ファイルのブランチ/);
+  assert.deepEqual(calls, []);
+});
+
 test('ソースと操作対象が不一致なら更新・保存・公開は書き込み前に止まる', async (t) => {
   const calls = [];
   const server = await createTestServer([seedTask], {
