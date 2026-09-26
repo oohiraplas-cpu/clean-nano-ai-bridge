@@ -1,0 +1,14 @@
+# CN_AI依頼台帳 target settings; example only, not deployed.
+# Apply only after the complete source directory is uploaded and verified against the live app.
+POWERAPPS_ENVIRONMENT_ID=4d0aab59-43ec-ecf1-a9d1-869f2517adbb
+POWERAPPS_APP_ID=f42a9b03-59b9-49d3-a33b-0a210cd3d51e
+POWERAPPS_SOURCE_ENVIRONMENT_ID=4d0aab59-43ec-ecf1-a9d1-869f2517adbb
+POWERAPPS_SOURCE_APP_ID=f42a9b03-59b9-49d3-a33b-0a210cd3d51e
+POWERAPPS_ORG_URL=https://org0bbb24c5.crm7.dynamics.com
+POWERAPPS_SOLUTION_UNIQUE_NAME=CN_AIIraiDaicho
+POWERAPPS_GITHUB_OWNER=oohiraplas-cpu
+POWERAPPS_GITHUB_REPO=clean-nano-ai-bridge
+POWERAPPS_GITHUB_BRANCH=fix/cn-aiiraidaicho-safe-export-20260926
+POWERAPPS_GITHUB_ROOT=powerapps/CN_AI依頼台帳/Source
+# Do not set or reveal secrets in this file.
+# Do not enable save/publish/sync until verified source identity, rollback and Studio draft parity.
