@@ -149,6 +149,11 @@ class PowerAppsStore {
     this._cache = new ResponseCache(config.cacheTtlMs || 300000);
     this._metrics = new Metrics();
     this._retry = new RetryStrategy();
+    // operationId -> logEntry のインメモリ索引（ログファイル全件走査を回避するため）
+    this._operationIndex = new Map();
+    // appId別の直近ログを保持するリングバッファ（getOperationLogの高速化用）
+    this._operationRingCap = config.operationRingCap || 500;
+    this._operationRing = [];
   }
 
   async _managementFetch(path, options = {}) {
@@ -231,17 +236,22 @@ class PowerAppsStore {
   }
 
   async _recordOperation(operationId, operation, environmentId, appId, entry) {
+    const logEntryObj = {
+      timestamp: new Date().toISOString(),
+      operationId,
+      operation,
+      environmentId,
+      appId,
+      metrics: this._metrics.getStats(),
+      ...entry
+    };
+    // getOperationResult/getOperationLogがファイル全件走査せずに済むよう、
+    // メモリ上にも索引・直近ログを保持する（プロセス再起動後はファイルへフォールバック）
+    this._operationIndex.set(operationId, logEntryObj);
+    this._operationRing.push(logEntryObj);
+    if (this._operationRing.length > this._operationRingCap) this._operationRing.shift();
     try {
-      const logEntry = JSON.stringify({
-        timestamp: new Date().toISOString(),
-        operationId,
-        operation,
-        environmentId,
-        appId,
-        metrics: this._metrics.getStats(),
-        ...entry
-      });
-      await fs.appendFile(this.logPath, `${logEntry}\n`, 'utf8');
+      await fs.appendFile(this.logPath, `${JSON.stringify(logEntryObj)}\n`, 'utf8');
     } catch (error) {
       console.error('ログ記録失敗', error.message);
     }
@@ -382,6 +392,11 @@ class PowerAppsStore {
 
   async getOperationResult(operationId) {
     if (!operationId || typeof operationId !== 'string') throw new Error('operationIdが必要です');
+    const cached = this._operationIndex.get(operationId);
+    if (cached) {
+      return { status: 'ok', operationId, operation: cached.operation, operationStatus: cached.status, result: cached.result, metrics: cached.metrics };
+    }
+    // プロセス再起動直後などメモリ索引に無い場合のみファイルへフォールバック
     try {
       const content = await fs.readFile(this.logPath, 'utf8');
       for (const line of content.trim().split('\n').filter(Boolean)) {
@@ -397,6 +412,11 @@ class PowerAppsStore {
   }
 
   async getOperationLog(limit = 50) {
+    const inMemory = this._operationRing.filter((entry) => entry.appId === this.appId).slice(-limit).reverse();
+    if (inMemory.length >= limit || inMemory.length >= this._operationRing.length) {
+      return { status: 'ok', appId: this.appId, count: inMemory.length, operations: inMemory };
+    }
+    // メモリ上の件数がlimitに満たない場合（再起動直後など）はファイルへフォールバック
     try {
       const content = await fs.readFile(this.logPath, 'utf8');
       const filtered = content.trim().split('\n').filter(Boolean)
