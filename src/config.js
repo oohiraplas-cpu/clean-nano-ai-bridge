@@ -1,8 +1,8 @@
 const path = require('node:path');
 
 const DEFAULT_ORIGINS = ['http://localhost:3000'];
-const DEFAULT_POWERAPPS_ORG_URL = 'https://orgcf455a58.crm7.dynamics.com';
-const DEFAULT_POWERAPPS_SOLUTION = 'CN_CompanyOS';
+const DEFAULT_POWERAPPS_ORG_URL = ''; // Fail closed: explicit CN_AI target required
+const DEFAULT_POWERAPPS_SOLUTION = ''; // Never silently select another solution
 
 // POWER_AUTOMATE_FLOWSはJSON文字列（{"flowKey": "トリガーURL"}）としてのみ環境変数で渡す。
 // パース不能・未設定の場合は空オブジェクト扱いとし、起動を落とさない。
@@ -49,7 +49,7 @@ function getConfig(env = process.env) {
       githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
       githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
       githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
-      githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source'
+      githubRoot: env.POWERAPPS_GITHUB_ROOT || ''
     },
     powerAutomate: {
       flows: parsePowerAutomateFlows(env.POWER_AUTOMATE_FLOWS)
