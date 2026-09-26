@@ -1,0 +1,77 @@
+name: Deploy CN_AI依頼台帳 Bridge safely
+
+on:
+  push:
+    branches:
+      - fix/cn-aiiraidaicho-safe-export-20260926
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: clean-nano-ai-bridge-cn-aiiraidaicho
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20.x'
+  AZURE_WEBAPP_NAME: clean-nano-ai-bridge
+  POWERAPPS_APP_ID: f42a9b03-59b9-49d3-a33b-0a210cd3d51e
+  POWERAPPS_ENVIRONMENT_ID: 4d0aab59-43ec-ecf1-a9d1-869f2517adbb
+  POWERAPPS_SOURCE_APP_ID: f42a9b03-59b9-49d3-a33b-0a210cd3d51e
+  POWERAPPS_SOURCE_ENVIRONMENT_ID: 4d0aab59-43ec-ecf1-a9d1-869f2517adbb
+  POWERAPPS_ORG_URL: https://org0bbb24c5.crm7.dynamics.com
+  POWERAPPS_SOLUTION_UNIQUE_NAME: CN_AIIraiDaicho
+  POWERAPPS_GITHUB_OWNER: oohiraplas-cpu
+  POWERAPPS_GITHUB_REPO: clean-nano-ai-bridge
+  POWERAPPS_GITHUB_BRANCH: fix/cn-aiiraidaicho-safe-export-20260926
+  POWERAPPS_GITHUB_ROOT: powerapps/CN_AI依頼台帳/Source
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --omit=dev
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+      - name: Set isolated CN_AI依頼台帳 Bridge target
+        run: |
+          az webapp config appsettings set \
+            --name "${{ env.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --settings \
+              POWERAPPS_APP_ID="${{ env.POWERAPPS_APP_ID }}" \
+              POWERAPPS_ENVIRONMENT_ID="${{ env.POWERAPPS_ENVIRONMENT_ID }}" \
+              POWERAPPS_SOURCE_APP_ID="${{ env.POWERAPPS_SOURCE_APP_ID }}" \
+              POWERAPPS_SOURCE_ENVIRONMENT_ID="${{ env.POWERAPPS_SOURCE_ENVIRONMENT_ID }}" \
+              POWERAPPS_ORG_URL="${{ env.POWERAPPS_ORG_URL }}" \
+              POWERAPPS_SOLUTION_UNIQUE_NAME="${{ env.POWERAPPS_SOLUTION_UNIQUE_NAME }}" \
+              POWERAPPS_GITHUB_OWNER="${{ env.POWERAPPS_GITHUB_OWNER }}" \
+              POWERAPPS_GITHUB_REPO="${{ env.POWERAPPS_GITHUB_REPO }}" \
+              POWERAPPS_GITHUB_BRANCH="${{ env.POWERAPPS_GITHUB_BRANCH }}" \
+              POWERAPPS_GITHUB_ROOT="${{ env.POWERAPPS_GITHUB_ROOT }}"
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: .
