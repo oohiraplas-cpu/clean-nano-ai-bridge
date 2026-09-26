@@ -373,9 +373,14 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    if (params.updateData) return powerAppsStore.updateApp(params.updateData);
+    // Source edits are staged on the isolated Git branch only. Never write live Dataverse here.
+    if (params.updateData) throw requestError('本番アプリ管理APIの直接更新は停止中です。');
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    return withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
+    if (!powerAppsGitStore.githubBranch.startsWith('sync/cn-aiiraidaicho-backup17-review-')) {
+      throw requestError('編集停止: 隔離済み17ファイルのブランチではありません。');
+    }
+    const staged = await withUpstreamErrorStatus(powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message));
+    return { ...staged, status: 'staged', productionChanged: false, note: 'GitHub隔離ブランチのみ更新。本番Power Appsは未変更。' };
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
@@ -390,7 +395,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    return powerAppsStore.publishApp();
+    throw requestError('公開停止: 本番保存の独立検証と復元テストが未完了です。');
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
