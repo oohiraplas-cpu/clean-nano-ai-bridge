@@ -8,8 +8,6 @@ const CN_AI_SOLUTION = 'CN_AIIraiDaicho';
 const CN_AI_BRANCH = 'fix/cn-aiiraidaicho-safe-export-20260926';
 const CN_AI_ROOT = 'powerapps/CN_AI依頼台帳/Source';
 
-// POWER_AUTOMATE_FLOWSはJSON文字列（{"flowKey": "トリガーURL"}）としてのみ環境変数で渡す。
-// パース不能・未設定の場合は空オブジェクト扱いとし、起動を落とさない。
 function parsePowerAutomateFlows(value) {
   if (!value) return {};
   try {
@@ -23,9 +21,8 @@ function parsePowerAutomateFlows(value) {
 function getConfig(env = process.env) {
   const origins = (env.CORS_ORIGINS || DEFAULT_ORIGINS.join(','))
     .split(',').map((origin) => origin.trim()).filter(Boolean);
-  // Isolate the explicitly identified CN_AI ledger target from the legacy daily-report target.
-  // This branch never changes CN_CompanyOS and never enables Power Apps save/publish.
-  const isCnAiLedger = (env.POWERAPPS_APP_ID || '').toLowerCase() === CN_AI_APP_ID;
+  // This isolated deployment is exclusively for CN_AI依頼台帳.
+  // It does not modify CN_CompanyOS and does not enable Power Apps save/publish.
   return {
     port: Number.parseInt(env.PORT || '3000', 10),
     host: env.HOST || '0.0.0.0',
@@ -47,18 +44,18 @@ function getConfig(env = process.env) {
       tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
       clientId: env.POWERAPPS_CLIENT_ID || env.AZURE_CLIENT_ID || '',
       clientSecret: env.POWERAPPS_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
-      environmentId: env.POWERAPPS_ENVIRONMENT_ID || (isCnAiLedger ? CN_AI_ENVIRONMENT_ID : ''),
-      appId: env.POWERAPPS_APP_ID || '',
-      sourceAppId: isCnAiLedger ? CN_AI_APP_ID : (env.POWERAPPS_SOURCE_APP_ID || ''),
-      sourceEnvironmentId: isCnAiLedger ? CN_AI_ENVIRONMENT_ID : (env.POWERAPPS_SOURCE_ENVIRONMENT_ID || ''),
+      environmentId: CN_AI_ENVIRONMENT_ID,
+      appId: CN_AI_APP_ID,
+      sourceAppId: CN_AI_APP_ID,
+      sourceEnvironmentId: CN_AI_ENVIRONMENT_ID,
       logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
-      orgUrl: isCnAiLedger ? CN_AI_ORG_URL : (env.POWERAPPS_ORG_URL || ''),
-      solutionUniqueName: isCnAiLedger ? CN_AI_SOLUTION : (env.POWERAPPS_SOLUTION_UNIQUE_NAME || ''),
+      orgUrl: CN_AI_ORG_URL,
+      solutionUniqueName: CN_AI_SOLUTION,
       githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
-      githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
-      githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
-      githubBranch: isCnAiLedger ? CN_AI_BRANCH : (env.POWERAPPS_GITHUB_BRANCH || 'main'),
-      githubRoot: isCnAiLedger ? CN_AI_ROOT : (env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source')
+      githubOwner: 'oohiraplas-cpu',
+      githubRepo: 'clean-nano-ai-bridge',
+      githubBranch: CN_AI_BRANCH,
+      githubRoot: CN_AI_ROOT
     },
     powerAutomate: {
       flows: parsePowerAutomateFlows(env.POWER_AUTOMATE_FLOWS)
