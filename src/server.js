@@ -150,7 +150,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'update_powerapps_app',
-    description: '既存Power Appsアプリを更新します。ソース更新時はGitHubへ保存後、Power Platformへ同期します。',
+    description: 'CN_AI依頼台帳のソース変更を隔離GitHubブランチへ仮保存します。本番Power Appsへの同期・保存・公開は行いません。',
     inputSchema: {
       type: 'object',
       properties: {
