@@ -31,6 +31,6 @@ test('環境変数でCN_社員台帳のリストIDを設定できる', () => {
 
 test('本番隔離設定のソース参照先は17ファイル復元ブランチに固定', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/config.js'), 'utf8');
-  assert.match(source, /const CN_AI_BRANCH = 'sync\\/cn-aiiraidaicho-backup17-review-20260926'/);
+  assert.ok(source.includes("const CN_AI_BRANCH = 'sync/cn-aiiraidaicho-backup17-review-20260926'"));
   assert.match(source, /const CN_AI_APP_ID = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e'/);
 });
