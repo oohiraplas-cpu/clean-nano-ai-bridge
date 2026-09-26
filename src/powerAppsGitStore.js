@@ -1,3 +1,4 @@
+const { assertCnAiTarget } = require('./config');
 const crypto = require('node:crypto');
 
 class OAuthTokenCache {
@@ -49,6 +50,13 @@ class PowerAppsGitStore {
     this.githubRoot = (config.githubRoot || '').replace(/^\/+|\/+$/g, '');
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new OAuthTokenCache();
+    this.target = {
+      POWERAPPS_APP_ID: config.appId,
+      POWERAPPS_ENVIRONMENT_ID: config.environmentId,
+      POWERAPPS_ORG_URL: config.orgUrl,
+      POWERAPPS_SOLUTION_UNIQUE_NAME: config.solutionUniqueName,
+      POWERAPPS_GITHUB_ROOT: config.githubRoot
+    };
   }
 
   _assertDataverseConfig() {
@@ -120,6 +128,7 @@ class PowerAppsGitStore {
   }
 
   async updateSourceFile(relativePath, content, message) {
+    assertCnAiTarget(this.target);
     if (typeof content !== 'string') throw new Error('contentは文字列である必要があります');
     const current = await this.getSourceFile(relativePath);
     const filePath = current.path;
@@ -176,6 +185,7 @@ class PowerAppsGitStore {
   }
 
   async refreshFromGit() {
+    assertCnAiTarget(this.target);
     const result = await this._dataversePost('RefreshChangesFromGit', {
       SolutionUniqueName: this.solutionUniqueName
     });
@@ -183,6 +193,7 @@ class PowerAppsGitStore {
   }
 
   async pullFromGit() {
+    assertCnAiTarget(this.target);
     const result = await this._dataversePost('PullChangesFromGit', {
       SolutionUniqueName: this.solutionUniqueName
     });
