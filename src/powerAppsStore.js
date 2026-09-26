@@ -57,6 +57,10 @@ class PowerAppsStore {
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new TokenCache();
     this._dataverseTokenCache = new TokenCache();
+    this._operationIndex = new Map();
+    this._recentOperations = [];
+    this._operationCacheReady = null;
+    this._operationWriteQueue = Promise.resolve();
   }
 
   async _managementFetch(path, options = {}) {
@@ -133,17 +137,63 @@ class PowerAppsStore {
     }));
   }
 
-  async _recordOperation(operationId, operation, environmentId, appId, entry) {
-    try {
-      const logEntry = JSON.stringify({
-        timestamp: new Date().toISOString(),
-        operationId,
-        operation,
-        environmentId,
-        appId,
-        ...entry
+  _cacheOperation(entry) {
+    // Keep the latest 500 entries, including the most recent status for each operationId.
+    if (this._recentOperations.length === 500) {
+      const removed = this._recentOperations.shift();
+      if (this._operationIndex.get(removed.operationId) === removed) {
+        this._operationIndex.delete(removed.operationId);
+      }
+    }
+    this._recentOperations.push(entry);
+    if (entry.operationId) this._operationIndex.set(entry.operationId, entry);
+  }
+
+  async _ensureOperationCache() {
+    if (!this._operationCacheReady) {
+      this._operationCacheReady = (async () => {
+        let content;
+        try {
+          content = await fs.readFile(this.logPath, 'utf8');
+        } catch (error) {
+          if (error.code === 'ENOENT') return;
+          throw error;
+        }
+        // Hydrate once per store instance; subsequent reads never scan the log file.
+        for (const line of content.split('\\n')) {
+          if (!line.trim()) continue;
+          try {
+            this._cacheOperation(JSON.parse(line));
+          } catch {
+            console.error('不正な操作ログ行をスキップしました');
+          }
+        }
+      })().catch((error) => {
+        this._operationCacheReady = null;
+        throw error;
       });
-      await fs.appendFile(this.logPath, `${logEntry}\n`, 'utf8');
+    }
+    await this._operationCacheReady;
+  }
+
+  async _recordOperation(operationId, operation, environmentId, appId, entry) {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      operationId,
+      operation,
+      environmentId,
+      appId,
+      ...entry
+    };
+    const write = async () => {
+      await this._ensureOperationCache();
+      await fs.appendFile(this.logPath, JSON.stringify(logEntry) + '\\n', 'utf8');
+      this._cacheOperation(logEntry);
+    };
+    const pending = this._operationWriteQueue.then(write);
+    this._operationWriteQueue = pending.catch(() => {});
+    try {
+      await pending;
     } catch (error) {
       console.error('operationログ記録に失敗しました', { operationId, operation, error: error.message });
     }
@@ -364,32 +414,23 @@ class PowerAppsStore {
     if (!operationId || typeof operationId !== 'string') {
       throw new Error('operationIdが必要です');
     }
-
     try {
-      const content = await fs.readFile(this.logPath, 'utf8');
-      const lines = content.trim().split('\n').filter(Boolean);
-
-      for (const line of lines) {
-        const entry = JSON.parse(line);
-        if (entry.operationId === operationId) {
-          return {
-            status: 'ok',
-            operationId,
-            operation: entry.operation,
-            timestamp: entry.timestamp,
-            operationStatus: entry.status,
-            result: entry.result || null,
-            error: entry.error || null,
-            changesBefore: entry.changesBefore || null,
-            changesApplied: entry.changesApplied || null
-          };
-        }
+      await this._operationWriteQueue;
+      await this._ensureOperationCache();
+      const entry = this._operationIndex.get(operationId);
+      if (!entry) {
+        return { status: 'not_found', operationId, message: '直近500件に指定されたoperationIdが見つかりません' };
       }
-
       return {
-        status: 'not_found',
+        status: 'ok',
         operationId,
-        message: '指定されたoperationIdが見つかりません'
+        operation: entry.operation,
+        timestamp: entry.timestamp,
+        operationStatus: entry.status,
+        result: entry.result || null,
+        error: entry.error || null,
+        changesBefore: entry.changesBefore || null,
+        changesApplied: entry.changesApplied || null
       };
     } catch (error) {
       throw new Error(`操作結果取得に失敗しました: ${error.message}`);
@@ -398,20 +439,18 @@ class PowerAppsStore {
 
   async getOperationLog(limit = 50) {
     try {
-      const content = await fs.readFile(this.logPath, 'utf8');
-      const lines = content.trim().split('\n').filter(Boolean);
-
-      const filtered = lines
-        .map((line) => JSON.parse(line))
+      await this._operationWriteQueue;
+      await this._ensureOperationCache();
+      const count = Number.isFinite(limit) ? Math.max(0, Math.min(500, Math.trunc(limit))) : 50;
+      const filtered = this._recentOperations
         .filter((entry) => entry.appId === this.appId)
-        .reverse()
-        .slice(0, limit);
-
+        .slice(-count || this._recentOperations.length)
+        .reverse();
       return {
         status: 'ok',
         appId: this.appId,
-        count: filtered.length,
-        operations: filtered
+        count: count === 0 ? 0 : filtered.length,
+        operations: count === 0 ? [] : filtered
       };
     } catch (error) {
       throw new Error(`操作ログ取得に失敗しました: ${error.message}`);
