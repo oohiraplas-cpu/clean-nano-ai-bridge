@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - sync/cn-aiiraidaicho-bridge-target-20260926
+      - fix/cn-ai-save-preflight-20260926
       - fix/cn-ai-save-verification-guard-20260926
   workflow_dispatch:
 permissions:

@@ -1,0 +1,59 @@
+name: CN_AI source parity preflight (read only)
+on:
+  push:
+    branches:
+      - fix/cn-ai-save-preflight-20260926
+    paths:
+      - .github/workflows/cn-ai-source-parity-preflight.yml
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: 'Successful read-only backup workflow run ID'
+        required: true
+        default: '36243366775'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/cn-aiiraidaicho-live-review-20260926
+          persist-credentials: false
+      - name: Download backup and extracted source from selected run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.backup_run_id || '36243366775' }}
+        run: |
+          mkdir -p /tmp/cn-backup /tmp/cn-extracted
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n CN_AIIraiDaicho-unmanaged-backup -D /tmp/cn-backup
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n CN_AIiraidaicho-extracted-source-review -D /tmp/cn-extracted
+      - name: Check checksum, ZIP roots and every extracted YAML against Git
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          backup=pathlib.Path('/tmp/cn-backup')
+          archive=backup/'CN_AIIraiDaicho-unmanaged.zip'
+          digest=(backup/'CN_AIIraiDaicho-unmanaged.sha256').read_text().split()[0]
+          assert hashlib.sha256(archive.read_bytes()).hexdigest()==digest, 'Backup SHA256 mismatch'
+          with zipfile.ZipFile(archive) as z:
+              assert z.testzip() is None, 'Corrupt solution archive'
+              assert {'solution.xml','customizations.xml','[Content_Types].xml'} <= set(z.namelist()), 'Invalid solution ZIP root'
+          extracted=pathlib.Path('/tmp/cn-extracted/Source')
+          git=pathlib.Path('powerapps/CN_AI依頼台帳/Source')
+          live={p.name:p.read_bytes() for p in extracted.glob('*.pa.yaml')}
+          tracked={p.name:p.read_bytes() for p in git.glob('*.pa.yaml')}
+          assert live, 'No extracted Canvas YAML'
+          missing=set(live)-set(tracked)
+          extra=set(tracked)-set(live)
+          changed={n for n in set(live)&set(tracked) if live[n]!=tracked[n]}
+          print('Extracted YAML:',len(live),'Git YAML:',len(tracked))
+          print('Missing in Git:',sorted(missing))
+          print('Extra in Git:',sorted(extra))
+          print('Content mismatch:',sorted(changed))
+          assert not (missing or extra or changed), 'Source parity failed; do not save or publish'
+          print('Artifact-to-Git source parity PASS (not proof of current live app parity or tested restore)')
+          PY

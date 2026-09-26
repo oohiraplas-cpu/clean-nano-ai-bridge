@@ -381,10 +381,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
-    const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
-    const saved = await powerAppsStore.saveApp();
-    return { ...saved, status: 'pending_verification', liveSourceVerified: false, pendingPublish: false, sync: { refresh, pull }, message: 'Git同期を要求しました。Power Apps画面ソースの実反映は未検証です。保存完了・公開可能とは判断しないでください。' };
+    // Fail closed: neither a backup artifact nor a Git SHA proves that the live Canvas app
+    // matches this source, and the solution restore path has not been tested.
+    // This branch intentionally performs no Dataverse refresh/pull or live save.
+    throw requestError('保存停止: 本番Canvasソース一致と復元テストが未確認です。変更は実行していません。');
   }
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);

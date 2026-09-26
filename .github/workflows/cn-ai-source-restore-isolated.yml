@@ -1,0 +1,53 @@
+name: CN_AI restore full source to isolated Git branch
+on:
+  push:
+    branches:
+      - fix/cn-ai-save-preflight-20260926
+    paths:
+      - .github/workflows/cn-ai-source-restore-isolated.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  restore-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/cn-aiiraidaicho-live-review-20260926
+          fetch-depth: 0
+      - name: Fetch verified exported source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/cn-backup /tmp/cn-extracted
+          gh run download 36243366775 -R "$GITHUB_REPOSITORY" -n CN_AIIraiDaicho-unmanaged-backup -D /tmp/cn-backup
+          gh run download 36243366775 -R "$GITHUB_REPOSITORY" -n CN_AIiraidaicho-extracted-source-review -D /tmp/cn-extracted
+      - name: Verify artifact and replace isolated branch source as one complete set
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, shutil, zipfile
+          b=pathlib.Path('/tmp/cn-backup')
+          z=b/'CN_AIIraiDaicho-unmanaged.zip'
+          assert hashlib.sha256(z.read_bytes()).hexdigest()==(b/'CN_AIIraiDaicho-unmanaged.sha256').read_text().split()[0]
+          with zipfile.ZipFile(z) as f:
+              assert f.testzip() is None
+              assert {'solution.xml','customizations.xml','[Content_Types].xml'}<=set(f.namelist())
+              assert '<UniqueName>CN_AIIraiDaicho</UniqueName>' in f.read('solution.xml').decode('utf-8-sig')
+          source=pathlib.Path('/tmp/cn-extracted/Source')
+          files=sorted(source.glob('*.pa.yaml'))
+          assert len(files)==17, f'Unexpected file count: {len(files)}'
+          target=pathlib.Path('powerapps/CN_AI依頼台帳/Source')
+          target.mkdir(parents=True,exist_ok=True)
+          for old in target.glob('*.pa.yaml'): old.unlink()
+          for p in files: shutil.copy2(p,target/p.name)
+          assert {p.name:p.read_bytes() for p in files}=={p.name:p.read_bytes() for p in target.glob('*.pa.yaml')}
+          print('All 17 backed-up YAML files restored to isolated checkout')
+          PY
+      - name: Commit complete source only to new isolated branch
+        shell: bash
+        run: |
+          git switch -c sync/cn-aiiraidaicho-backup17-review-20260926
+          git add -- 'powerapps/CN_AI依頼台帳/Source'
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Restore 17 extracted YAML files from verified backup artifact'
+          git push origin HEAD:refs/heads/sync/cn-aiiraidaicho-backup17-review-20260926
