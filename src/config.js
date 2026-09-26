@@ -5,7 +5,7 @@ const CN_AI_APP_ID = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
 const CN_AI_ENVIRONMENT_ID = '4d0aab59-43ec-ecf1-a9d1-869f2517adbb';
 const CN_AI_ORG_URL = 'https://org0bbb24c5.crm7.dynamics.com';
 const CN_AI_SOLUTION = 'CN_AIIraiDaicho';
-const CN_AI_BRANCH = 'sync/cn-aiiraidaicho-backup17-review-20260926';
+const CN_AI_BRANCH = 'work/cn-aiiraidaicho-stage-20260927';
 const CN_AI_ROOT = 'powerapps/CN_AI依頼台帳/Source';
 
 function parsePowerAutomateFlows(value) {
