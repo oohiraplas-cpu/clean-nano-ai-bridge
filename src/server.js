@@ -381,6 +381,8 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
+    // Fail closed before mutating Dataverse: live Canvas parity and tested rollback are not verified.
+    throw requestError('保存停止: 復元経路とPower Apps実画面ソースの独立検証が未実装です。Git同期は実行していません。');
     const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
     const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     const saved = await powerAppsStore.saveApp();
