@@ -1,0 +1,232 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S7_Settings:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+      OnVisible: |-
+        =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
+        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID))
+    Children:
+      - S7_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =22
+            Text: ="設定"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S7_Card:
+          Control: Rectangle@2.3.0
+          Properties:
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =150
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =70
+      - S7_User:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =50
+            Size: '=10  '
+            Text: ="ログイン中：" & User().FullName & Char(10) & User().Email
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =80
+      - S7_Emp:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =30
+            Text: ="表示中の作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択") & "（" & gblEmpID & "）"
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =132
+      - S7_Month:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Size: =12
+            Text: ="表示中の月：" & Text(gblMonth, "yyyy年m月")
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =170
+      - S7_GoMembers:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            HoverFill: =RGBA(0, 230, 115, 1)
+            OnSelect: =Navigate(S6_Members, ScreenTransition.None)
+            PressedFill: =RGBA(0, 160, 80, 1)
+            Text: ="作業員を切り替える（メンバー一覧）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =236
+      - S7_Reload:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            HoverFill: =RGBA(0, 230, 115, 1)
+            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("最新のデータを読み込みました", NotificationType.Success)
+            PressedFill: =RGBA(0, 160, 80, 1)
+            Text: ="データを再読み込み"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =300
+      - S7_ThisMonth:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            HoverFill: =RGBA(0, 230, 115, 1)
+            OnSelect: =Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("今月に戻しました", NotificationType.Information)
+            PressedFill: =RGBA(0, 160, 80, 1)
+            Text: ="表示を今月に戻す"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =364
+      - S7_Src:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =110
+            Size: =11
+            Text: ="データの保存先（SharePoint cleannano）" & Char(10) & "出勤：CN_勤怠明細台帳" & Char(10) & "作業員：CN_社員台帳" & Char(10) & "給与単価：CN_社員マスタ" & Char(10) & "現場：CN_現場台帳"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =432
+      - S7_NavBar:
+          Control: Rectangle@2.3.0
+          Properties:
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =70
+            Width: =Parent.Width
+            Y: =Parent.Height - 70
+      - S7_Nav1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="ホーム"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 0
+            Y: =Parent.Height - 70
+      - S7_Nav2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="カレンダー"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 1
+            Y: =Parent.Height - 70
+      - S7_Nav3:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="登録"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 2
+            Y: =Parent.Height - 70
+      - S7_Nav4:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(S4_Summary, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="集計"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 3
+            Y: =Parent.Height - 70
+      - S7_Nav5:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(S7_Settings, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="設定"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 4
+            Y: =Parent.Height - 70

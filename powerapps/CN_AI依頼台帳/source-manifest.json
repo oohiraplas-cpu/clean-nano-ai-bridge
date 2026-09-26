@@ -1,0 +1,22 @@
+{
+  "solution": "CN_AIIraiDaicho",
+  "appDisplayName": "CN_AI依頼台帳",
+  "files": [
+    "App.pa.yaml",
+    "MainScreen1.pa.yaml",
+    "S10_RegistrationComplete.pa.yaml",
+    "S11_Report.pa.yaml",
+    "S1_Home.pa.yaml",
+    "S2_Calendar.pa.yaml",
+    "S3_Register.pa.yaml",
+    "S4_Summary.pa.yaml",
+    "S5_Salary.pa.yaml",
+    "S6_Members.pa.yaml",
+    "S7_Settings.pa.yaml",
+    "S8_UserOnboarding.pa.yaml",
+    "S9_UserConfirm.pa.yaml",
+    "Screen1.pa.yaml",
+    "_EditorState.pa.yaml"
+  ],
+  "note": "Review-only artifact; not a Studio draft or proof of app ID parity"
+}

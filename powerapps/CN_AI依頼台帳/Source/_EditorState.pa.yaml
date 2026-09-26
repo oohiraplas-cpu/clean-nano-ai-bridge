@@ -6,6 +6,18 @@
 # 
 # For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
 # ************************************************************************************************
-App:
-  Properties:
-    Theme: =PowerAppsTheme
+EditorState:
+  ScreensOrder:
+    - MainScreen1
+    - Screen1
+    - S1_Home
+    - S2_Calendar
+    - S3_Register
+    - S4_Summary
+    - S5_Salary
+    - S6_Members
+    - S7_Settings
+    - S8_UserOnboarding
+    - S9_UserConfirm
+    - S10_RegistrationComplete
+    - S11_Report

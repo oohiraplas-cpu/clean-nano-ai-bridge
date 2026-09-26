@@ -1,0 +1,410 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S3_Register:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+      OnVisible: |-
+        =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
+        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
+        If(IsBlank(gblSelDate), Set(gblSelDate, Today()))
+    Children:
+      - S3_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =22
+            Text: ="出勤登録"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S3_Emp:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =26
+            Size: =12
+            Text: ="作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択")
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =60
+      - S3_DateCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =24
+            Size: =11
+            Text: ="日付"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =92
+      - S3_PrevDay:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            OnSelect: =Set(gblSelDate, DateAdd(gblSelDate, -1, TimeUnit.Days))
+            Size: =16
+            Text: ="＜"
+            Width: =48
+            X: =16
+            Y: =116
+      - S3_Date:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =16
+            Text: '=Text(gblSelDate, "yyyy/m/d") & "（" & Left(Text(gblSelDate, "dddd"), 1) & "）"  '
+            Width: =Parent.Width - 136
+            X: =68
+            Y: =116
+      - S3_NextDay:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            OnSelect: =Set(gblSelDate, DateAdd(gblSelDate, 1, TimeUnit.Days))
+            Size: =16
+            Text: ="＞"
+            Width: =48
+            X: =Parent.Width - 64
+            Y: =116
+      - S3_StatusCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =24
+            Size: =11
+            Text: ="勤務区分"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =168
+      - S3_Status:
+          Control: Classic/DropDown@2.3.1
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            ChevronBackground: =RGBA(0, 204, 102, 1)
+            ChevronFill: =RGBA(10, 10, 10, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: ="日勤"
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            Items: =["日勤", "夜勤", "早出", "残業"]
+            Items.Value: =Value
+            SelectionFill: =RGBA(0, 204, 102, 1)
+            Size: =14
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =192
+      - S3_TimeCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =24
+            Size: =11
+            Text: ="開始 ／ 終了"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =244
+      - S3_Start:
+          Control: Classic/DropDown@2.3.1
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            ChevronBackground: =RGBA(0, 204, 102, 1)
+            ChevronFill: =RGBA(10, 10, 10, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: ="08:00"
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            Items: =ForAll(Sequence(48, 0), Text(Time(0, Value * 30, 0), "hh:mm"))
+            Items.Value: =Value
+            SelectionFill: =RGBA(0, 204, 102, 1)
+            Size: =14
+            Width: =(Parent.Width - 40) / 2
+            X: =16
+            Y: =268
+      - S3_End:
+          Control: Classic/DropDown@2.3.1
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            ChevronBackground: =RGBA(0, 204, 102, 1)
+            ChevronFill: =RGBA(10, 10, 10, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: ="17:00"
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            Items: =ForAll(Sequence(48, 0), Text(Time(0, Value * 30, 0), "hh:mm"))
+            Items.Value: =Value
+            SelectionFill: =RGBA(0, 204, 102, 1)
+            Size: =14
+            Width: =(Parent.Width - 40) / 2
+            X: =24 + (Parent.Width - 40) / 2
+            Y: =268
+      - S3_BreakCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =24
+            Size: =11
+            Text: ="休憩（分）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =320
+      - S3_Break:
+          Control: Classic/DropDown@2.3.1
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            ChevronBackground: =RGBA(0, 204, 102, 1)
+            ChevronFill: =RGBA(10, 10, 10, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =60
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            Items: =[0, 30, 45, 60, 90]
+            Items.Value: =Value
+            SelectionFill: =RGBA(0, 204, 102, 1)
+            Size: =14
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =344
+      - S3_SiteCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =24
+            Size: =11
+            Text: ="現場"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =396
+      - S3_Site:
+          Control: Classic/DropDown@2.3.1
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            ChevronBackground: =RGBA(0, 204, 102, 1)
+            ChevronFill: =RGBA(10, 10, 10, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =""
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            Items: =Sort(CN_現場台帳, Title).Title
+            Items.Value: =Title
+            SelectionFill: =RGBA(0, 204, 102, 1)
+            Size: =14
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =420
+      - S3_NoteCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =24
+            Size: =11
+            Text: ="メモ"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =472
+      - S3_Note:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =""
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =44
+            HintText: ="任意"
+            Size: =14
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =496
+      - S3_Hours:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =30
+            Text: |-
+              =With({s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
+                  With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
+                      With({m: DateDiff(s, e, TimeUnit.Minutes) - S3_Break.Selected.Value},
+                          "勤務時間：" & RoundDown(m / 60, 0) & "時間" & Mod(m, 60) & "分" & If(e0 <= s, "（翌日終了）", ""))))
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =548
+      - S3_Save:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(10, 10, 10, 1)
+            DisabledFill: =RGBA(120, 120, 120, 1)
+            DisplayMode: =If(gblSaving, DisplayMode.Disabled, DisplayMode.Edit)
+            Fill: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            HoverFill: =RGBA(0, 230, 115, 1)
+            OnSelect: |-
+              =With({s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value), k: gblEmpID & "_" & Text(gblSelDate, "yyyymmdd")},
+                  With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
+                      If(
+                          IsBlank(gblEmpID), Notify("作業員が選択されていません", NotificationType.Error),
+                          IsBlank(S3_Site.Selected.Title), Notify("現場を選択してください", NotificationType.Error),
+                          DateDiff(s, e, TimeUnit.Minutes) - S3_Break.Selected.Value <= 0, Notify("勤務時間が0分以下です。時刻と休憩を確認してください", NotificationType.Error),
+                          !IsBlank(LookUp(CN_勤怠明細台帳, AttendanceKey = k)), Notify("この日はすでに登録されています", NotificationType.Error),
+                          Set(gblSaving, true);
+                          IfError(
+                              Patch(CN_勤怠明細台帳, Defaults(CN_勤怠明細台帳), {
+                                  Title: "出勤_" & k,
+                                  AttendanceKey: k,
+                                  DailyReportKey: "未連携",
+                                  EmployeeRecordKey: gblEmpID,
+                                  DeviceSubmissionId: GUID(),
+                                  RecordStatus: {Value: "Submitted"},
+                                  StartAt: s,
+                                  EndAt: e,
+                                  BreakMinutes: S3_Break.Selected.Value,
+                                  WorkStatus: {Value: S3_Status.Selected.Value},
+                                  SiteID: LookUp(CN_現場台帳, Title = S3_Site.Selected.Title).SiteID,
+                                  Notes: S3_Note.Text
+                              });
+                              Set(gblSaving, false);
+                              Notify("登録しました", NotificationType.Success);
+                              Reset(S3_Note);
+                              Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1));
+                              Navigate(S2_Calendar, ScreenTransition.None),
+                              Set(gblSaving, false);
+                              Notify("保存に失敗しました：" & FirstError.Message, NotificationType.Error)
+                          )
+                      )))
+            PressedFill: =RGBA(0, 160, 80, 1)
+            Size: =16
+            Text: ="登録する"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =586
+      - S3_NavBar:
+          Control: Rectangle@2.3.0
+          Properties:
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =70
+            Width: =Parent.Width
+            Y: =Parent.Height - 70
+      - S3_Nav1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="ホーム"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 0
+            Y: =Parent.Height - 70
+      - S3_Nav2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="カレンダー"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 1
+            Y: =Parent.Height - 70
+      - S3_Nav3:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="登録"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 2
+            Y: =Parent.Height - 70
+      - S3_Nav4:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: '=Navigate(S4_Summary, ScreenTransition.None) '
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="集計"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 3
+            Y: =Parent.Height - 70
+      - S3_Nav5:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =70
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
+            PressedFill: =RGBA(0, 204, 102, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =11
+            Text: ="設定"
+            Width: =Parent.Width / 5
+            X: =Parent.Width / 5 * 4
+            Y: =Parent.Height - 70
