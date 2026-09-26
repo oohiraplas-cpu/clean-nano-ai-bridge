@@ -220,7 +220,7 @@ test('Power Apps MCPメソッドを実行できる', async (t) => {
   assert.ok(stateResult.result.operationId);
 });
 
-test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保存確認する', async (t) => {
+test('save_powerapps_appはGitHub再書込なしで同期要求し実反映未検証を返す', async (t) => {
   const actions = [];
   const mockFetch = async (url, options = {}) => {
     if (url.includes('/oauth2/v2.0/token')) {
@@ -263,7 +263,9 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
   });
   assert.equal(saved.status, 200);
   const savedBody = await saved.json();
-  assert.equal(savedBody.result.status, 'ok');
+  assert.equal(savedBody.result.status, 'pending_verification');
+  assert.equal(savedBody.result.liveSourceVerified, false);
+  assert.equal(savedBody.result.pendingPublish, false);
   assert.equal(savedBody.result.sync.refresh.action, 'RefreshChangesFromGit');
   assert.equal(savedBody.result.sync.pull.action, 'PullChangesFromGit');
   assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
