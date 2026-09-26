@@ -1,0 +1,39 @@
+name: Restore missing CN AI source files to review branch
+on:
+  push:
+    branches:
+      - fix/cn-aiiraidaicho-add-s12-s13-review-20260927
+    paths:
+      - .github/workflows/cn-ai-missing-source-review.yml
+permissions:
+  actions: read
+  contents: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified extracted source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 36243366775 --repo "$GITHUB_REPOSITORY" --name CN_AIiraidaicho-extracted-source-review --dir /tmp/cn-source
+      - name: Copy only missing files and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=/tmp/cn-source/Source
+          dst='powerapps/CN_AI依頼台帳/Source'
+          for file in S12_Sites.pa.yaml S13_Apply.pa.yaml; do
+            test -s "$src/$file"
+            test ! -e "$dst/$file"
+            cp "$src/$file" "$dst/$file"
+            cmp "$src/$file" "$dst/$file"
+          done
+          git status --short
+      - name: Commit isolated missing files only
+        run: |
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add 'powerapps/CN_AI依頼台帳/Source/S12_Sites.pa.yaml' 'powerapps/CN_AI依頼台帳/Source/S13_Apply.pa.yaml'
+          git commit -m 'Add two verified missing CN AI source screens for review'
+          git push origin HEAD:fix/cn-aiiraidaicho-add-s12-s13-review-20260927
