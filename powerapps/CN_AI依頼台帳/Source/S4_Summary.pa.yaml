@@ -13,7 +13,7 @@ Screens:
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
         If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
     Children:
       - S4_Title:
           Control: Label@2.5.1
@@ -36,7 +36,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＜"
@@ -52,7 +52,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＞"
@@ -85,7 +85,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =36
             Size: =18
-            Text: ="出勤日数　" & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & " 日"
+            Text: ="出勤日数　" & CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & " 日"
             Width: =Parent.Width - 64
             X: =32
             Y: =108
@@ -96,7 +96,7 @@ Screens:
             Height: =30
             Size: =14
             Text: |-
-              ="総勤務時間　" & With({t: Sum(colAttend, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0))}, RoundDown(t / 60, 0) & "時間" & Mod(t, 60) & "分")
+              ="総勤務時間　" & With({t: Sum(colAttend, DateDiff(開始日時, 終了日時, TimeUnit.Minutes) - Coalesce(休憩分, 0))}, RoundDown(t / 60, 0) & "時間" & Mod(t, 60) & "分")
             Width: =Parent.Width - 64
             X: =32
             Y: =144
@@ -105,7 +105,7 @@ Screens:
           Properties:
             Color: =RGBA(255, 255, 255, 1)
             Height: =60
-            Text: ="日勤 " & CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) & "日　夜勤 " & CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) & "日　早出 " & CountRows(Filter(colAttend, WorkStatus.Value = "早出")) & "日　残業 " & CountRows(Filter(colAttend, WorkStatus.Value = "残業")) & "日"
+            Text: ="日勤 " & CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) & "日　夜勤 " & CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) & "日　早出 " & CountRows(Filter(colAttend, 勤務区分.Value = "早出")) & "日　残業 " & CountRows(Filter(colAttend, 勤務区分.Value = "残業")) & "日"
             Width: =Parent.Width - 64
             X: =32
             Y: =178
@@ -124,7 +124,7 @@ Screens:
           Variant: Vertical
           Properties:
             Height: =Parent.Height - 284 - 70 - 70
-            Items: =Sort(colAttend, StartAt)
+            Items: =Sort(colAttend, 開始日時)
             TemplatePadding: =2
             TemplateSize: =52
             Width: =Parent.Width - 32
@@ -144,7 +144,7 @@ Screens:
                   FontWeight: =FontWeight.Bold
                   Height: =Parent.TemplateHeight
                   Size: =12
-                  Text: =Text(ThisItem.StartAt, "m/d") & "（" & Left(Text(ThisItem.StartAt, "dddd"), 1) & "）"
+                  Text: =Text(ThisItem.開始日時, "m/d") & "（" & Left(Text(ThisItem.開始日時, "dddd"), 1) & "）"
                   Width: =90
                   X: =8
             - S4_RowStatus:
@@ -155,7 +155,7 @@ Screens:
                   Fill: =RGBA(0, 204, 102, 1)
                   Height: =26
                   Size: =11
-                  Text: =ThisItem.WorkStatus.Value
+                  Text: =ThisItem.勤務区分.Value
                   Width: =50
                   X: =98
                   Y: =12
@@ -165,7 +165,7 @@ Screens:
                   Color: =RGBA(255, 255, 255, 1)
                   Height: =Parent.TemplateHeight
                   Size: =11
-                  Text: =Text(ThisItem.StartAt, "hh:mm") & "-" & Text(ThisItem.EndAt, "hh:mm") & "　" & Coalesce(LookUp(CN_現場台帳, SiteID = ThisItem.SiteID).Title, ThisItem.SiteID)
+                  Text: =Text(ThisItem.開始日時, "hh:mm") & "-" & Text(ThisItem.終了日時, "hh:mm") & "　" & Coalesce(LookUp(CN_現場台帳, SiteID = ThisItem.現場ID).Title, ThisItem.現場ID)
                   Width: =Parent.TemplateWidth - 164
                   X: =156
       - S4_GoSalary:

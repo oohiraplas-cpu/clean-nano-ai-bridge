@@ -87,7 +87,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("最新のデータを読み込みました", NotificationType.Success)
+            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("最新のデータを読み込みました", NotificationType.Success)
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="データを再読み込み"
             Width: =Parent.Width - 32
@@ -102,7 +102,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("今月に戻しました", NotificationType.Information)
+            OnSelect: =Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("今月に戻しました", NotificationType.Information)
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="表示を今月に戻す"
             Width: =Parent.Width - 32

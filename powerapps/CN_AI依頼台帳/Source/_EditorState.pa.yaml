@@ -11,8 +11,6 @@ EditorState:
     - MainScreen1
     - Screen1
     - S1_Home
-    - S2_Calendar
-    - S3_Register
     - S4_Summary
     - S5_Salary
     - S6_Members
@@ -21,3 +19,7 @@ EditorState:
     - S9_UserConfirm
     - S10_RegistrationComplete
     - S11_Report
+    - S12_Sites
+    - S13_Apply
+    - S3_Register
+    - S2_Calendar

@@ -13,7 +13,7 @@ Screens:
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
         If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
     Children:
       - S1_Title:
           Control: Label@2.5.1
@@ -50,7 +50,7 @@ Screens:
             Items.Value: =Title
             OnChange: |-
               =Set(gblEmpID, LookUp(CN_社員台帳, Title = Self.Selected.Title).EmployeeID);
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
             SelectionFill: =RGBA(0, 204, 102, 1)
             Size: =14
             Width: =Parent.Width - 32
@@ -92,7 +92,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =72
             Size: =36
-            Text: =CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & " 日"
+            Text: =CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & " 日"
             Width: =Parent.Width - 64
             X: =32
             Y: =258
@@ -125,9 +125,9 @@ Screens:
               =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)},
                   If(IsBlank(m), "社員マスタ未登録",
                       Text(
-                          CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0)
-                          + CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0)
-                          + CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0),
+                          CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) * Coalesce(m.日勤手当, 0)
+                          + CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) * Coalesce(m.夜勤手当, 0)
+                          + CountRows(Filter(colAttend, 勤務区分.Value = "早出")) * Coalesce(m.早出手当, 0),
                           "¥#,##0")))
             Width: =Parent.Width - 64
             X: =32

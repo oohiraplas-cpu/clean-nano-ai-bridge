@@ -1,0 +1,175 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S12_Sites:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+      OnVisible: |-
+        =UpdateContext({locSiteFilter: "すべて"})
+    Children:
+      - S12_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: =Navigate(MainScreen1, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 1)
+            Size: =13
+            Text: ="← ホーム"
+            Width: =140
+            X: =16
+            Y: =16
+      - S12_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =22
+            Text: ="現場一覧"
+            Width: =Parent.Width - 188
+            X: =172
+            Y: =16
+      - S12_FilterAll:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =If(locSiteFilter = "すべて", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+            Fill: =If(locSiteFilter = "すべて", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+            FontWeight: =FontWeight.Bold
+            Height: =36
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: |-
+              =UpdateContext({locSiteFilter: "すべて"})
+            Size: =12
+            Text: ="すべて"
+            Width: =110
+            X: =16
+            Y: =72
+      - S12_FilterActive:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =If(locSiteFilter = "稼働中", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+            Fill: =If(locSiteFilter = "稼働中", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+            FontWeight: =FontWeight.Bold
+            Height: =36
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: |-
+              =UpdateContext({locSiteFilter: "稼働中"})
+            Size: =12
+            Text: ="稼働中"
+            Width: =110
+            X: =134
+            Y: =72
+      - S12_FilterOther:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =If(locSiteFilter = "その他", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+            Fill: =If(locSiteFilter = "その他", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+            FontWeight: =FontWeight.Bold
+            Height: =36
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
+            OnSelect: |-
+              =UpdateContext({locSiteFilter: "その他"})
+            Size: =12
+            Text: ="稼働中以外"
+            Width: =110
+            X: =252
+            Y: =72
+      - S12_Count:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Right
+            Color: =RGBA(160, 160, 160, 1)
+            Height: =36
+            Size: =12
+            Text: ="全 " & CountRows(S12_List.AllItems) & " 件"
+            Width: =200
+            X: =Parent.Width - 216
+            Y: =72
+      - S12_List:
+          Control: Gallery@2.15.0
+          Variant: Vertical
+          Properties:
+            Height: =Parent.Height - 124 - 16
+            Items: |-
+              =Sort(
+                  Filter(
+                      CN_現場台帳,
+                      locSiteFilter = "すべて" ||
+                      (locSiteFilter = "稼働中" && SiteStatus.Value = "稼働中") ||
+                      (locSiteFilter = "その他" && SiteStatus.Value <> "稼働中")
+                  ),
+                  Title
+              )
+            TemplateFill: =RGBA(26, 58, 42, 1)
+            TemplatePadding: =3
+            TemplateSize: =72
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =124
+          Children:
+            - S12_ItemName:
+                Control: Label@2.5.1
+                Properties:
+                  Color: =RGBA(255, 255, 255, 1)
+                  FontWeight: =FontWeight.Bold
+                  Height: =32
+                  Size: =15
+                  Text: =ThisItem.Title
+                  Width: =Parent.TemplateWidth - 180
+                  X: =16
+                  Y: =6
+            - S12_ItemId:
+                Control: Label@2.5.1
+                Properties:
+                  Color: =RGBA(160, 160, 160, 1)
+                  Height: =26
+                  Size: =11
+                  Text: |-
+                    ="現場ID: " & ThisItem.SiteID
+                  Width: =Parent.TemplateWidth - 180
+                  X: =16
+                  Y: =38
+            - S12_ItemStatus:
+                Control: Label@2.5.1
+                Properties:
+                  Align: =Align.Center
+                  Color: =If(ThisItem.SiteStatus.Value = "稼働中", RGBA(10, 10, 10, 1), RGBA(255, 255, 255, 1))
+                  Fill: =If(ThisItem.SiteStatus.Value = "稼働中", RGBA(0, 204, 102, 1), RGBA(90, 90, 90, 1))
+                  FontWeight: =FontWeight.Bold
+                  Height: =32
+                  Size: =12
+                  Text: =If(IsBlank(ThisItem.SiteStatus.Value), "未設定", ThisItem.SiteStatus.Value)
+                  Width: =130
+                  X: =Parent.TemplateWidth - 146
+                  Y: =(Parent.TemplateHeight - 32) / 2
+      - S12_Empty:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(160, 160, 160, 1)
+            Text: ="該当する現場はありません"
+            Visible: =CountRows(S12_List.AllItems) = 0
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =160

@@ -11,9 +11,10 @@ Screens:
     Properties:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
-        =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
+        =If(IsBlank(gblCalType), Set(gblCalType, "解体"));
+        If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
         If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, WorkType.Value = gblCalType, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
     Children:
       - S2_Title:
           Control: Label@2.5.1
@@ -36,7 +37,7 @@ Screens:
             Height: =50
             OnSelect: |-
               =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months));
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, WorkType.Value = gblCalType, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
             Size: =18
             Text: ="＜"
             Width: =50
@@ -51,7 +52,7 @@ Screens:
             Height: =50
             OnSelect: |-
               =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months));
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, WorkType.Value = gblCalType, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
             Size: =18
             Text: ="＞"
             Width: =50
@@ -64,7 +65,7 @@ Screens:
             Color: =RGBA(120, 120, 120, 1)
             Height: =28
             Size: =12
-            Text: ="作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択")
+            Text: =If(gblCalType = "運営", "運営カレンダー：全作業員の合計（解体＋設備）", gblCalType & "カレンダー　作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択"))
             Width: =Parent.Width - 32
             X: =16
             Y: =70
@@ -98,7 +99,8 @@ Screens:
             Height: =Min((Parent.Width - 32) / 7 * 6 + 12, Parent.Height - 134 - 70 - 60)
             Items: |-
               =ForAll(Sequence(42, 0), {d: DateAdd(gblMonth, Value - Weekday(gblMonth) + 1, TimeUnit.Days)})
-            OnSelect: =Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None)
+            OnSelect: |-
+              =If(gblCalType = "運営", With({f: Filter(colOps, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd"))}, Notify(Text(ThisItem.d, "m/d") & "　稼働 " & CountRows(f) & "名（解体 " & CountRows(Filter(f, WorkType.Value = "解体")) & "・設備 " & CountRows(Filter(f, WorkType.Value = "設備")) & "）　早出 " & CountRows(Filter(f, WorkStatus.Value = "早出")) & "件　残業 " & CountRows(Filter(f, WorkStatus.Value = "残業")) & "件", NotificationType.Information)), Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None))
             ShowScrollbar: =false
             TemplatePadding: =2
             TemplateSize: =Min((Parent.Width - 32) / 7, (Parent.Height - 134 - 70 - 60 - 12) / 6)
@@ -140,7 +142,8 @@ Screens:
                   Height: =22
                   OnSelect: '=Select(Parent)  '
                   Size: =10
-                  Text: =LookUp(colAttend, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).WorkStatus.Value
+                  Text: |-
+                    =If(gblCalType = "運営", With({n: CountRows(Filter(colOps, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")))}, If(n > 0, "稼働 " & n & "名", "")), LookUp(colAttend, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).WorkStatus.Value)
                   Width: =Parent.TemplateWidth
                   Y: =Parent.TemplateHeight - 26
       - S2_Sum:
@@ -150,7 +153,7 @@ Screens:
             Color: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
             Size: =15
-            Text: ="今月の出勤：" & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & " 日"
+            Text: =If(gblCalType = "運営", "今月 延べ稼働 " & CountRows(colOps) & " 人日　早出 " & CountRows(Filter(colOps, WorkStatus.Value = "早出")) & " 件　残業 " & CountRows(Filter(colOps, WorkStatus.Value = "残業")) & " 件　売上・経費：未連携", "今月の出勤（" & gblCalType & "）：" & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & " 日")
             Width: =Parent.Width - 32
             X: =16
             Y: =Parent.Height - 70 - 50
@@ -266,3 +269,49 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
             Y: =Parent.Height - 70
+      - S2_Type0:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =If(gblCalType = "解体", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+            Fill: =If(gblCalType = "解体", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+            FontWeight: =FontWeight.Bold
+            Height: =30
+            OnSelect: =Set(gblCalType, "解体"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, WorkType.Value = gblCalType, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
+            Size: =11
+            Text: ="解体"
+            Width: =96
+            X: =Parent.Width - 16 - 96 * 3 - 8 * 2
+            Y: =68
+      - S2_Type1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =If(gblCalType = "設備", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+            Fill: =If(gblCalType = "設備", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+            FontWeight: =FontWeight.Bold
+            Height: =30
+            OnSelect: =Set(gblCalType, "設備"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, WorkType.Value = gblCalType, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
+            Size: =11
+            Text: ="設備"
+            Width: =96
+            X: =Parent.Width - 16 - 96 * 2 - 8 * 1
+            Y: =68
+      - S2_Type2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =If(gblCalType = "運営", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+            Fill: =If(gblCalType = "運営", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+            FontWeight: =FontWeight.Bold
+            Height: =30
+            OnSelect: =Set(gblCalType, "運営"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, WorkType.Value = gblCalType, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
+            Size: =11
+            Text: ="運営"
+            Visible: =Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Width: =96
+            X: =Parent.Width - 16 - 96 * 1 - 8 * 0
+            Y: =68

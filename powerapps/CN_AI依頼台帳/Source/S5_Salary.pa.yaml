@@ -13,7 +13,7 @@ Screens:
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
         If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
     Children:
       - S5_Title:
           Control: Label@2.5.1
@@ -36,7 +36,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＜"
@@ -52,7 +52,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＞"
@@ -114,7 +114,7 @@ Screens:
           Properties:
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
-            Text: ="日勤手当 × " & CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) & "日"
+            Text: ="日勤手当 × " & CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) & "日"
             Width: =(Parent.Width - 64) / 2
             X: =32
             Y: =146
@@ -125,7 +125,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: |-
-              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0), "¥#,##0"))
+              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) * Coalesce(m.日勤手当, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
             Y: =146
@@ -134,7 +134,7 @@ Screens:
           Properties:
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
-            Text: ="夜勤手当 × " & CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) & "日"
+            Text: ="夜勤手当 × " & CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) & "日"
             Width: =(Parent.Width - 64) / 2
             X: =32
             Y: =180
@@ -145,7 +145,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: |-
-              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0), "¥#,##0"))
+              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) * Coalesce(m.夜勤手当, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
             Y: =180
@@ -154,7 +154,7 @@ Screens:
           Properties:
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
-            Text: ="早出手当 × " & CountRows(Filter(colAttend, WorkStatus.Value = "早出")) & "日"
+            Text: ="早出手当 × " & CountRows(Filter(colAttend, 勤務区分.Value = "早出")) & "日"
             Width: =(Parent.Width - 64) / 2
             X: =32
             Y: =214
@@ -165,7 +165,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: |-
-              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0), "¥#,##0"))
+              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, 勤務区分.Value = "早出")) * Coalesce(m.早出手当, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
             Y: =214
@@ -227,7 +227,7 @@ Screens:
             Height: =50
             Size: =26
             Text: |-
-              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(Coalesce(m.基本給, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0) - Coalesce(m.税金控除, 0) - Coalesce(m.保険控除, 0), "¥#,##0"))
+              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(Coalesce(m.基本給, 0) + CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) * Coalesce(m.日勤手当, 0) + CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) + CountRows(Filter(colAttend, 勤務区分.Value = "早出")) * Coalesce(m.早出手当, 0) - Coalesce(m.税金控除, 0) - Coalesce(m.保険控除, 0), "¥#,##0"))
             Width: =Parent.Width - 64
             X: =32
             Y: =370
@@ -237,7 +237,7 @@ Screens:
             Color: =RGBA(120, 120, 120, 1)
             Height: =70
             Size: =11
-            Text: ="※残業 " & CountRows(Filter(colAttend, WorkStatus.Value = "残業")) & "日分は単価の列がないため金額に含めていません。表示は見込みで、正式な給与計算ではありません。"
+            Text: ="※残業 " & CountRows(Filter(colAttend, 勤務区分.Value = "残業")) & "日分は単価の列がないため金額に含めていません。表示は見込みで、正式な給与計算ではありません。"
             Width: =Parent.Width - 32
             X: =16
             Y: =440

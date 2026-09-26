@@ -43,7 +43,7 @@ Screens:
             Items: =Sort(CN_社員台帳, Title)
             OnSelect: |-
               =Set(gblEmpID, ThisItem.EmployeeID);
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
+              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)));
               Navigate(S1_Home, ScreenTransition.None)
             TemplatePadding: =3
             TemplateSize: =72

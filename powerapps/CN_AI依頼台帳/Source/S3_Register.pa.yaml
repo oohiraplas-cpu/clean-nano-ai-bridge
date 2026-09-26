@@ -22,7 +22,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =44
             Size: =22
-            Text: ="出勤登録"
+            Text: ="出勤登録（" & If(gblCalType = "設備", "設備", "解体") & "）"
             Width: =Parent.Width - 32
             X: =16
             Y: =16
@@ -278,6 +278,7 @@ Screens:
                                   EndAt: e,
                                   BreakMinutes: S3_Break.Selected.Value,
                                   WorkStatus: {Value: S3_Status.Selected.Value},
+                                  WorkType: {Value: If(gblCalType = "設備", "設備", "解体")},
                                   SiteID: LookUp(CN_現場台帳, Title = S3_Site.Selected.Title).SiteID,
                                   Notes: S3_Note.Text
                               });

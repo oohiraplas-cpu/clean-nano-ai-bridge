@@ -379,7 +379,7 @@ Screens:
             DisabledFill: =RGBA(242, 242, 241, 0)
             Fill: =RGBA(0, 120, 212, 1)
             Font: =Font.'Segoe UI'
-            Height: =69
+            Height: =63
             HoverBorderColor: =RGBA(0, 0, 0, 0)
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(16, 110, 190, 1)
@@ -391,9 +391,9 @@ Screens:
             RadiusTopLeft: =0
             RadiusTopRight: =0
             Text: ="➕ 新規"
-            Width: =333
-            Y: =430
-      - Button4:
+            Width: =423
+            Y: =436
+      - 電子日報:
           Control: Classic/Button@2.2.0
           Properties:
             BorderColor: =RGBA(0, 0, 0, 0)

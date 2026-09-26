@@ -9,7 +9,7 @@
 Screens:
   MainScreen1:
     Properties:
-      BackgroundImage: ='20260922_185456027_iOS'
+      BackgroundImage: ='20260920_175559784_iOS'
       Fill: '=RGBA(6, 18, 10, 1)  '
       LoadingSpinnerColor: =RGBA(0, 120, 212, 1)
     Children:
@@ -2477,15 +2477,14 @@ Screens:
             DisabledBorderColor: =RGBA(0, 0, 0, 0)
             DisabledFill: =RGBA(0, 0, 0, 0)
             FocusedBorderThickness: =4
-            Height: '=Self.Width * 3 / 2  '
+            Height: =768
             HoverBorderColor: =RGBA(0, 0, 0, 0)
             HoverFill: =RGBA(0, 0, 0, 0)
             Image: ='20260922_185456027_iOS'
             ImagePosition: '=ImagePosition.Stretch   '
             PressedBorderColor: =RGBA(0, 0, 0, 0)
             PressedFill: =RGBA(0, 0, 0, 0)
-            Width: '=Min(Parent.Width, Parent.Height * 2 / 3)    '
-            X: '=Parent.Width / 2 - Self.Width / 2   '
+            Width: =600
             Y: '=Parent.Height / 2 - Self.Height / 2 '
       - btnHomeCalendar:
           Control: Classic/Button@2.2.0
@@ -2583,3 +2582,147 @@ Screens:
             Width: =Image2.Width * 0.222
             X: =Image2.X + Image2.Width * 0.27
             Y: =Image2.Y + Image2.Height * 0.512
+      - mydata:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.121
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.225
+            X: =Image2.X + Image2.Width * 0.27
+            Y: =Image2.Y + Image2.Height * 0.382
+      - btnHomeExpense:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.121
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Notify("経費は準備中です", NotificationType.Information)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.225
+            X: =Image2.X + Image2.Width * 0.511
+            Y: =Image2.Y + Image2.Height * 0.382
+      - 車両情報:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.121
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Notify("車両情報は準備中です", NotificationType.Information)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.225
+            X: =Image2.X + Image2.Width * 0.752
+            Y: =Image2.Y + Image2.Height * 0.382
+      - 現場一覧:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.119
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Navigate(S12_Sites, ScreenTransition.None)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.225
+            X: =Image2.X + Image2.Width * 0.026
+            Y: =Image2.Y + Image2.Height * 0.512
+      - 社内連絡:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.119
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Notify("社内連絡は準備中です", NotificationType.Information)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.225
+            X: =Image2.X + Image2.Width * 0.511
+            Y: =Image2.Y + Image2.Height * 0.512
+      - btnNavHome:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.076
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Navigate(MainScreen1, ScreenTransition.None)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.11
+            X: =Image2.X + Image2.Width * 0.005
+            Y: =Image2.Y + Image2.Height * 0.898
+      - 申請:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.076
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.11
+            X: =Image2.X + Image2.Width * 0.272
+            Y: =Image2.Y + Image2.Height * 0.898
+      - 経費:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.076
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Notify("経費は準備中です", NotificationType.Information)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.11
+            X: =Image2.X + Image2.Width * 0.389
+            Y: =Image2.Y + Image2.Height * 0.898
+      - 車両申請:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =Image2.Height * 0.076
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Notify("車両情報は準備中です", NotificationType.Information)
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Text: =""
+            Width: =Image2.Width * 0.11
+            X: =Image2.X + Image2.Width * 0.507
+            Y: =Image2.Y + Image2.Height * 0.898
