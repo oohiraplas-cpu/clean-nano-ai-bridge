@@ -48,6 +48,9 @@ jobs:
           dst.mkdir(parents=True, exist_ok=True)
           with zipfile.ZipFile(src) as solution:
               if solution.testzip(): raise SystemExit('Invalid solution archive')
+              required = {'solution.xml', 'customizations.xml', '[Content_Types].xml'}
+              missing = required.difference(solution.namelist())
+              if missing: raise SystemExit(f'Invalid Power Platform solution: missing root files {sorted(missing)}')
               meta = solution.read('solution.xml').decode('utf-8-sig')
               if '<UniqueName>CN_AIIraiDaicho</UniqueName>' not in meta:
                   raise SystemExit('Unexpected solution unique name')
