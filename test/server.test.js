@@ -220,27 +220,21 @@ test('Power Apps MCPメソッドを実行できる', async (t) => {
   assert.ok(stateResult.result.operationId);
 });
 
-test('save_powerapps_appはGitHub再書込なしで同期要求し実反映未検証を返す', async (t) => {
+test('save_powerapps_appは実反映と復元の検証がない場合はGit同期を一切実行しない', async (t) => {
   const actions = [];
-  const mockFetch = async (url, options = {}) => {
+  const mockFetch = async (url) => {
     if (url.includes('/oauth2/v2.0/token')) {
       return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
     }
     if (url.endsWith('/RefreshChangesFromGit') || url.endsWith('/PullChangesFromGit')) {
-      actions.push(url.split('/').pop());
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    }
-    if (url.includes('/canvasapps(')) {
-      return new Response(JSON.stringify({ displayname: 'Test App', appversion: '1.1' }), { status: 200 });
+      actions.push(url);
+      throw new Error('mutating Git sync must not be called');
     }
     if (url.includes('/solutions?')) {
       return new Response(JSON.stringify({ value: [{
         solutionid: 'solution-1', uniquename: 'ActualSolution',
         friendlyname: 'Actual Solution', version: '1.0.0.0', ismanaged: false
       }] }), { status: 200 });
-    }
-    if (url.includes('/apps/test-app')) {
-      return new Response(JSON.stringify({ properties: { displayName: 'Test App', appVersion: '1.1' } }), { status: 200 });
     }
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
   };
@@ -249,26 +243,73 @@ test('save_powerapps_appはGitHub再書込なしで同期要求し実反映未�
     fetchImpl: mockFetch,
     powerAppsOverrides: {
       orgUrl: 'https://example.crm.dynamics.com',
-      solutionUniqueName: 'CN_CompanyOS',
+      solutionUniqueName: 'ActualSolution',
       sourceAppId: 'test-app', sourceEnvironmentId: 'test-env',
       githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo'
     }
   });
   t.after(() => server.close());
-
-  const saved = await fetch(`${server.baseUrl}/mcp`, {
+  const response = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
     body: JSON.stringify({ method: 'save_powerapps_app', params: {} })
   });
-  assert.equal(saved.status, 200);
-  const savedBody = await saved.json();
-  assert.equal(savedBody.result.status, 'pending_verification');
-  assert.equal(savedBody.result.liveSourceVerified, false);
-  assert.equal(savedBody.result.pendingPublish, false);
-  assert.equal(savedBody.result.sync.refresh.action, 'RefreshChangesFromGit');
-  assert.equal(savedBody.result.sync.pull.action, 'PullChangesFromGit');
-  assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.match(body.error, /保存停止/);
+  assert.deepEqual(actions, []);
+});
+
+test('編集は隔離ブランチのGitHubだけに記録し本番同期と公開を呼ばない', async (t) => {
+  const requests = [];
+  const mockFetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    requests.push({ url, method, body: options.body });
+    if (url.includes('/contents/')) {
+      if (method === 'GET') return new Response(JSON.stringify({
+        type: 'file', sha: 'previous-sha',
+        content: Buffer.from('before', 'utf8').toString('base64')
+      }), { status: 200 });
+      if (method === 'PUT') return new Response(JSON.stringify({
+        commit: { sha: 'staged-commit' }, content: { sha: 'new-content' }
+      }), { status: 200 });
+    }
+    throw new Error('Unexpected upstream call: ' + url);
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    fetchImpl: mockFetch,
+    powerAppsOverrides: {
+      sourceAppId: 'test-app', sourceEnvironmentId: 'test-env',
+      githubToken: 'test-token', githubOwner: 'owner', githubRepo: 'repo',
+      githubBranch: 'work/cn-aiiraidaicho-stage-20260927',
+      githubRoot: 'powerapps/CN_AI依頼台帳/Source'
+    }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'update_powerapps_app',
+      params: { relativePath: 'S9_UserConfirm.pa.yaml', content: 'after', message: 'stage test' }
+    })
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.result.status, 'staged');
+  assert.equal(body.result.productionChanged, false);
+  assert.equal(body.result.commitSha, 'staged-commit');
+  assert.equal(requests.filter(r => r.method === 'PUT').length, 1);
+  assert.ok(requests.every(r => r.url.startsWith('https://api.github.com/')));
+  assert.ok(JSON.parse(requests.find(r => r.method === 'PUT').body).branch === 'work/cn-aiiraidaicho-stage-20260927');
+  const publish = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'publish_powerapps_app', params: {} })
+  });
+  assert.equal(publish.status, 400);
+  assert.match((await publish.json()).error, /公開停止/);
+  assert.equal(requests.length, 2);
 });
 
 test('ソースと操作対象が不一致なら更新・保存・公開は書き込み前に止まる', async (t) => {

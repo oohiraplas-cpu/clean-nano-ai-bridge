@@ -150,7 +150,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'update_powerapps_app',
-    description: '既存Power Appsアプリを更新します。ソース更新時はGitHubへ保存後、Power Platformへ同期します。',
+    description: 'CN_AI依頼台帳のソース変更を隔離GitHubブランチへ仮保存します。本番Power Appsへの同期・保存・公開は行いません。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -373,24 +373,29 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    if (params.updateData) return powerAppsStore.updateApp(params.updateData);
+    // Source edits are staged on the isolated Git branch only. Never write live Dataverse here.
+    if (params.updateData) throw requestError('本番アプリ管理APIの直接更新は停止中です。');
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    return withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
+    if (!powerAppsGitStore.githubBranch === 'work/cn-aiiraidaicho-stage-20260927') {
+      throw requestError('編集停止: 隔離済み17ファイルのブランチではありません。');
+    }
+    const staged = await withUpstreamErrorStatus(powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message));
+    return { ...staged, status: 'staged', productionChanged: false, note: 'GitHub隔離ブランチのみ更新。本番Power Appsは未変更。' };
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
-    const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
-    const saved = await powerAppsStore.saveApp();
-    return { ...saved, status: 'pending_verification', liveSourceVerified: false, pendingPublish: false, sync: { refresh, pull }, message: 'Git同期を要求しました。Power Apps画面ソースの実反映は未検証です。保存完了・公開可能とは判断しないでください。' };
+    // Fail closed: neither a backup artifact nor a Git SHA proves that the live Canvas app
+    // matches this source, and the solution restore path has not been tested.
+    // This branch intentionally performs no Dataverse refresh/pull or live save.
+    throw requestError('保存停止: 本番Canvasソース一致と復元テストが未確認です。変更は実行していません。');
   }
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    return powerAppsStore.publishApp();
+    throw requestError('公開停止: 本番保存の独立検証と復元テストが未完了です。');
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
