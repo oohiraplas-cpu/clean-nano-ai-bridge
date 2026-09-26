@@ -53,10 +53,10 @@ jobs:
                   props = json.loads(app.read('Properties.json'))
                   if props.get('Name') != 'CN_AI依頼台帳':
                       raise SystemExit('Unexpected Canvas App display name')
-                  names = [n for n in app.namelist() if n.startswith('Src\\\\') and n.endswith('.pa.yaml')]
+                  names = [n for n in app.namelist() if n.startswith('Src\\') and n.endswith('.pa.yaml')]
                   if not names: raise SystemExit('No Canvas App YAML source found')
                   for name in names:
-                      basename = name.rsplit('\\\\', 1)[-1]
+                      basename = name.rsplit('\\', 1)[-1]
                       (dst / basename).write_bytes(app.read(name))
                   (dst.parent / 'source-manifest.json').write_text(json.dumps({
                       'solution': 'CN_AIIraiDaicho',
