@@ -1,3 +1,4 @@
+const { assertCnAiTarget } = require('./config');
 /**
  * Power Apps管理モジュール - エンタープライズコンパクト版
  */
@@ -138,6 +139,13 @@ class PowerAppsStore {
     this.clientId = config.clientId || '';
     this.clientSecret = config.clientSecret || '';
     this.environmentId = config.environmentId || '';
+    this.target = {
+      POWERAPPS_APP_ID: config.appId,
+      POWERAPPS_ENVIRONMENT_ID: config.environmentId,
+      POWERAPPS_ORG_URL: config.orgUrl,
+      POWERAPPS_SOLUTION_UNIQUE_NAME: config.solutionUniqueName,
+      POWERAPPS_GITHUB_ROOT: config.githubRoot
+    };
     this.appId = config.appId || '';
     this.orgUrl = (config.orgUrl || '').replace(/\/$/, '');
     this.logPath = config.logPath || 'data/powerapps-operations.jsonl';
@@ -320,6 +328,7 @@ class PowerAppsStore {
   }
 
   async updateApp(updateData) {
+    assertCnAiTarget(this.target);
     if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
     if (!updateData || typeof updateData !== 'object') throw new Error('updateDataはオブジェクトが必要です');
     const operationId = crypto.randomUUID();
@@ -346,6 +355,7 @@ class PowerAppsStore {
   }
 
   async saveApp() {
+    assertCnAiTarget(this.target);
     if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
     const operationId = crypto.randomUUID();
     try {
@@ -362,6 +372,7 @@ class PowerAppsStore {
   }
 
   async publishApp() {
+    assertCnAiTarget(this.target);
     if (!this.environmentId || !this.appId) throw new Error('environmentIdおよびappIdが未設定です');
     const operationId = crypto.randomUUID();
     try {

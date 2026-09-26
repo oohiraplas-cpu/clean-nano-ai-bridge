@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { PowerAppsGitStore } = require('../src/powerAppsGitStore');
+const { CN_AI_TARGET } = require('../src/config');
 
 test('Power Appsソース更新後にPower Platformへ同期する', async () => {
   const calls = [];
@@ -30,9 +31,10 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
 
   const store = new PowerAppsGitStore({
     tenantId: 'tenant', clientId: 'client', clientSecret: 'secret',
-    orgUrl: 'https://example.crm.dynamics.com', solutionUniqueName: 'CN_CompanyOS',
+    orgUrl: CN_AI_TARGET.orgUrl, solutionUniqueName: CN_AI_TARGET.solutionUniqueName,
+    appId: CN_AI_TARGET.appId, environmentId: CN_AI_TARGET.environmentId,
     githubToken: 'github-token', githubOwner: 'owner', githubRepo: 'repo',
-    githubBranch: 'main', githubRoot: 'powerapps/app/Source', fetchImpl
+    githubBranch: 'main', githubRoot: CN_AI_TARGET.githubRoot, fetchImpl
   });
 
   const result = await store.applySourceFileChange('App.pa.yaml', 'new', 'sync source');
@@ -45,4 +47,18 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
     calls.filter(({ url }) => url.includes('api/data/v9.2')).map(({ url }) => url.split('/').pop()),
     ['RefreshChangesFromGit', 'PullChangesFromGit']
   );
+});
+
+test('mismatched target blocks source write before any network call', async () => {
+  let calls = 0;
+  const store = new PowerAppsGitStore({
+    appId: 'wrong-app', environmentId: CN_AI_TARGET.environmentId,
+    orgUrl: CN_AI_TARGET.orgUrl, solutionUniqueName: CN_AI_TARGET.solutionUniqueName,
+    githubRoot: CN_AI_TARGET.githubRoot,
+    fetchImpl: async () => { calls++; throw new Error('must not call network'); }
+  });
+  await assert.rejects(store.updateSourceFile('App.pa.yaml', 'changed'), /CN_AI target mismatch/);
+  await assert.rejects(store.refreshFromGit(), /CN_AI target mismatch/);
+  await assert.rejects(store.pullFromGit(), /CN_AI target mismatch/);
+  assert.equal(calls, 0);
 });

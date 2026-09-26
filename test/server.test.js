@@ -1,3 +1,4 @@
+const { CN_AI_TARGET } = require('../src/config');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -235,11 +236,11 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     }
     if (url.includes('/solutions?')) {
       return new Response(JSON.stringify({ value: [{
-        solutionid: 'solution-1', uniquename: 'ActualSolution',
+        solutionid: 'solution-1', uniquename: CN_AI_TARGET.solutionUniqueName,
         friendlyname: 'Actual Solution', version: '1.0.0.0', ismanaged: false
       }] }), { status: 200 });
     }
-    if (url.includes('/apps/test-app')) {
+    if (url.includes(`/apps/${CN_AI_TARGET.appId}`)) {
       return new Response(JSON.stringify({ properties: { displayName: 'Test App', appVersion: '1.1' } }), { status: 200 });
     }
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
@@ -248,8 +249,11 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     mcpApiKey: 'mcp-secret',
     fetchImpl: mockFetch,
     powerAppsOverrides: {
-      orgUrl: 'https://example.crm.dynamics.com',
-      solutionUniqueName: 'CN_CompanyOS',
+      orgUrl: CN_AI_TARGET.orgUrl,
+      solutionUniqueName: CN_AI_TARGET.solutionUniqueName,
+      appId: CN_AI_TARGET.appId,
+      environmentId: CN_AI_TARGET.environmentId,
+      githubRoot: CN_AI_TARGET.githubRoot,
       githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo'
     }
   });
