@@ -3,6 +3,13 @@ const path = require('node:path');
 const DEFAULT_ORIGINS = ['http://localhost:3000'];
 const DEFAULT_POWERAPPS_ORG_URL = ''; // Fail closed: explicit CN_AI target required
 const DEFAULT_POWERAPPS_SOLUTION = ''; // Never silently select another solution
+const CN_AI_TARGET = Object.freeze({
+  appId: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e',
+  environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb',
+  orgUrl: 'https://org0bbb24c5.crm7.dynamics.com',
+  solutionUniqueName: 'CN_AIIraiDaicho',
+  githubRoot: 'powerapps/CN_AI依頼台帳/Source'
+});
 
 // POWER_AUTOMATE_FLOWSはJSON文字列（{"flowKey": "トリガーURL"}）としてのみ環境変数で渡す。
 // パース不能・未設定の場合は空オブジェクト扱いとし、起動を落とさない。
@@ -14,6 +21,20 @@ function parsePowerAutomateFlows(value) {
   } catch {
     return {};
   }
+}
+
+function assertCnAiTarget(env) {
+  const actual = {
+    appId: env.POWERAPPS_APP_ID,
+    environmentId: env.POWERAPPS_ENVIRONMENT_ID,
+    orgUrl: env.POWERAPPS_ORG_URL?.replace(/\/$/, ''),
+    solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME,
+    githubRoot: env.POWERAPPS_GITHUB_ROOT
+  };
+  for (const [key, expected] of Object.entries(CN_AI_TARGET)) {
+    if (actual[key] !== expected) throw new Error(`CN_AI target mismatch or missing: ${key}`);
+  }
+  return true;
 }
 
 function getConfig(env = process.env) {
@@ -57,4 +78,4 @@ function getConfig(env = process.env) {
   };
 }
 
-module.exports = { getConfig };
+module.exports = { getConfig, assertCnAiTarget, CN_AI_TARGET };
