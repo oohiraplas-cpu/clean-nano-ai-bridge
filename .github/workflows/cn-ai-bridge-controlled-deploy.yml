@@ -1,0 +1,40 @@
+name: CN_AI Bridge controlled deploy (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: clean-nano-ai-bridge-cn-aiiraidaicho
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+      - run: npm ci --omit=dev
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: clean-nano-ai-bridge
+          package: .
