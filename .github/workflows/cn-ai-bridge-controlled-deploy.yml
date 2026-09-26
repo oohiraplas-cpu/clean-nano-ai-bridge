@@ -1,10 +1,6 @@
 name: CN_AI Bridge controlled deploy (isolated branch)
+# Manual-only deployment; isolated integration branch must be explicitly selected.
 on:
-  push:
-    branches:
-      - sync/cn-aiiraidaicho-bridge-target-20260926
-    paths:
-      - .github/workflows/cn-ai-bridge-controlled-deploy.yml
   workflow_dispatch:
 permissions:
   contents: read
