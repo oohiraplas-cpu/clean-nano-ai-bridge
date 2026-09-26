@@ -236,11 +236,11 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     }
     if (url.includes('/solutions?')) {
       return new Response(JSON.stringify({ value: [{
-        solutionid: 'solution-1', uniquename: 'ActualSolution',
+        solutionid: 'solution-1', uniquename: CN_AI_TARGET.solutionUniqueName,
         friendlyname: 'Actual Solution', version: '1.0.0.0', ismanaged: false
       }] }), { status: 200 });
     }
-    if (url.includes('/apps/test-app')) {
+    if (url.includes(`/apps/${CN_AI_TARGET.appId}`)) {
       return new Response(JSON.stringify({ properties: { displayName: 'Test App', appVersion: '1.1' } }), { status: 200 });
     }
     return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
