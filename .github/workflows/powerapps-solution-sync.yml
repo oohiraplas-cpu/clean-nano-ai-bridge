@@ -10,12 +10,6 @@ on:
         options:
           - pull
           - push
-  push:
-    branches:
-      - main
-    paths:
-      - "powerapps/CN_CompanyOS_ElectronicDailyReport/Source/**"
-      - ".github/workflows/powerapps-solution-sync.yml"
 
 env:
   ENVIRONMENT_URL: https://orgcf455a58.crm7.dynamics.com
@@ -71,7 +65,7 @@ jobs:
           git push
 
   push:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.direction == 'push') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.direction == 'push' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
