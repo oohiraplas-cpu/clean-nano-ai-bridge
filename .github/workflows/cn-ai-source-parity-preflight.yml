@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: sync/cn-aiiraidaicho-live-review-20260926
+          ref: sync/cn-aiiraidaicho-backup17-review-20260926
           persist-credentials: false
       - name: Download backup and extracted source from selected run
         env:
