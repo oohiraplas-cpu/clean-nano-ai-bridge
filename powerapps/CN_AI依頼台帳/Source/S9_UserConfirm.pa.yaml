@@ -23,7 +23,7 @@ Screens:
             DisabledColor: =RGBA(161, 159, 157, 1)
             FocusedBorderThickness: =4
             Font: =Font.'Segoe UI'
-            Size: =340
+            Size: =18
             Text: |-
               ="登録内容の確認" & Char(10) & "氏名: " & Form3.Updates.Title & Char(10) & "フリガナ: " & Form3.Updates.Furigana & Char(10) & "メール: " & Form3.Updates.Email & Char(10) & "携帯: " & Form3.Updates.MobilePhone & Char(10) & "住所: " & Form3.Updates.Address & Char(10) & "緊急連絡先: " & Form3.Updates.EmergencyName
             Width: =320
