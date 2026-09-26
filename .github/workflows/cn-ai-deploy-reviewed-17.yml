@@ -1,0 +1,48 @@
+name: Deploy reviewed 17-file Bridge configuration
+on:
+  push:
+    branches:
+      - fix/cn-aiiraidaicho-add-s12-s13-review-20260927
+    paths:
+      - .github/workflows/cn-ai-deploy-reviewed-17.yml
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: clean-nano-ai-bridge-cn-aiiraidaicho
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Confirm isolated source and branch
+        run: |
+          grep -F "const CN_AI_BRANCH = 'fix/cn-aiiraidaicho-add-s12-s13-review-20260927';" src/config.js
+          test "$(find 'powerapps/CN_AI依頼台帳/Source' -maxdepth 1 -name '*.pa.yaml' -type f | wc -l)" -eq 17
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+      - run: npm ci --omit=dev
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: clean-nano-ai-bridge
+          package: .
