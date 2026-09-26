@@ -1,0 +1,42 @@
+name: CN_AI依頼台帳 安全バックアップ取得（手動・読取専用）
+# This workflow is intentionally separate from the legacy CN_CompanyOS sync.
+# Never import, publish, commit, or overwrite any application source here.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  export-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
+
+      - name: Export CN_AI依頼台帳 unmanaged solution
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: https://org0bbb24c5.crm7.dynamics.com
+          app-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          solution-name: CN_AIIraiDaicho
+          solution-output-file: out/CN_AIIraiDaicho-unmanaged.zip
+
+      - name: Verify exported file exists
+        run: test -s out/CN_AIIraiDaicho-unmanaged.zip
+
+      - name: Record backup checksum
+        run: sha256sum out/CN_AIIraiDaicho-unmanaged.zip > out/CN_AIIraiDaicho-unmanaged.sha256
+
+      - name: Upload backup artifact (no repository changes)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CN_AIIraiDaicho-unmanaged-backup
+          path: |
+            out/CN_AIIraiDaicho-unmanaged.zip
+            out/CN_AIIraiDaicho-unmanaged.sha256
+          retention-days: 30
