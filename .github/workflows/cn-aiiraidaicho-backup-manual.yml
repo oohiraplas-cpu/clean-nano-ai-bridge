@@ -21,7 +21,8 @@ jobs:
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
           environment-url: https://org0bbb24c5.crm7.dynamics.com
-          app-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          app-id: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
           tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
           solution-name: CN_AIIraiDaicho
           solution-output-file: out/CN_AIIraiDaicho-unmanaged.zip
