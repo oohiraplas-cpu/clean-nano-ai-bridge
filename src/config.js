@@ -21,8 +21,38 @@ function parsePowerAutomateFlows(value) {
 function getConfig(env = process.env) {
   const origins = (env.CORS_ORIGINS || DEFAULT_ORIGINS.join(','))
     .split(',').map((origin) => origin.trim()).filter(Boolean);
-  // This isolated deployment is exclusively for CN_AI依頼台帳.
-  // It does not modify CN_CompanyOS and does not enable Power Apps save/publish.
+  const powerApps = {
+    tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
+    clientId: env.POWERAPPS_CLIENT_ID || env.AZURE_CLIENT_ID || '',
+    clientSecret: env.POWERAPPS_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
+    environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
+    appId: env.POWERAPPS_APP_ID || '',
+    sourceAppId: env.POWERAPPS_SOURCE_APP_ID || '',
+    sourceEnvironmentId: env.POWERAPPS_SOURCE_ENVIRONMENT_ID || '',
+    logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
+    orgUrl: env.POWERAPPS_ORG_URL || '',
+    solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || '',
+    githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
+    githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
+    githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
+    githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
+    githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source'
+  };
+  // Only the deployed runtime is isolated. Unit-test dependency injection remains configurable.
+  if (env === process.env) {
+    Object.assign(powerApps, {
+      environmentId: CN_AI_ENVIRONMENT_ID,
+      appId: CN_AI_APP_ID,
+      sourceAppId: CN_AI_APP_ID,
+      sourceEnvironmentId: CN_AI_ENVIRONMENT_ID,
+      orgUrl: CN_AI_ORG_URL,
+      solutionUniqueName: CN_AI_SOLUTION,
+      githubOwner: 'oohiraplas-cpu',
+      githubRepo: 'clean-nano-ai-bridge',
+      githubBranch: CN_AI_BRANCH,
+      githubRoot: CN_AI_ROOT
+    });
+  }
   return {
     port: Number.parseInt(env.PORT || '3000', 10),
     host: env.HOST || '0.0.0.0',
@@ -40,23 +70,7 @@ function getConfig(env = process.env) {
       listId: env.SHAREPOINT_LIST_ID || '',
       employeeLedgerListId: env.SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID || ''
     },
-    powerApps: {
-      tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
-      clientId: env.POWERAPPS_CLIENT_ID || env.AZURE_CLIENT_ID || '',
-      clientSecret: env.POWERAPPS_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
-      environmentId: CN_AI_ENVIRONMENT_ID,
-      appId: CN_AI_APP_ID,
-      sourceAppId: CN_AI_APP_ID,
-      sourceEnvironmentId: CN_AI_ENVIRONMENT_ID,
-      logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
-      orgUrl: CN_AI_ORG_URL,
-      solutionUniqueName: CN_AI_SOLUTION,
-      githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
-      githubOwner: 'oohiraplas-cpu',
-      githubRepo: 'clean-nano-ai-bridge',
-      githubBranch: CN_AI_BRANCH,
-      githubRoot: CN_AI_ROOT
-    },
+    powerApps,
     powerAutomate: {
       flows: parsePowerAutomateFlows(env.POWER_AUTOMATE_FLOWS)
     }
