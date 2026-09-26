@@ -260,6 +260,58 @@ test('save_powerapps_appは実反映と復元の検証がない場合はGit同�
   assert.deepEqual(actions, []);
 });
 
+test('編集は隔離ブランチのGitHubだけに記録し本番同期と公開を呼ばない', async (t) => {
+  const requests = [];
+  const mockFetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    requests.push({ url, method, body: options.body });
+    if (url.includes('/contents/')) {
+      if (method === 'GET') return new Response(JSON.stringify({
+        type: 'file', sha: 'previous-sha',
+        content: Buffer.from('before', 'utf8').toString('base64')
+      }), { status: 200 });
+      if (method === 'PUT') return new Response(JSON.stringify({
+        commit: { sha: 'staged-commit' }, content: { sha: 'new-content' }
+      }), { status: 200 });
+    }
+    throw new Error('Unexpected upstream call: ' + url);
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    fetchImpl: mockFetch,
+    powerAppsOverrides: {
+      sourceAppId: 'test-app', sourceEnvironmentId: 'test-env',
+      githubToken: 'test-token', githubOwner: 'owner', githubRepo: 'repo',
+      githubBranch: 'work/cn-aiiraidaicho-stage-20260927',
+      githubRoot: 'powerapps/CN_AI依頼台帳/Source'
+    }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'update_powerapps_app',
+      params: { relativePath: 'S9_UserConfirm.pa.yaml', content: 'after', message: 'stage test' }
+    })
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.result.status, 'staged');
+  assert.equal(body.result.productionChanged, false);
+  assert.equal(body.result.commitSha, 'staged-commit');
+  assert.equal(requests.filter(r => r.method === 'PUT').length, 1);
+  assert.ok(requests.every(r => r.url.startsWith('https://api.github.com/')));
+  assert.match(requests.find(r => r.method === 'PUT').body, /work\\/cn-aiiraidaicho-stage-20260927/);
+  const publish = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'publish_powerapps_app', params: {} })
+  });
+  assert.equal(publish.status, 400);
+  assert.match((await publish.json()).error, /公開停止/);
+  assert.equal(requests.length, 2);
+});
+
 test('ソースと操作対象が不一致なら更新・保存・公開は書き込み前に止まる', async (t) => {
   const calls = [];
   const server = await createTestServer([seedTask], {
