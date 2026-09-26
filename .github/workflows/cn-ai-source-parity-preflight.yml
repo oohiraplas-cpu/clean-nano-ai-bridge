@@ -2,7 +2,7 @@ name: CN_AI source parity preflight (read only)
 on:
   push:
     branches:
-      - fix/cn-ai-save-preflight-20260926
+      - integration/cn-ai-safe-staging-20260927
     paths:
       - .github/workflows/cn-ai-source-parity-preflight.yml
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       backup_run_id:
         description: 'Successful read-only backup workflow run ID'
         required: true
-        default: '36243366775'
+        default: '36268367241'
 permissions:
   contents: read
   actions: read
@@ -20,12 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: sync/cn-aiiraidaicho-backup17-review-20260926
+          ref: work/cn-aiiraidaicho-stage-20260927
           persist-credentials: false
       - name: Download backup and extracted source from selected run
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.backup_run_id || '36243366775' }}
+          RUN_ID: ${{ inputs.backup_run_id || '36268367241' }}
         run: |
           mkdir -p /tmp/cn-backup /tmp/cn-extracted
           gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n CN_AIIraiDaicho-unmanaged-backup -D /tmp/cn-backup
