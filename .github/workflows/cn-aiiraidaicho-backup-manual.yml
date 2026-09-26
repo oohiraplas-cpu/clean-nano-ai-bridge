@@ -3,14 +3,9 @@ name: CN_AI依頼台帳 安全バックアップ取得（手動・読取専用�
 # Never import, publish, commit, or overwrite any application source here.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/cn-aiiraidaicho-safe-export-20260926
-    paths:
-      - powerapps/CN_AI依頼台帳/SOURCE_SYNC_TRIGGER.md
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
