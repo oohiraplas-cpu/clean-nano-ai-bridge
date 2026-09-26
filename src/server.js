@@ -384,7 +384,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
     const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     const saved = await powerAppsStore.saveApp();
-    return { ...saved, sync: { refresh, pull } };
+    return { ...saved, status: 'pending_verification', liveSourceVerified: false, pendingPublish: false, sync: { refresh, pull }, message: 'Git同期を要求しました。Power Apps画面ソースの実反映は未検証です。保存完了・公開可能とは判断しないでください。' };
   }
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
