@@ -1,0 +1,91 @@
+name: CN_AI依頼台帳 安全バックアップ取得（手動・読取専用）
+# This workflow is intentionally separate from the legacy CN_CompanyOS sync.
+# Never import, publish, commit, or overwrite any application source here.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/cn-aiiraidaicho-safe-export-20260926
+    paths:
+      - powerapps/CN_AI依頼台帳/SOURCE_SYNC_TRIGGER.md
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  export-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
+
+      - name: Export CN_AI依頼台帳 unmanaged solution
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: https://org0bbb24c5.crm7.dynamics.com
+          app-id: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          solution-name: CN_AIIraiDaicho
+          solution-output-file: out/CN_AIIraiDaicho-unmanaged.zip
+
+      - name: Verify exported file exists
+        run: test -s out/CN_AIIraiDaicho-unmanaged.zip
+
+      - name: Record backup checksum
+        run: sha256sum out/CN_AIIraiDaicho-unmanaged.zip > out/CN_AIIraiDaicho-unmanaged.sha256
+
+      - name: Extract isolated Canvas App YAML for review only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import io, json, pathlib, zipfile
+          src = pathlib.Path('out/CN_AIIraiDaicho-unmanaged.zip')
+          dst = pathlib.Path('out/CN_AIiraidaicho_source/Source')
+          dst.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as solution:
+              if solution.testzip(): raise SystemExit('Invalid solution archive')
+              required = {'solution.xml', 'customizations.xml', '[Content_Types].xml'}
+              missing = required.difference(solution.namelist())
+              if missing: raise SystemExit(f'Invalid Power Platform solution: missing root files {sorted(missing)}')
+              meta = solution.read('solution.xml').decode('utf-8-sig')
+              if '<UniqueName>CN_AIIraiDaicho</UniqueName>' not in meta:
+                  raise SystemExit('Unexpected solution unique name')
+              apps = [n for n in solution.namelist() if n.startswith('CanvasApps/') and n.endswith('.msapp')]
+              if len(apps) != 1: raise SystemExit(f'Expected exactly one canvas app; got {len(apps)}')
+              with zipfile.ZipFile(io.BytesIO(solution.read(apps[0]))) as app:
+                  if app.testzip(): raise SystemExit('Invalid Canvas App archive')
+                  props = json.loads(app.read('Properties.json'))
+                  if props.get('Name') != 'CN_AI依頼台帳':
+                      raise SystemExit('Unexpected Canvas App display name')
+                  names = [n for n in app.namelist() if n.startswith('Src\\') and n.endswith('.pa.yaml')]
+                  if not names: raise SystemExit('No Canvas App YAML source found')
+                  for name in names:
+                      basename = name.rsplit('\\', 1)[-1]
+                      (dst / basename).write_bytes(app.read(name))
+                  (dst.parent / 'source-manifest.json').write_text(json.dumps({
+                      'solution': 'CN_AIIraiDaicho',
+                      'appDisplayName': props['Name'],
+                      'files': sorted(p.name for p in dst.iterdir()),
+                      'note': 'Review-only artifact; not a Studio draft or proof of app ID parity'
+                  }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+
+      - name: Upload isolated source artifact (no repository changes)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CN_AIiraidaicho-extracted-source-review
+          path: out/CN_AIiraidaicho_source/
+          retention-days: 30
+
+      - name: Upload backup artifact (no repository changes)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CN_AIIraiDaicho-unmanaged-backup
+          path: |
+            out/CN_AIIraiDaicho-unmanaged.zip
+            out/CN_AIIraiDaicho-unmanaged.sha256
+          retention-days: 30

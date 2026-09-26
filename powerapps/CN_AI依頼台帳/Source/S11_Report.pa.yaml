@@ -1,0 +1,348 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S11_Report:
+    Properties:
+      Fill: '=RGBA(10, 10, 10, 1) '
+      LoadingSpinnerColor: =RGBA(0, 120, 212, 1)
+      OnVisible: '=Reset(penSign); Set(varBlankSignLen, Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)))    '
+    Children:
+      - recFrame:
+          Control: Rectangle@2.3.0
+          Properties:
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =10
+            Visible: =false
+            Width: =Min(Parent.Width - 40, 1100)
+            X: =(Parent.Width - Min(Parent.Width - 40, 1100)) / 2
+      - lblReportTitle:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =50
+            Size: =22
+            Text: ="日報入力"
+            Width: =recFrame.Width - 240
+            X: =recFrame.X + 120
+            Y: =10
+      - btnReportBack:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =42
+            OnSelect: =Navigate(MainScreen1, ScreenTransition.None)
+            RadiusBottomLeft: =8
+            RadiusBottomRight: =8
+            RadiusTopLeft: =8
+            RadiusTopRight: =8
+            Size: =13
+            Text: ="← ホーム"
+            Width: =110
+            X: =recFrame.X
+            Y: =14
+      - lblWorkDate:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="作業日 *"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =72
+      - dpWorkDate:
+          Control: Classic/DatePicker@2.6.0
+          Properties:
+            Format: ="yyyy/mm/dd"
+            Height: =38
+            Size: =13
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =96
+      - lblEmp:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="社員名 *"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =134
+      - txtEmp:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =User().FullName
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =158
+      - lblSite:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="現場 *"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =196
+      - ddSite:
+          Control: Classic/DropDown@2.3.1
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Items: =CN_現場台帳.Title
+            Items.Value: =Title
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =220
+      - lblStart:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="開始（例 8:00）"
+            Width: =(recFrame.Width - 30) / 4 - 5
+            X: =recFrame.X
+            Y: =258
+      - txtStart:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: ="8:00"
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =(recFrame.Width - 30) / 4 - 5
+            X: =recFrame.X
+            Y: =282
+      - lblEnd:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="終了（例 17:00）"
+            Width: =(recFrame.Width - 30) / 4 - 5
+            X: =recFrame.X + (recFrame.Width - 30) / 4 + 5
+            Y: =258
+      - txtEnd:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: ="17:00"
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =(recFrame.Width - 30) / 4 - 5
+            X: =recFrame.X + (recFrame.Width - 30) / 4 + 5
+            Y: =282
+      - lblPeople:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="人数"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =320
+      - txtPeople:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: ="1"
+            Fill: =RGBA(20, 28, 24, 1)
+            Format: =TextFormat.Number
+            Height: =38
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =344
+      - lblPrimeCompany:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="元請会社"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =382
+      - txtPrimeCompany:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =""
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =406
+      - lblPrimeContact:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="元請担当者名 *"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =444
+      - txtPrimeContact:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =""
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =468
+      - lblContent:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="作業内容 *"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
+            Y: =72
+      - txtContent:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =""
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =140
+            Mode: =TextMode.MultiLine
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
+            Y: =96
+      - lblSign:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="元請電子サイン *（枠内に手書き）"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
+            Y: =246
+      - penSign:
+          Control: PenInput@2.3.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(255, 255, 255, 1)
+            Height: =170
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
+            Y: =270
+      - btnReportDraft:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            Height: =50
+            OnSelect: |-
+              =If(
+                  IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.Title) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
+                  Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
+                  IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
+                  Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
+                  IfError(
+                      Patch(
+                          CN_電子日報台帳,
+                          Defaults(CN_電子日報台帳),
+                          {
+                              日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
+                              作業日: dpWorkDate.SelectedDate,
+                              社員名: txtEmp.Text,
+                              現場名: ddSite.Selected.Title,
+                              作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
+                              作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
+                              人数: Value(txtPeople.Text),
+                              作業内容: txtContent.Text,
+                              元請会社: txtPrimeCompany.Text,
+                              元請担当者名: txtPrimeContact.Text,
+                              提出状態: {Value: "下書き"},
+                              元請電子サイン: penSign.Image
+                          }
+                      ),
+                      Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
+                      Notify("日報を保存しました（下書き）", NotificationType.Success);
+                      Reset(txtContent); Reset(penSign)
+                  )
+              )
+            Size: =14
+            Text: ="下書き保存"
+            Width: =(recFrame.Width - 30) / 4 - 8
+            X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
+            Y: =456
+      - btnReportSubmit:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0, 0, 0, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =50
+            OnSelect: |-
+              =If(
+                  IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.Title) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
+                  Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
+                  IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
+                  Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
+                  IfError(
+                      Patch(
+                          CN_電子日報台帳,
+                          Defaults(CN_電子日報台帳),
+                          {
+                              日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
+                              作業日: dpWorkDate.SelectedDate,
+                              社員名: txtEmp.Text,
+                              現場名: ddSite.Selected.Title,
+                              作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
+                              作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
+                              人数: Value(txtPeople.Text),
+                              作業内容: txtContent.Text,
+                              元請会社: txtPrimeCompany.Text,
+                              元請担当者名: txtPrimeContact.Text,
+                              提出状態: {Value: "提出済"},
+                              元請署名状態: {Value: "署名済"},
+                              元請電子サイン: penSign.Image
+                          }
+                      ),
+                      Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
+                      Notify("日報を保存しました（提出済）", NotificationType.Success);
+                      Reset(txtContent); Reset(penSign)
+                  )
+              )
+            Size: =14
+            Text: ="提出"
+            Width: =(recFrame.Width - 30) / 4 - 8
+            X: =recFrame.X + (recFrame.Width - 30) / 2 + 30 + (recFrame.Width - 30) / 4 + 8
+            Y: =456

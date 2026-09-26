@@ -289,11 +289,12 @@ class PowerAppsStore {
       const savedAt = new Date().toISOString();
 
       await this._recordOperation(operationId, 'save', this.environmentId, this.appId, {
-        status: 'success',
+        status: 'pending_verification',
         result: {
           versionNumber: currentState.versionNumber,
           savedAt,
-          pendingPublish: true
+          pendingPublish: false,
+          liveSourceVerified: false
         }
       });
 
@@ -304,7 +305,9 @@ class PowerAppsStore {
         environmentId: this.environmentId,
         versionNumber: currentState.versionNumber,
         savedAt,
-        message: '保存済みの変更を確認しました。公開はまだです。'
+        liveSourceVerified: false,
+        pendingPublish: false,
+        message: 'Git同期処理後のアプリ状態を取得しましたが、画面ソースの実反映・保存は未検証です。公開しないでください。'
       };
     } catch (error) {
       await this._recordOperation(operationId, 'save', this.environmentId, this.appId, {
