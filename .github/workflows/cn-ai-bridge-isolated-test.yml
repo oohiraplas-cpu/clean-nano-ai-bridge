@@ -4,6 +4,7 @@ on:
     branches:
       - sync/cn-aiiraidaicho-bridge-target-20260926
       - fix/cn-ai-save-preflight-20260926
+      - integration/cn-ai-safe-staging-20260927
       - fix/cn-ai-save-verification-guard-20260926
   workflow_dispatch:
 permissions:
