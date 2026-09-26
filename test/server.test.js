@@ -302,7 +302,7 @@ test('編集は隔離ブランチのGitHubだけに記録し本番同期と公�
   assert.equal(body.result.commitSha, 'staged-commit');
   assert.equal(requests.filter(r => r.method === 'PUT').length, 1);
   assert.ok(requests.every(r => r.url.startsWith('https://api.github.com/')));
-  assert.match(requests.find(r => r.method === 'PUT').body, /work\\/cn-aiiraidaicho-stage-20260927/);
+  assert.ok(JSON.parse(requests.find(r => r.method === 'PUT').body).branch === 'work/cn-aiiraidaicho-stage-20260927');
   const publish = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers,
     body: JSON.stringify({ method: 'publish_powerapps_app', params: {} })
