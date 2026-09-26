@@ -376,7 +376,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     // Source edits are staged on the isolated Git branch only. Never write live Dataverse here.
     if (params.updateData) throw requestError('本番アプリ管理APIの直接更新は停止中です。');
     assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
-    if (!powerAppsGitStore.githubBranch.startsWith('sync/cn-aiiraidaicho-backup17-review-')) {
+    if (!powerAppsGitStore.githubBranch === 'work/cn-aiiraidaicho-stage-20260927') {
       throw requestError('編集停止: 隔離済み17ファイルのブランチではありません。');
     }
     const staged = await withUpstreamErrorStatus(powerAppsGitStore.updateSourceFile(params.relativePath, params.content, params.message));
