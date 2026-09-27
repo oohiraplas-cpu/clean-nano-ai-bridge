@@ -1,0 +1,12 @@
+const test=require('node:test');const assert=require('node:assert/strict');
+const {calculateDraft,mayFinalize}=require('../src/invoiceDraftPolicy');
+const contract={verified:true,closingDay:25,paymentTermsVerified:true,taxRuleVerified:true,rates:{demolition:{day:{yenPerUnit:20000,unitsNumerator:1,unitsDenominator:1},half:{yenPerUnit:20000,unitsNumerator:1,unitsDenominator:2},night:{yenPerUnit:30000,unitsNumerator:1,unitsDenominator:1}}},allowedExpenseCodes:['parking']};
+const entry=(overrides={})=>({approved:true,attendanceKey:'a1',siteId:'site1',workDate:'2026-09-27',workType:'demolition',shift:'day',expenses:[],...overrides});
+test('full day and approved expenses',()=>assert.deepEqual([calculateDraft({contract,entries:[entry({expenses:[{approved:true,code:'parking',yen:500}]})]}).subtotalYen,calculateDraft({contract,entries:[entry()] }).status],[20500,'draft']));
+test('half day',()=>assert.equal(calculateDraft({contract,entries:[entry({shift:'half'})]}).laborYen,10000));
+test('night shift',()=>assert.equal(calculateDraft({contract,entries:[entry({shift:'night'})]}).laborYen,30000));
+test('missing contract blocked',()=>assert.equal(calculateDraft({contract:{},entries:[entry()]}).status,'blocked'));
+test('unapproved actual blocked',()=>assert.equal(calculateDraft({contract,entries:[entry({approved:false})]}).status,'blocked'));
+test('duplicate blocked',()=>assert.equal(calculateDraft({contract,entries:[entry(),entry()]}).reason,'duplicate_actual'));
+test('unauthorized expense blocked',()=>assert.equal(calculateDraft({contract,entries:[entry({expenses:[{approved:true,code:'fuel',yen:2000}]})]}).status,'blocked'));
+test('no finalization before two human approvals and reconciliation',()=>{assert.equal(mayFinalize({status:'draft',taxCalculated:true,accountingApproved:true,presidentApproved:false,contractVerified:true,reconciliationPassed:true}),false);assert.equal(mayFinalize({status:'draft',taxCalculated:true,accountingApproved:true,presidentApproved:true,contractVerified:true,reconciliationPassed:true}),true)});

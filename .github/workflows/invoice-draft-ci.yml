@@ -1,0 +1,19 @@
+name: Invoice draft isolated tests
+on:
+  pull_request:
+    paths:
+      - 'src/invoiceDraftPolicy.js'
+      - 'test/invoiceDraftPolicy.test.js'
+      - '.github/workflows/invoice-draft-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  invoice-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test test/invoiceDraftPolicy.test.js
