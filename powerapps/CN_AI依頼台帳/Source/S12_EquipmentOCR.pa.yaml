@@ -33,3 +33,12 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =140
+      - OCR_ReadPreview:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S18_OcrReadPreview, ScreenTransition.None)
+            Text: ="読取プレビューを見る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =276

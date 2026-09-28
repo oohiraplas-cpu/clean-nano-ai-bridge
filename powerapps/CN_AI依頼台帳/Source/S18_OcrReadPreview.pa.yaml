@@ -1,0 +1,88 @@
+Screens:
+  S18_OcrReadPreview:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S18_OcrReadPreview_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =52
+            Size: =20
+            Text: ="OCR 読取プレビュー"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S18_OcrReadPreview_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Back()
+            Text: ="戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - S18_OcrReadPreview_Note:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =125
+            Size: =15
+            Text: ="元画像と読取候補、登録済み情報との差分を項目ごとに確認します。読取機能の準備が整うまで候補を確定できません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - S18_OcrReadPreview_Action1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="読取結果を確定（接続待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =278
+      - S18_OcrReadPreview_Action2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S19_OcrFinalPreview, ScreenTransition.None)
+            Text: ="完成帳票プレビュー"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =332
+      - S18_OcrReadPreview_Field1:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="元画像：未選択"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =402
+      - S18_OcrReadPreview_Field2:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="読取候補：なし"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =446
+      - S18_OcrReadPreview_Field3:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="要確認項目：読取待ち"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =490

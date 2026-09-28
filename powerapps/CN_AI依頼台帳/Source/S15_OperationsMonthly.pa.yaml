@@ -3,6 +3,15 @@ Screens:
     Properties:
       Fill: =RGBA(10, 10, 10, 1)
     Children:
+      - OperationsMonthly_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S16_OperationsHub, ScreenTransition.None)
+            Text: ="運営管理へ戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =74
       - OperationsMonthly_Title:
           Control: Label@2.5.1
           Properties:
@@ -23,4 +32,22 @@ Screens:
             Text: ="各カレンダーの領収書を費目別に整理し、確認済みの期首残高と複式仕訳から月次損益表・貸借対照表の下書きを作ります。重複・未承認・残高不一致は停止。現在はデータ接続・確定・出力できません。"
             Width: =Parent.Width - 32
             X: =16
-            Y: =88
+            Y: =136
+      - OperationsMonthly_PL:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S20_MonthlyPL, ScreenTransition.None)
+            Text: ="月次損益表の下書き"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =390
+      - OperationsMonthly_BS:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S21_MonthlyBS, ScreenTransition.None)
+            Text: ="月次貸借対照表の下書き"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =444

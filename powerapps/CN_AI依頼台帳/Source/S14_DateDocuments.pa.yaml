@@ -33,3 +33,12 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =148
+      - DateDocuments_Attach:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S22_ReceiptCapture, ScreenTransition.None)
+            Text: ="この日付に領収書・明細を貼る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =342

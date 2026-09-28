@@ -1,0 +1,88 @@
+Screens:
+  S22_ReceiptCapture:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S22_ReceiptCapture_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =52
+            Size: =20
+            Text: =Text(gblSelDate, "yyyy年m月d日") & " の領収書・明細"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S22_ReceiptCapture_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S14_DateDocuments, ScreenTransition.None)
+            Text: ="戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - S22_ReceiptCapture_Note:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =125
+            Size: =15
+            Text: ="選択したカレンダーの日付へ写真またはPDFを貼り付けます。添付機能の準備が整うまで登録と集計はできません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - S22_ReceiptCapture_Action1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="写真・PDFを選ぶ（接続待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =278
+      - S22_ReceiptCapture_Action2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="OCR読取（接続待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =332
+      - S22_ReceiptCapture_Field1:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="写真・PDF：未選択"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =402
+      - S22_ReceiptCapture_Field2:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="金額・費目：未確認"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =446
+      - S22_ReceiptCapture_Field3:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="保存状態：未登録"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =490
