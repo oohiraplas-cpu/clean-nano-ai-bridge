@@ -20,10 +20,11 @@ Screens:
             BorderColor: =RGBA(245, 245, 245, 1)
             DataSource: ='CN_本人マイデータ'
             DefaultMode: =FormMode.New
+            Height: =Parent.Height - 180
             NumberOfColumns: =1
             OnSuccess: =Navigate(S10_RegistrationComplete)
             X: =40
-            Y: =40
+            Y: =180
           Children:
             - タイトル_DataCard1:
                 Control: TypedDataCard@1.0.7
