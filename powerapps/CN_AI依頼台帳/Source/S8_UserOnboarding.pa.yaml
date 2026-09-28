@@ -1154,3 +1154,13 @@ Screens:
             Text: ="登録内容を確認"
             X: =60
             Y: =60
+      - MyData_OcrEntry:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Fill: =RGBA(0, 120, 212, 1)
+            Height: =44
+            OnSelect: =Navigate(S13_MyDataOCR, ScreenTransition.None)
+            Text: ="書類からOCR自動記載"
+            Width: =Parent.Width - 80
+            X: =40
+            Y: =120

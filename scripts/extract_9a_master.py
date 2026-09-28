@@ -29,7 +29,7 @@ def load_master(path):
             if fields.get('A','').strip()!='9A': continue
             required=['B','C','D','E','F','G','H']
             if any(not fields.get(k) for k in required):raise ValueError('必須項目が欠損: Excel行 '+row.attrib['r'])
-            if not re.fullmatch(r'\\d{2}',fields['F']) or not re.fullmatch(r'\\d{6}',fields['G']) or not re.fullmatch(r'\\d{2}',fields['H']):raise ValueError('顧客番号形式が不正: '+row.attrib['r'])
+            if not re.fullmatch(r'\d{2}',fields['F']) or not re.fullmatch(r'\d{6}',fields['G']) or not re.fullmatch(r'\d{2}',fields['H']):raise ValueError('顧客番号形式が不正: '+row.attrib['r'])
             customer='-'.join(fields[k] for k in ['F','G','H'])
             if customer in seen:raise ValueError('顧客番号重複: '+customer)
             seen.add(customer)
