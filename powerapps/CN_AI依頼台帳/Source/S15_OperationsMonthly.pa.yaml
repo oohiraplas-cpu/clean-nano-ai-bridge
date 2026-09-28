@@ -1,0 +1,26 @@
+Screens:
+  S15_OperationsMonthly:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - OperationsMonthly_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =54
+            Size: =20
+            Text: =Text(gblMonth, "yyyy年m月") & " 経理月次"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - OperationsMonthly_Status:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =240
+            Size: =14
+            Text: ="各カレンダーの日付に紐付いた領収書を月ごとに集め、確認済みの振分規則で費目別に整理します。重複・未承認・不明な費目は経理確認へ。月次書類は下書きです。現在はデータ接続・確定・出力できません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =88
