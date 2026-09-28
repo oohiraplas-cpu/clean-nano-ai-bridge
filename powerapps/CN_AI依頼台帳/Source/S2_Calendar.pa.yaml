@@ -143,6 +143,19 @@ Screens:
                   Text: =LookUp(colAttend, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).WorkStatus.Value
                   Width: =Parent.TemplateWidth
                   Y: =Parent.TemplateHeight - 26
+            - S2_DateDocuments:
+                Control: Classic/Button@2.2.0
+                Properties:
+                  Color: =RGBA(255, 255, 255, 1)
+                  Fill: =RGBA(26, 58, 42, 1)
+                  Height: =20
+                  OnSelect: =Set(gblSelDate, ThisItem.d); Set(gblDocumentCalendar, "attendance"); Navigate(S14_DateDocuments, ScreenTransition.None)
+                  Size: =10
+                  Text: ="票"
+                  Tooltip: ="この日付の領収書・明細"
+                  Width: =20
+                  X: =Parent.TemplateWidth - 22
+                  Y: =2
       - S2_Sum:
           Control: Label@2.5.1
           Properties:

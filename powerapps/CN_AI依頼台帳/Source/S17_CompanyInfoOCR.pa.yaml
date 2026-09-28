@@ -1,0 +1,88 @@
+Screens:
+  S17_CompanyInfoOCR:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S17_CompanyInfoOCR_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =52
+            Size: =20
+            Text: ="自社情報・OCR"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S17_CompanyInfoOCR_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S16_OperationsHub, ScreenTransition.None)
+            Text: ="戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - S17_CompanyInfoOCR_Note:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =125
+            Size: =15
+            Text: ="会社の書類から会社名・所在地・連絡先などの候補を読み取り、確認します。現在は保存できません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - S17_CompanyInfoOCR_Action1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S18_OcrReadPreview, ScreenTransition.None)
+            Text: ="OCR読取プレビュー"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =278
+      - S17_CompanyInfoOCR_Action2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="自社情報を保存（接続待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =332
+      - S17_CompanyInfoOCR_Field1:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="会社名：未取得"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =402
+      - S17_CompanyInfoOCR_Field2:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="所在地：未取得"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =446
+      - S17_CompanyInfoOCR_Field3:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="連絡先：未取得"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =490
