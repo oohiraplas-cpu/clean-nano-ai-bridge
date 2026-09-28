@@ -168,6 +168,33 @@ test('3AIの入口は同じ台帳を共有し、承認待ちタスクを次工�
   assert.equal(invalid.status, 400);
 });
 
+test('確認済みは結果を保持し、次タスクへ進めない', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const result = 'ChatGPT: 2026-09-29 06:06 JST';
+  const updated = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'update_task_status',
+      params: { task_id: 'task-1', status: '確認済み', result }
+    })
+  });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).result.task.status, '確認済み');
+
+  const read = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_task_result', params: { task_id: 'task-1' } })
+  });
+  assert.deepEqual((await read.json()).result, { task_id: 'task-1', status: '確認済み', result });
+  const next = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_next_task' })
+  });
+  assert.equal((await next.json()).result.status, 'タスクなし');
+});
+
 test('MCPの新览3ツール（create_task/update_task_status/get_task_result）を実行できる', async (t) => {
   const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
