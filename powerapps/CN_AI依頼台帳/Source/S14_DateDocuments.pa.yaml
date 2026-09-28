@@ -1,0 +1,35 @@
+Screens:
+  S14_DateDocuments:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - DateDocuments_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            Size: =20
+            Text: =Text(gblSelDate, "yyyy年m月d日") & " の領収書・明細"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - DateDocuments_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            Text: ="カレンダーへ戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =80
+      - DateDocuments_Status:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =180
+            Size: =14
+            Text: ="選択日とカレンダーに領収書・明細を紐付けます。添付ファイルの正本と列型の確認後に、撮影・PDF添付、OCR確認、経費集計を有効化します。現在は保存できません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =148
