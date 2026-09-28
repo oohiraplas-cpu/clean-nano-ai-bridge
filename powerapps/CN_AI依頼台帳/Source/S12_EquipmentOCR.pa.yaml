@@ -1,0 +1,35 @@
+Screens:
+  S12_EquipmentOCR:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - OCR_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =54
+            Size: =22
+            Text: ="設備 OCR自動記載"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - OCR_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            Text: ="カレンダーへ戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =80
+      - OCR_Status:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =120
+            Size: =14
+            Text: ="OCR連携準備中。顧客番号・住所・帳票を照合後、人間が確認して転記します。現時点では保存できません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =140
