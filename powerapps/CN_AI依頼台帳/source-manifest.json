@@ -6,6 +6,8 @@
     "MainScreen1.pa.yaml",
     "S10_RegistrationComplete.pa.yaml",
     "S11_Report.pa.yaml",
+    "S12_EquipmentOCR.pa.yaml",
+    "S13_MyDataOCR.pa.yaml",
     "S1_Home.pa.yaml",
     "S2_Calendar.pa.yaml",
     "S3_Register.pa.yaml",
