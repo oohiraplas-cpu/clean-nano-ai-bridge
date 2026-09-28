@@ -53,7 +53,7 @@ function apiKeyMiddleware(getKey) {
 }
 
 const MCP_METHODS = Object.freeze([
-  'health_check', 'get_tasks', 'get_next_task',
+  'health_check', 'get_bridge_readiness', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
@@ -76,6 +76,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_bridge_readiness',
+    description: 'Bridgeの接続設定とタスク保存先の読み取り疎通を確認します。設定済みと実際の疎通を区別し、秘密値は返しません。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -273,6 +278,30 @@ async function getTaskResultPayload(store, taskId) {
   return tasks.find((task) => task.id === taskId) || null;
 }
 
+async function bridgeReadinessPayload(config, store) {
+  const sharepoint = config.sharepoint || {};
+  const powerApps = config.powerApps || {};
+  const flows = config.powerAutomate?.flows || {};
+  const configured = {
+    mcpAuthentication: Boolean(config.mcpApiKey),
+    webhookAuthentication: Boolean(config.webhookApiKey),
+    taskBackend: config.taskStoreBackend === 'sharepoint' ? 'sharepoint' : 'file',
+    sharepointTasks: Boolean(sharepoint.tenantId && sharepoint.clientId && sharepoint.clientSecret && sharepoint.siteId && sharepoint.listId),
+    sharepointReader: Boolean(sharepoint.tenantId && sharepoint.clientId && sharepoint.clientSecret && sharepoint.siteId),
+    powerApps: Boolean(powerApps.tenantId && powerApps.clientId && powerApps.clientSecret && powerApps.environmentId && powerApps.appId),
+    powerAutomateFlowKeys: Object.keys(flows).sort()
+  };
+  // Only the selected task store is probed. Other configured integrations remain unverified.
+  let taskStore = { status: 'unavailable' };
+  try {
+    const tasks = await store.list();
+    taskStore = { status: 'reachable', count: tasks.length };
+  } catch {
+    // Avoid returning upstream error messages: they can contain URLs or tenant details.
+  }
+  return { configured, probes: { taskStore }, checkedAt: new Date().toISOString() };
+}
+
 function requestError(message, status = 400) {
   const error = new Error(message);
   error.status = status;
@@ -320,12 +349,13 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, config) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'get_bridge_readiness') return bridgeReadinessPayload(config, store);
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
@@ -504,7 +534,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
         try {
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
+          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, config);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(result) }],
             structuredContent: result,
@@ -527,7 +557,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const { method } = body;
     const params = body.params || {};
     try {
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
+      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, config);
       return res.status(200).json({ accepted: true, method, result });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}) });
