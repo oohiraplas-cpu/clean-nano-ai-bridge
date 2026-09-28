@@ -96,7 +96,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: {
         title: { type: 'string', description: '編集タスクのタイトル' },
         description: { type: 'string', description: 'Power Appsへ渡す具体的な編集内容' },
-        priority: { type: 'string', description: '優先度（省略時normal）' }
+        priority: { type: 'string', description: '優先度（省略時normal）' },
+        source: { type: 'string', enum: ['chatgpt', 'claude-code', 'copilot'], description: '送信元（省略時chatgpt）。自己申告値であり認証情報ではありません。' }
       },
       required: ['title'],
       additionalProperties: false
@@ -255,6 +256,7 @@ async function createTaskPayload(store, params) {
     title: params.title,
     description: params.description,
     priority: params.priority || 'normal',
+    source: params.source || 'chatgpt',
     status: '未着手'
   });
   return { task_id: task.id, task };
@@ -472,7 +474,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
   });
 
-  app.post('/mcp', (req, res, next) => handleMcpRequest(req, res, next));
+  app.post('/mcp', apiKeyMiddleware(() => config.mcpApiKey), (req, res, next) => handleMcpRequest(req, res, next));
 
   async function handleMcpRequest(req, res, next) {
     const body = req.body || {};
