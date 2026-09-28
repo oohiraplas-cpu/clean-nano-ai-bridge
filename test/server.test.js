@@ -400,7 +400,7 @@ test('タスクが0件ならタスクなしを明示する', async (t) => {
 });
 
 
-test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツール、CN_社員台帳2ツールを公開する', async (t) => {
+test('MCPツール一覧で診断、タスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツール、CN_社員台帳2ツールを公開する', async (t) => {
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
@@ -409,6 +409,7 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   const body = await response.json();
   assert.deepEqual(body.tools.map((tool) => tool.name), [
     'health_check',
+    'get_bridge_readiness',
     'get_tasks',
     'get_next_task',
     'create_task',
@@ -699,7 +700,7 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  assert.equal(listedBody.result.tools.length, 16);
+  assert.equal(listedBody.result.tools.length, 17);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
