@@ -41,6 +41,12 @@ npm start
 - `MCP_API_KEY` が設定されている環境では `/mcp` に `X-API-Key` が必要です。既存ChatGPT接続がこのヘッダーを送れるか、またはAzure側の認証経路を使うかをデプロイ前に確認します。キーの設定状況と `/api/tasks` 等の既存REST経路の公開範囲も点検してください。キーをコードや文書に記載しません。
 - GitHub ActionsのPRテストで同じ台帳への受付・送信元・承認待ち停止を検証します。これはCopilot Studioでの実動作、Power Appsへの保存、SharePointの実列、隔離環境での復元を証明しません。実接続の確認が済むまで本番公開しません。
 
+### 読み取り専用の接続診断
+
+MCP `get_bridge_readiness` は、認証設定の有無、タスク保存先の種類、SharePoint・Power Apps・登録フローの設定有無を返し、選択中のタスク保存先に対して `list()` を試します。認証情報、URL、上流のエラー本文は返しません。`configured` は設定値の存在だけ、`probes.taskStore` はその時点の読み取り疎通だけを示します。SharePointリストの列、Power Apps、Power Automate、Copilot Studioとの接続まで正常と判定するものではありません。
+
+2026-09-28 の環境調査では、Copilot Studioの `CN_総合秘書AI` は Default 環境、`CN_AI依頼台帳` は clean nano 環境にありました。Default 環境の `CN_AI実行ゲートウェイ` はオフ、Power Apps V2トリガーのみの下書きで、接続参照・実行履歴がありません。エージェント上のBridgeツールは表示されてもチャットからの実呼び出しに失敗しました。この差分を解消し、実際のデータソースと認証を確認するまでは、自律実行の完了を宣言しないでください。
+
 ## Power Platform
 
 OpenAPI 3.x定義は [openapi.yaml](openapi.yaml) です。公開ホストが未確定のため `servers` は未指定です。Custom Connector作成時に実際のHTTPS Hostを設定し、まず `GET /health` を接続試験に使ってください。TLS終端、DNS、ファイアウォール、認証キーの安全な登録、SharePoint Listsアダプターの実装は公開前に別途必要です。
