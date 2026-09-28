@@ -114,7 +114,7 @@ components:
         id: { type: string }
         title: { type: string }
         description: { type: string }
-        status: { type: string, enum: [未着手, 実行中, 完了, 停止, エラー, 判断待ち, 人間承認待ち, ユーザー操作待ち, タスクなし] }
+        status: { type: string, enum: [未着手, 実行中, 確認済み, 完了, 停止, エラー, 判断待ち, 人間承認待ち, ユーザー操作待ち, タスクなし] }
         retry_count: { type: integer, minimum: 0 }
         approval_required: { type: boolean }
         userActionRequired: { type: boolean }
@@ -128,7 +128,7 @@ components:
     StatusInput:
       type: object
       properties:
-        status: { type: string }
+        status: { type: string, enum: [未着手, 実行中, 確認済み, 完了, 停止, エラー, 判断待ち, 人間承認待ち, ユーザー操作待ち, タスクなし] }
         retry_count: { type: integer, minimum: 0 }
         approval_required: { type: boolean }
         userActionRequired: { type: boolean }
