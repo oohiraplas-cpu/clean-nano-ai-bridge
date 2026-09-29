@@ -1,10 +1,10 @@
 const fs = require('node:fs/promises');
 
 const STATUSES = Object.freeze([
-  '未着手', '実行中', '完了', '停止', 'エラー', '判断待ち',
+  '未着手', '実行中', '確認済み', '完了', '停止', 'エラー', '判断待ち',
   '人間承認待ち', 'ユーザー操作待ち', 'タスクなし'
 ]);
-const NEXT_EXCLUDED_STATUSES = new Set(['人間承認待ち', 'ユーザー操作待ち', '停止', '完了']);
+const NEXT_EXCLUDED_STATUSES = new Set(['人間承認待ち', 'ユーザー操作待ち', '停止', '確認済み', '完了']);
 
 function resolveStatus(task) {
   if (task.retry_count >= 3) return '停止';

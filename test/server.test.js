@@ -95,6 +95,11 @@ test('入力検証、APIキー、MCPを扱う', async (t) => {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'webhook-secret' }, body: JSON.stringify({ id: 'x' })
   });
   assert.equal(invalid.status, 400);
+  const unauthenticatedMcp = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ method: 'get_tasks' })
+  });
+  assert.equal(unauthenticatedMcp.status, 401);
   const mcpUnknown = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'tasks.next', params: {} })
   });
@@ -115,6 +120,79 @@ test('MCPの標準メソッドをBridge経由で実行できる', async (t) => {
 
   const next = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers, body: JSON.stringify({ method: 'get_next_task' }) });
   assert.equal((await next.json()).result.task.id, 'task-1');
+});
+
+test('3AIの入口は同じ台帳を共有し、承認待ちタスクを次工程へ渡さない', async (t) => {
+  const server = await createTestServer([], { webhookApiKey: 'webhook-secret', mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const mcpHeaders = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const create = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: mcpHeaders,
+    body: JSON.stringify({ method: 'create_task', params: { title: '設計', source: 'chatgpt' } })
+  });
+  const chatgptTask = (await create.json()).result.task;
+  assert.equal(chatgptTask.source, 'chatgpt');
+
+  for (const [path, id, source] of [
+    ['/webhooks/claude-code', 'claude-task', 'claude-code'],
+    ['/webhooks/copilot', 'copilot-task', 'copilot']
+  ]) {
+    const response = await fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'webhook-secret' },
+      body: JSON.stringify({ id, title: source, source: 'chatgpt', approval_required: true })
+    });
+    assert.equal(response.status, 202);
+    const task = (await response.json()).task;
+    assert.equal(task.source, source);
+    assert.equal(task.status, '人間承認待ち');
+  }
+
+  const listed = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: mcpHeaders, body: JSON.stringify({ method: 'get_tasks' })
+  });
+  const tasks = (await listed.json()).result.tasks;
+  assert.deepEqual(new Set(tasks.map((task) => task.source)), new Set(['chatgpt', 'claude-code', 'copilot']));
+  const complete = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: mcpHeaders,
+    body: JSON.stringify({ method: 'update_task_status', params: { task_id: chatgptTask.id, status: '完了' } })
+  });
+  assert.equal(complete.status, 200);
+  const next = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: mcpHeaders, body: JSON.stringify({ method: 'get_next_task' })
+  });
+  assert.equal((await next.json()).result.status, 'タスクなし');
+  const invalid = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: mcpHeaders,
+    body: JSON.stringify({ method: 'create_task', params: { title: '不正', source: 'unknown' } })
+  });
+  assert.equal(invalid.status, 400);
+});
+
+test('確認済みは結果を保持し、次タスクへ進めない', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const result = 'ChatGPT: 2026-09-29 06:06 JST';
+  const updated = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      method: 'update_task_status',
+      params: { task_id: 'task-1', status: '確認済み', result }
+    })
+  });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).result.task.status, '確認済み');
+
+  const read = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_task_result', params: { task_id: 'task-1' } })
+  });
+  assert.deepEqual((await read.json()).result, { task_id: 'task-1', status: '確認済み', result });
+  const next = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'get_next_task' })
+  });
+  assert.equal((await next.json()).result.status, 'タスクなし');
 });
 
 test('MCPの新览3ツール（create_task/update_task_status/get_task_result）を実行できる', async (t) => {
@@ -349,7 +427,7 @@ test('タスクが0件ならタスクなしを明示する', async (t) => {
 });
 
 
-test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツール、CN_社員台帳2ツールを公開する', async (t) => {
+test('MCPツール一覧で診断、タスク6ツール、Power Apps 6ツール、SharePoint/Power Automate 2ツール、CN_社員台帳2ツールを公開する', async (t) => {
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
@@ -358,6 +436,7 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   const body = await response.json();
   assert.deepEqual(body.tools.map((tool) => tool.name), [
     'health_check',
+    'get_bridge_readiness',
     'get_tasks',
     'get_next_task',
     'create_task',
@@ -648,7 +727,7 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  assert.equal(listedBody.result.tools.length, 16);
+  assert.equal(listedBody.result.tools.length, 17);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));

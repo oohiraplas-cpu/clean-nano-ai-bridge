@@ -36,6 +36,7 @@ function validateCreateTaskParams(params) {
   if (typeof params.title !== 'string' || params.title.length < 1 || params.title.length > 500) return 'titleは1から500文字の文字列が必要です';
   if (params.description !== undefined && (typeof params.description !== 'string' || params.description.length > 2000)) return 'descriptionは2000文字以内の文字列が必要です';
   if (params.priority !== undefined && (typeof params.priority !== 'string' || params.priority.length < 1 || params.priority.length > 50)) return 'priorityは1から50文字の文字列が必要です';
+  if (params.source !== undefined && !['chatgpt', 'claude-code', 'copilot'].includes(params.source)) return 'sourceはchatgpt、claude-code、copilotのいずれかが必要です';
   return null;
 }
 
