@@ -32,6 +32,7 @@ test('診断は実際の保存先だけ疎通確認し、認証情報を返さ�
   assert.equal(body.result.structuredContent.probes.taskStore.count, 1);
   assert.deepEqual(body.result.structuredContent.configured.powerAutomateFlowKeys, ['dailyReport']);
   assert.equal(body.result.structuredContent.configured.powerApps, true);
+  assert.deepEqual(body.result.structuredContent.findings, []);
   assert.doesNotMatch(JSON.stringify(body), /secret|key-value|trigger/);
 });
 
@@ -41,5 +42,7 @@ test('保存先の障害は安全にunavailableと報告する', async () => {
   });
   assert.equal(body.result.structuredContent.probes.taskStore.status, 'unavailable');
   assert.equal(body.result.structuredContent.configured.sharepointTasks, false);
+  assert.ok(body.result.structuredContent.findings.includes('TASK_STORE_FILE_BACKEND'));
+  assert.ok(body.result.structuredContent.findings.includes('TASK_STORE_PROBE_FAILED'));
   assert.doesNotMatch(JSON.stringify(body), /sensitive|secret.example/);
 });
