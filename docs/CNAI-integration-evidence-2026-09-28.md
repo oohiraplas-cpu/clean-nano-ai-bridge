@@ -14,12 +14,14 @@
 | Power Automate / Default | `CN_AI実行ゲートウェイ` はオフ、2026-09-08 作成、Power Apps V2 トリガーだけの下書き。接続参照なし、実行履歴なし。`CN_電子日報_保存` はオン。 | ゲートウェイを稼働中と見なさない。 |
 | Power Automate / clean nano | `CN_日報PDF保存` はオフ。Document Automation Validator/Processor はオン、Email Importer はオフ。 | 既存フローとの重複を避ける。 |
 | SharePoint | `hisyoengineer.sharepoint.com/sites/cleannano`。既存 `CN_AI依頼台帳` をBridge経由で2件読み取り、リストID `973f17d6-3566-4795-9712-2386bb7bf540` を確認。文書ライブラリと日報PDFの所在も確認。 | 正本候補を実測。列の完全な仕様・閲覧権限の範囲は未確認。 |
+| Bridgeタスクと既存依頼台帳の照合（2026-09-29） | `get_tasks` は5件。上記リストの再読取は3件で、BridgeタスクのID・件名に対応する項目はない。`demo-001` はリポジトリの開発用 `data/tasks.json` にも存在する。 | **同じ正本への保存は未確認**。現時点の値は一致せず、Bridgeの実際の `TASK_STORE_BACKEND` と接続先リストIDを配備設定で確認する必要がある。 |
 | GitHub | `oohiraplas-cpu/clean-nano-ai-bridge`。PR #30 の Actions でAPIテストを実施。Azure Web App 配備は手動ワークフロー。 | PR は下書きで未マージ・未配備。 |
 | Azure、freee、M365接続の実認証 | この調査でAzure配備設定・freee連携・Outlook/Teamsのエージェント実行結果は取得できず。 | 接続済みと表記しない。秘密値は記録しない。 |
 
 ## 今回の実装と検証範囲
 
 - 既存PR #30 に、MCP `get_bridge_readiness` を追加。認証の設定有無、タスク保存先、SharePoint・Power Apps・フローの設定有無、選択中タスク保存先の読み取り疎通だけを返す。鍵、トリガーURL、上流エラー本文を返さない。
+- ファイル保存先、SharePointタスク設定不足、保存先疎通失敗、MCP認証未設定を `findings` の機械可読コードで示す。ファイル保存先が読めてもSharePoint正本との一致は証明されない。
 - 既存の 3AI 受付経路と承認待ち停止のクラウド試験に、診断ツールの情報秘匿・障害時表示の試験を追加。
 - `configured` は設定済みの意味であり、SharePoint、Power Apps、Power Automate、Copilot Studio の全体接続試験ではない。
 
