@@ -299,7 +299,12 @@ async function bridgeReadinessPayload(config, store) {
   } catch {
     // Avoid returning upstream error messages: they can contain URLs or tenant details.
   }
-  return { configured, probes: { taskStore }, checkedAt: new Date().toISOString() };
+  const findings = [];
+  if (configured.taskBackend === 'file') findings.push('TASK_STORE_FILE_BACKEND');
+  if (configured.taskBackend === 'sharepoint' && !configured.sharepointTasks) findings.push('SHAREPOINT_TASK_CONFIG_INCOMPLETE');
+  if (taskStore.status !== 'reachable') findings.push('TASK_STORE_PROBE_FAILED');
+  if (!configured.mcpAuthentication) findings.push('MCP_AUTH_NOT_CONFIGURED');
+  return { configured, probes: { taskStore }, findings, checkedAt: new Date().toISOString() };
 }
 
 function requestError(message, status = 400) {
