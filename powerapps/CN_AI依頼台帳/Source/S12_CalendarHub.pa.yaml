@@ -1,0 +1,88 @@
+Screens:
+  S12_CalendarHub:
+    Properties:
+      Fill: =RGBA(6,18,10,1)
+    Children:
+      - S12_Header:
+          Control: Rectangle@2.3.0
+          Properties:
+            Fill: =RGBA(8,34,20,1)
+            Height: =72
+            Width: =Parent.Width
+      - S12_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255,255,255,1)
+            Fill: =RGBA(8,34,20,1)
+            Height: =44
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="←"
+            Width: =52
+            X: =8
+            Y: =14
+      - S12_Title:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =21
+            Text: ="カレンダー"
+            Width: =Parent.Width-120
+            X: =60
+            Y: =14
+      - S12_Demolition:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(9,42,24,1)
+            FontWeight: =FontWeight.Bold
+            Height: =120
+            OnSelect: =Set(gblCalendarMode,"解体"); Navigate(S2_Calendar, ScreenTransition.None)
+            Text: ="解体工カレンダー" & Char(10) & "現場・出勤・給与見込み"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =96
+      - S12_Equipment:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(9,42,24,1)
+            FontWeight: =FontWeight.Bold
+            Height: =120
+            OnSelect: =Set(gblCalendarMode,"設備"); Navigate(S2_Calendar, ScreenTransition.None)
+            Text: ="設備工カレンダー" & Char(10) & "現場・経費・車両情報"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =236
+      - S12_Operations:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(9,42,24,1)
+            FontWeight: =FontWeight.Bold
+            Height: =120
+            OnSelect: =Set(gblCalendarMode,"運営"); Navigate(S2_Calendar, ScreenTransition.None)
+            Text: ="運営カレンダー" & Char(10) & "会社全体・進行管理"
+            Visible: =Lower(User().Email)=Lower("k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")
+            Width: =Parent.Width-32
+            X: =16
+            Y: =376
+      - S12_Info:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(210,255,226,1)
+            Height: =90
+            Size: =11
+            Text: ="既存カレンダーを残したまま、用途別に入口を分離しています。"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =516
