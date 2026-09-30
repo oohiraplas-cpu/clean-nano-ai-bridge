@@ -250,6 +250,7 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     powerAppsOverrides: {
       orgUrl: 'https://example.crm.dynamics.com',
       solutionUniqueName: 'CN_CompanyOS',
+      sourceAppId: 'test-app', sourceEnvironmentId: 'test-env',
       githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo'
     }
   });
@@ -266,6 +267,36 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
   assert.equal(savedBody.result.sync.refresh.action, 'RefreshChangesFromGit');
   assert.equal(savedBody.result.sync.pull.action, 'PullChangesFromGit');
   assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
+});
+
+test('ソースと操作対象が不一致なら更新・保存・公開は書き込み前に止まる', async (t) => {
+  const calls = [];
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, method: options?.method || 'GET' });
+      throw new Error('upstream must not be called');
+    },
+    powerAppsOverrides: {
+      sourceAppId: 'different-app', sourceEnvironmentId: 'different-env'
+    }
+  });
+  t.after(() => server.close());
+  for (const [method, params] of [
+    ['update_powerapps_app', { relativePath: 'App.pa.yaml', content: 'changed' }],
+    ['save_powerapps_app', {}],
+    ['publish_powerapps_app', {}]
+  ]) {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+      body: JSON.stringify({ method, params })
+    });
+    assert.equal(response.status, 409, method);
+    const body = await response.json();
+    assert.match(body.error, /ソース対象と操作対象/);
+  }
+  assert.deepEqual(calls, []);
 });
 
 test('get_powerapps_sourceはGitHub設定不足時も生の500/502で落ちずJSON-RPCエラーとして応答する', async (t) => {

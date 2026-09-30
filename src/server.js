@@ -318,6 +318,16 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
+function assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore) {
+  const sourceAppId = powerAppsGitStore.sourceAppId;
+  const sourceEnvironmentId = powerAppsGitStore.sourceEnvironmentId;
+  if (!sourceAppId || !sourceEnvironmentId ||
+      sourceAppId.toLowerCase() !== powerAppsStore.appId.toLowerCase() ||
+      sourceEnvironmentId.toLowerCase() !== powerAppsStore.environmentId.toLowerCase()) {
+    throw requestError('Power Appsのソース対象と操作対象が未確認または不一致です。POWERAPPS_SOURCE_APP_IDとPOWERAPPS_SOURCE_ENVIRONMENT_IDを実環境で照合してください。', 409);
+  }
+}
+
 async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
@@ -363,13 +373,14 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    return params.updateData
-      ? powerAppsStore.updateApp(params.updateData)
-      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
+    if (params.updateData) return powerAppsStore.updateApp(params.updateData);
+    assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
+    return withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
     const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
     const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     const saved = await powerAppsStore.saveApp();
@@ -378,6 +389,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    assertPowerAppsSourceTarget(powerAppsStore, powerAppsGitStore);
     return powerAppsStore.publishApp();
   }
   if (method === 'get_powerapps_operation_result') {
