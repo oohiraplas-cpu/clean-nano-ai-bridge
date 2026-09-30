@@ -175,18 +175,34 @@ class PowerAppsGitStore {
     return text ? JSON.parse(text) : null;
   }
 
-  async refreshFromGit() {
-    const result = await this._dataversePost('RefreshChangesFromGit', {
-      SolutionUniqueName: this.solutionUniqueName
+  async _resolveSolutionUniqueName() {
+    this._assertDataverseConfig();
+    const tokenUrl = `https://login.microsoftonline.com/${this.tenantId}/oauth2/v2.0/token`;
+    const token = await this._tokenCache.getToken(this._fetch, tokenUrl, this.clientId, this.clientSecret, `${this.orgUrl}/.default`);
+    const filter = encodeURIComponent(`uniquename eq '${this.solutionUniqueName.replace(/'/g, "''")}' and ismanaged eq false`);
+    const response = await this._fetch(`${this.orgUrl}/api/data/v9.2/solutions?$select=uniquename,friendlyname&$filter=${filter}`, {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'odata-version': '4.0' }
     });
-    return { status: 'ok', action: 'RefreshChangesFromGit', solutionUniqueName: this.solutionUniqueName, result };
+    if (!response.ok) throw new Error(`Dataverse Solution確認エラー (${response.status})`);
+    const data = await response.json();
+    if (data.value?.length === 1) return data.value[0].uniquename;
+    throw new Error(`Power Apps Solutionが見つかりません: ${this.solutionUniqueName}`);
+  }
+
+  async refreshFromGit() {
+    const solutionUniqueName = await this._resolveSolutionUniqueName();
+    const result = await this._dataversePost('RefreshChangesFromGit', {
+      SolutionUniqueName: solutionUniqueName
+    });
+    return { status: 'ok', action: 'RefreshChangesFromGit', solutionUniqueName, result };
   }
 
   async pullFromGit() {
+    const solutionUniqueName = await this._resolveSolutionUniqueName();
     const result = await this._dataversePost('PullChangesFromGit', {
-      SolutionUniqueName: this.solutionUniqueName
+      SolutionUniqueName: solutionUniqueName
     });
-    return { status: 'ok', action: 'PullChangesFromGit', solutionUniqueName: this.solutionUniqueName, result };
+    return { status: 'ok', action: 'PullChangesFromGit', solutionUniqueName, result };
   }
 
   async applySourceFileChange(relativePath, content, message) {
