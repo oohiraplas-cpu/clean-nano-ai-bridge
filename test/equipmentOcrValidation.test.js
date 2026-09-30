@@ -1,0 +1,11 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { validateOcrCandidate, splitAddress } = require('../src/equipmentOcrValidation');
+const master = [{ customerNumber: '１２-３４', address: '江東区住吉 2-14-6', workDate: '2026-09-28' }];
+test('一致でも人間承認・未保存', () => { const r=validateOcrCandidate({customerNumber:'1234',address:'江東区住吉 2-14-6',workDate:'2026-09-28'},master); assert.equal(r.ok,true); assert.equal(r.saved,false); assert.equal(r.requiresHumanApproval,true); });
+test('顧客番号なしは停止',()=>assert.equal(validateOcrCandidate({address:'江東区住吉 2-14-6'},master).ok,false));
+test('顧客番号不一致は停止',()=>assert.equal(validateOcrCandidate({customerNumber:'9999',address:'江東区住吉 2-14-6'},master).ok,false));
+test('顧客番号重複は停止',()=>assert.equal(validateOcrCandidate({customerNumber:'1234',address:'江東区住吉 2-14-6'},[...master,...master]).ok,false));
+test('住所不一致は停止',()=>assert.equal(validateOcrCandidate({customerNumber:'1234',address:'江東区亀戸 2-14-6'},master).ok,false));
+test('日付不一致は停止',()=>assert.equal(validateOcrCandidate({customerNumber:'1234',address:'江東区住吉 2-14-6',workDate:'2026-09-29'},master).ok,false));
+test('住所分割',()=>assert.deepEqual(splitAddress('江東区住吉 2-14-6'),{area:'江東区住吉',block:'2-14-6',remainder:''}));
