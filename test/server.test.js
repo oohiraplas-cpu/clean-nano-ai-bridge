@@ -763,3 +763,29 @@ test('Copilot Studio向けMCPはAPIキー必須かつStreamable HTTP POSTを維�
   assert.equal(initialized.status, 200);
   assert.equal((await initialized.json()).result.serverInfo.name, 'clean-nano-ai-bridge');
 });
+
+
+test('MCP認証はX-API-Key・Bearer・queryの同一秘密値を受け付ける', async (t) => {
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+
+  const request = async (url, headers = {}) => fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'health_check', arguments: {} } })
+  });
+
+  for (const response of [
+    await request(`${server.baseUrl}/mcp`, { 'x-api-key': 'mcp-secret' }),
+    await request(`${server.baseUrl}/mcp`, { authorization: 'Bearer mcp-secret' }),
+    await request(`${server.baseUrl}/mcp?x-api-key=mcp-secret`),
+    await request(`${server.baseUrl}/mcp?api_key=mcp-secret`)
+  ]) {
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.result.isError, false);
+    assert.equal(body.result.structuredContent.status, 'ok');
+  }
+
+  assert.equal((await request(`${server.baseUrl}/mcp?api_key=wrong`)).status, 401);
+});
