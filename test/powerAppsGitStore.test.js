@@ -19,6 +19,9 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
     if (url.includes('/oauth2/v2.0/token')) {
       return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
     }
+    if (url.includes('/solutions?')) {
+      return new Response(JSON.stringify({ value: [{ uniquename: 'ActualSolution', friendlyname: 'Actual Solution' }] }), { status: 200 });
+    }
     if (url.endsWith('/RefreshChangesFromGit')) {
       return new Response(JSON.stringify({ refreshed: true }), { status: 200 });
     }
