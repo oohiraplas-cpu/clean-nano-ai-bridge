@@ -468,11 +468,16 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     } catch (error) { return next(error); }
   });
 
-  app.get('/mcp/tools/list', (req, res) => {
+  const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+
+  // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
+  // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
+  app.get('/mcp/tools/list', mcpAuth, (req, res) => {
     res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
   });
-
-  app.post('/mcp', (req, res, next) => handleMcpRequest(req, res, next));
+  app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.post('/mcp', mcpAuth, (req, res, next) => handleMcpRequest(req, res, next));
 
   async function handleMcpRequest(req, res, next) {
     const body = req.body || {};

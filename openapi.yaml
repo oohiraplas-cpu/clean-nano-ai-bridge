@@ -62,6 +62,7 @@ paths:
         '404': { description: タスクなし }
   /mcp:
     post:
+      x-ms-agentic-protocol: mcp-streamable-1.0
       operationId: invokeMcpBridge
       description: |
         ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。

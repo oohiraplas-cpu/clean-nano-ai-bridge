@@ -353,7 +353,7 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
-  const response = await fetch(`${server.baseUrl}/mcp/tools/list`);
+  const response = await fetch(`${server.baseUrl}/mcp/tools/list`, { headers: { 'x-api-key': 'mcp-secret' } });
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.tools.map((tool) => tool.name), [
@@ -737,4 +737,29 @@ test('get_powerapps_app({})はDataverse補足取得に失敗してもアプリ�
   assert.equal(body.result.structuredContent.displayName, 'Test App');
   assert.equal(body.result.structuredContent.appId, 'test-app');
   assert.equal(body.result.structuredContent.warning.httpStatus, 403);
+});
+
+
+test('Copilot Studio向けMCPはAPIキー必須かつStreamable HTTP POSTを維持する', async (t) => {
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+
+  const unauthorized = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'accept': 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'copilot-studio', version: '1' } } })
+  });
+  assert.equal(unauthorized.status, 401);
+
+  const getResponse = await fetch(`${server.baseUrl}/mcp`, { headers: { 'x-api-key': 'mcp-secret' } });
+  assert.equal(getResponse.status, 405);
+  assert.equal(getResponse.headers.get('allow'), 'POST');
+
+  const initialized = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'accept': 'application/json, text/event-stream', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'copilot-studio', version: '1' } } })
+  });
+  assert.equal(initialized.status, 200);
+  assert.equal((await initialized.json()).result.serverInfo.name, 'clean-nano-ai-bridge');
 });
