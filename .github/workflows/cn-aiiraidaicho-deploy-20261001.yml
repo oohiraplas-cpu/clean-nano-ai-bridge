@@ -80,13 +80,29 @@ jobs:
           test -s "${{ env.SOURCE_PATH }}/S12_CalendarHub.pa.yaml"
           test -s "${{ env.SOURCE_PATH }}/S13_Apply.pa.yaml"
 
+      - name: Unpack current canvas app to supported source format
+        shell: bash
+        run: |
+          set -euo pipefail
+          MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
+          test -n "$MSAPP"
+          rm -rf out/canvas-current
+          "$POWERPLATFORMTOOLS_PACPATH" canvas unpack --msapp "$MSAPP" --sources out/canvas-current
+
+      - name: Overlay edited YAML onto supported source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s out/canvas-current/CanvasManifest.json
+          cp -f "${{ env.SOURCE_PATH }}"/*.pa.yaml out/canvas-current/
+
       - name: Pack edited canvas source into exported solution
         shell: bash
         run: |
           set -euo pipefail
           MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
           test -n "$MSAPP"
-          "$POWERPLATFORMTOOLS_PACPATH" canvas pack --sources "${{ env.SOURCE_PATH }}" --msapp "$MSAPP"
+          "$POWERPLATFORMTOOLS_PACPATH" canvas pack --sources out/canvas-current --msapp "$MSAPP"
 
       - name: Pack solution
         uses: microsoft/powerplatform-actions/pack-solution@v1
