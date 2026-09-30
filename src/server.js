@@ -52,14 +52,15 @@ function apiKeyMiddleware(getKey) {
     // changing the secret itself or weakening the comparison.
     const authorization = req.get('authorization') || '';
     const bearer = authorization.match(/^Bearer\\s+(.+)$/i);
-    const actual = req.get('x-api-key')
-      || (bearer ? bearer[1] : '')
-      || (typeof req.query?.['x-api-key'] === 'string' ? req.query['x-api-key'] : '')
-      || (typeof req.query?.api_key === 'string' ? req.query.api_key : '')
-      || '';
+    const candidates = [
+      req.get('x-api-key'),
+      bearer ? bearer[1] : '',
+      typeof req.query?.['x-api-key'] === 'string' ? req.query['x-api-key'] : '',
+      typeof req.query?.api_key === 'string' ? req.query.api_key : ''
+    ].filter((value) => typeof value === 'string' && value.length > 0);
 
-    const valid = actual.length === expected.length
-      && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+    const valid = candidates.some((actual) => actual.length === expected.length
+      && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected)));
     if (!valid) return res.status(401).json({ error: '認証に失敗しました' });
     return next();
   };
