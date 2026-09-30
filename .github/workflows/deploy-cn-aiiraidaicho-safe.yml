@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - fix/cn-aiiraidaicho-safe-export-20260926
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-cn-aiiraidaicho-safe.yml'
 
 permissions:
   contents: read

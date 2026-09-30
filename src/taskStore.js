@@ -1,4 +1,6 @@
 const fs = require('node:fs/promises');
+const path = require('node:path');
+const crypto = require('node:crypto');
 
 const STATUSES = Object.freeze([
   '未着手', '実行中', '完了', '停止', 'エラー', '判断待ち',
@@ -28,12 +30,23 @@ class TaskStore {
   constructor(filePath) { this.filePath = filePath; }
 
   async read() {
-    const tasks = JSON.parse(await fs.readFile(this.filePath, 'utf8'));
+    let content;
+    try { content = await fs.readFile(this.filePath, 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    const tasks = JSON.parse(content);
+    if (!Array.isArray(tasks)) throw new Error('タスク保存ファイルの形式が不正です');
     return tasks.map(normalizeTask);
   }
 
   async write(tasks) {
-    await fs.writeFile(this.filePath, `${JSON.stringify(tasks.map(normalizeTask), null, 2)}\n`, 'utf8');
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    const temporaryPath = this.filePath + '.' + crypto.randomUUID() + '.tmp';
+    try {
+      await fs.writeFile(temporaryPath, JSON.stringify(tasks.map(normalizeTask), null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+      await fs.rename(temporaryPath, this.filePath);
+    } finally {
+      await fs.rm(temporaryPath, { force: true });
+    }
   }
 
   async list() { return this.read(); }

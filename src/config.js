@@ -58,7 +58,7 @@ function getConfig(env = process.env) {
     host: env.HOST || '0.0.0.0',
     nodeEnv: env.NODE_ENV || 'development',
     corsOrigins: origins,
-    tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
+    tasksFile: path.resolve(env.TASKS_FILE || (env.WEBSITE_SITE_NAME ? '/home/clean-nano/tasks.json' : 'data/tasks.json')),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     mcpApiKey: env.MCP_API_KEY || '',
     taskStoreBackend: env.TASK_STORE_BACKEND || 'file',
