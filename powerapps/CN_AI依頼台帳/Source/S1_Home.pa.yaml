@@ -134,7 +134,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             HoverFill: =RGBA(0,80,40,1)
-            OnSelect: =Notify("申請台帳は接続済みです。申請画面の結線を次工程で確定します。", NotificationType.Information)
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
             Text: ="申請"
             Width: =(Parent.Width - 48) / 2
             X: =16
@@ -209,7 +209,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             HoverFill: =RGBA(0,80,40,1)
-            OnSelect: =Notify("マイデータはSharePoint接続済みです。専用画面を準備中です。", NotificationType.Information)
+            OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
             Text: ="マイデータ"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
@@ -295,7 +295,7 @@ Screens:
             Color: =RGBA(255,255,255,1)
             Fill: =RGBA(8,34,20,1)
             Height: =64
-            OnSelect: =Notify("申請画面を準備中です。", NotificationType.Information)
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
             Text: ="申請"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
@@ -307,7 +307,7 @@ Screens:
             Color: =RGBA(255,255,255,1)
             Fill: =RGBA(8,34,20,1)
             Height: =64
-            OnSelect: =Notify("マイデータ画面を準備中です。", NotificationType.Information)
+            OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
             Text: ="マイデータ"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
