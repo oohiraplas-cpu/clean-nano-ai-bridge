@@ -45,8 +45,21 @@ function apiKeyMiddleware(getKey) {
   return (req, res, next) => {
     const expected = getKey();
     if (!expected) return next();
-    const actual = req.get('x-api-key') || '';
-    const valid = actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+
+    // Copilot Studio MCP connections can send API keys either in a header or
+    // in the query string. Some MCP clients also use Authorization: Bearer.
+    // Accept the same configured secret through these transports without
+    // changing the secret itself or weakening the comparison.
+    const authorization = req.get('authorization') || '';
+    const bearer = authorization.match(/^Bearer\\s+(.+)$/i);
+    const actual = req.get('x-api-key')
+      || (bearer ? bearer[1] : '')
+      || (typeof req.query?.['x-api-key'] === 'string' ? req.query['x-api-key'] : '')
+      || (typeof req.query?.api_key === 'string' ? req.query.api_key : '')
+      || '';
+
+    const valid = actual.length === expected.length
+      && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
     if (!valid) return res.status(401).json({ error: '認証に失敗しました' });
     return next();
   };
