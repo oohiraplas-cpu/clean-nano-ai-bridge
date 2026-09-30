@@ -164,7 +164,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             HoverFill: =RGBA(0,80,40,1)
-            OnSelect: =Notify("経費画面を準備中です。", NotificationType.Information)
+            OnSelect: =Navigate(S14_Expense, ScreenTransition.None)
             Text: ="経費"
             Width: =(Parent.Width - 48) / 2
             X: =16
@@ -179,7 +179,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             HoverFill: =RGBA(0,80,40,1)
-            OnSelect: =Notify("OCR自動記載を準備中です。", NotificationType.Information)
+            OnSelect: =Navigate(S15_OCR, ScreenTransition.None)
             Text: ="OCR自動記載"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
@@ -194,7 +194,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             HoverFill: =RGBA(0,80,40,1)
-            OnSelect: =Notify("見積書・請求書画面を準備中です。", NotificationType.Information)
+            OnSelect: =Navigate(S16_Invoice, ScreenTransition.None)
             Text: ="見積書・請求書"
             Width: =(Parent.Width - 48) / 2
             X: =16
