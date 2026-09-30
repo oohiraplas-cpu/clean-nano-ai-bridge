@@ -432,17 +432,23 @@ test('get_sharepoint_listはSharePoint設定不足時もJSON-RPCエラーとし�
   assert.match(body.result.structuredContent.error, /SharePoint設定が不足しています/);
 });
 
-test('get_sharepoint_listはlistId/listNameいずれも未指定なら400を返す', async (t) => {
-  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+test('get_sharepoint_listは対象未指定でリスト一覧を読み取る', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }));
+    assert.match(url, /\/lists\?/);
+    return new Response(JSON.stringify({ value: [{ id: 'expenses', displayName: '経費' }] }));
+  };
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret', sharepointOverrides: { fetchImpl: mockFetch } });
   t.after(() => server.close());
   const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
-
   const called = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers,
     body: JSON.stringify({ method: 'get_sharepoint_list', params: {} })
   });
-  assert.equal(called.status, 400);
-  assert.match((await called.json()).error, /listIdまたはlistName/);
+  assert.equal(called.status, 200);
+  const result = (await called.json()).result;
+  assert.equal(result.mode, 'lists');
+  assert.equal(result.lists[0].id, 'expenses');
 });
 
 test('get_sharepoint_listは設定が揃っていれば項目を取得できる', async (t) => {

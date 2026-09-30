@@ -76,9 +76,10 @@ paths:
         でタスクの状態と結果を更新し、result.task を返します。
         get_task_result は params.task_id（必須）で現在の status・result を返します。
         task_idが存在しない場合は404を返します。
-        get_sharepoint_list は params.listId または params.listName のいずれか（必須）・
+        get_sharepoint_list は params.listId または params.listName のいずれか（任意）・
         params.siteId（任意、省略時は既定サイト）・params.top（任意、既定50、最大200）で
-        SharePointリストの項目を読み取り専用で取得します。
+        対象未指定時はリスト一覧、指定時は項目と列定義を読み取り専用で取得します。
+        列定義の読取可否はschemaStatus、取得上限による不足はhasMoreまたはcolumnsHasMoreで明示します。
         run_power_automate_flow は params.flowKey（必須、あらかじめ環境変数で登録されたフローのキー）・
         params.payload（任意）・params.approvedByHuman（必須、true固定）で登録済みPower Automate
         フローを実行します。approvedByHumanがtrueでない場合はエラーになり、実行されません

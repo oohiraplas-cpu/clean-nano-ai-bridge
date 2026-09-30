@@ -10,7 +10,6 @@ function validateGetSharePointListParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
   if (params.listId !== undefined && typeof params.listId !== 'string') return 'listIdは文字列である必要があります';
   if (params.listName !== undefined && typeof params.listName !== 'string') return 'listNameは文字列である必要があります';
-  if (!params.listId && !params.listName) return 'listIdまたはlistNameのいずれかが必要です';
   if (params.siteId !== undefined && typeof params.siteId !== 'string') return 'siteIdは文字列である必要があります';
   if (params.top !== undefined && (typeof params.top !== 'number' || !Number.isFinite(params.top) || params.top < 1)) {
     return 'topは1以上の数値である必要があります';

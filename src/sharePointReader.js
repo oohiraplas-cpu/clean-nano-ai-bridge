@@ -61,13 +61,37 @@ class SharePointReader {
 
   async _resolveListId(siteId, listName) {
     const filter = `displayName eq '${listName.replace(/'/g, "''")}'`;
-    const data = await this._graphFetch(`/sites/${siteId}/lists?$select=id,displayName&$filter=${encodeURIComponent(filter)}`);
+    const data = await this._graphFetch(`/sites/${encodeURIComponent(siteId)}/lists?$select=id,displayName&$filter=${encodeURIComponent(filter)}`);
+    if ((data.value || []).length > 1) throw new Error('同じ表示名のSharePointリストが複数あります。listIdで指定してください');
     const match = (data.value || [])[0];
     if (!match) throw new Error(`指定されたSharePointリストが見つかりません: ${listName}`);
     return match.id;
   }
 
-  // params: { siteId?, listId?, listName?, top? } — listIdまたはlistNameのいずれかが必要。
+  // Graphの継続URLは同じホスト・エンドポイントのみ許可する。
+  async _readCollection(path, limit) {
+    const values = [];
+    const initial = new URL(this.graphBaseUrl + path);
+    let nextPath = path;
+    const seen = new Set();
+    while (nextPath && values.length < limit) {
+      if (seen.has(nextPath)) throw new Error('SharePointのページ取得が循環しています');
+      seen.add(nextPath);
+      const page = await this._graphFetch(nextPath);
+      values.push(...(page.value || []));
+      nextPath = null;
+      if (page['@odata.nextLink']) {
+        const next = new URL(page['@odata.nextLink'], initial);
+        if (next.origin !== initial.origin || next.pathname !== initial.pathname) {
+          throw new Error('SharePointの継続URLが対象エンドポイントと一致しません');
+        }
+        nextPath = next.pathname.slice(new URL(this.graphBaseUrl).pathname.length) + next.search;
+      }
+    }
+    return { values: values.slice(0, limit), hasMore: !!nextPath || values.length > limit };
+  }
+
+  // 対象未指定ならリスト一覧、指定時は項目と実際の列定義を取得。
   // 読み取り専用（作成・更新・削除は行わない）。
   async listItems(params = {}) {
     this._assertConfig();
@@ -75,12 +99,27 @@ class SharePointReader {
     if (!targetSiteId) {
       throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
     }
+    const limit = Math.min(Math.max(Number.parseInt(params.top, 10) || 50, 1), 200);
+    const sitePath = '/sites/' + encodeURIComponent(targetSiteId);
+    if (!params.listId && !params.listName) {
+      const page = await this._readCollection(sitePath + '/lists?$select=id,displayName,webUrl,list&$top=' + limit, limit);
+      return { status: 'ok', mode: 'lists', siteId: targetSiteId, count: page.values.length, lists: page.values, hasMore: page.hasMore };
+    }
     const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
     if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
-    const limit = Math.min(Math.max(Number.parseInt(params.top, 10) || 50, 1), 200);
-    const data = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/items?expand=fields&$top=${limit}`);
+    const listPath = sitePath + '/lists/' + encodeURIComponent(targetListId);
+    const data = await this._graphFetch(listPath + '/items?expand=fields&$top=' + limit);
     const items = (data.value || []).map((item) => ({ itemId: item.id, fields: item.fields || {} }));
-    return { status: 'ok', siteId: targetSiteId, listId: targetListId, count: items.length, items };
+    let schema;
+    try {
+      const select = 'id,name,displayName,description,required,hidden,readOnly,indexed,enforceUniqueValues,text,number,currency,dateTime,choice,lookup,personOrGroup,boolean,calculated,hyperlinkOrPicture,defaultValue';
+      const columns = await this._readCollection(listPath + '/columns?$select=' + select + '&$top=200', 500);
+      schema = { schemaStatus: 'ok', columns: columns.values, columnsHasMore: columns.hasMore };
+    } catch {
+      // 列定義の読取失敗で既存の項目読取を壊さず、未確認を明示する。
+      schema = { schemaStatus: 'unavailable', columns: [], columnsHasMore: false };
+    }
+    return { status: 'ok', siteId: targetSiteId, listId: targetListId, count: items.length, items, ...schema };
   }
 }
 

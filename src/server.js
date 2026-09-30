@@ -174,7 +174,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'get_sharepoint_list',
-    description: 'SharePointリストの項目を読み取り専用で取得します。',
+    description: '対象未指定でSharePointリスト一覧、指定時は項目と列の内部名・型を読み取り専用で取得します。',
     inputSchema: {
       type: 'object',
       properties: {
