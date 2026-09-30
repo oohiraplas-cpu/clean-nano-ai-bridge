@@ -119,7 +119,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             HoverFill: =RGBA(0,80,40,1)
-            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            OnSelect: =Navigate(S12_CalendarHub, ScreenTransition.None)
             Text: ="カレンダー"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
@@ -271,7 +271,7 @@ Screens:
             Color: =RGBA(255,255,255,1)
             Fill: =RGBA(8,34,20,1)
             Height: =64
-            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            OnSelect: =Navigate(S12_CalendarHub, ScreenTransition.None)
             Text: ="カレンダー"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5
