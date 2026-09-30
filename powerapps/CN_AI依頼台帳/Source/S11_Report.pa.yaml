@@ -40,7 +40,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             Height: =42
-            OnSelect: =Navigate(MainScreen1, ScreenTransition.None)
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
             RadiusBottomLeft: =8
             RadiusBottomRight: =8
             RadiusTopLeft: =8
@@ -63,6 +63,8 @@ Screens:
       - dpWorkDate:
           Control: Classic/DatePicker@2.6.0
           Properties:
+            DefaultDate: =Today()
+            DisplayMode: =DisplayMode.View
             Format: ="yyyy/mm/dd"
             Height: =38
             Size: =13
@@ -90,6 +92,27 @@ Screens:
             Width: =(recFrame.Width - 30) / 2
             X: =recFrame.X
             Y: =158
+      - lblResponder:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="対応者 *"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =196
+      - txtResponder:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =User().FullName
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =220
       - lblSite:
           Control: Label@2.5.1
           Properties:
@@ -99,7 +122,7 @@ Screens:
             Text: ="現場 *"
             Width: =(recFrame.Width - 30) / 2
             X: =recFrame.X
-            Y: =196
+            Y: =258
       - ddSite:
           Control: Classic/DropDown@2.3.1
           Properties:
@@ -111,7 +134,7 @@ Screens:
             Items.Value: =Title
             Width: =(recFrame.Width - 30) / 2
             X: =recFrame.X
-            Y: =220
+            Y: =282
       - lblStart:
           Control: Label@2.5.1
           Properties:
@@ -121,7 +144,7 @@ Screens:
             Text: ="開始（例 8:00）"
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X
-            Y: =258
+            Y: =320
       - txtStart:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -132,7 +155,7 @@ Screens:
             Height: =38
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X
-            Y: =282
+            Y: =344
       - lblEnd:
           Control: Label@2.5.1
           Properties:
@@ -142,7 +165,7 @@ Screens:
             Text: ="終了（例 17:00）"
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X + (recFrame.Width - 30) / 4 + 5
-            Y: =258
+            Y: =320
       - txtEnd:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -153,7 +176,28 @@ Screens:
             Height: =38
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X + (recFrame.Width - 30) / 4 + 5
-            Y: =282
+            Y: =344
+      - lblWorkHours:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="労働時間"
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =382
+      - txtWorkHours:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =38
+            Size: =14
+            Text: =If(IsBlank(txtStart.Text) || IsBlank(txtEnd.Text), "-", Text(DateDiff(TimeValue(txtStart.Text), TimeValue(txtEnd.Text), TimeUnit.Minutes) / 60, "0.0") & " h")
+            Width: =(recFrame.Width - 30) / 2
+            X: =recFrame.X
+            Y: =406
       - lblPeople:
           Control: Label@2.5.1
           Properties:
