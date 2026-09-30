@@ -10,17 +10,10 @@ Screens:
       Fill: =RGBA(6, 18, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        IfError(
-          If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
-          ClearCollect(colHomeNews,
-            {SortKey: 1, Line: "最近の予定・進行状況"},
-            {SortKey: 2, Line: "本日 " & Text(Today(), "yyyy/mm/dd") & " ｜ " & User().FullName},
-            {SortKey: 3, Line: "申請・日報・カレンダーの最新状況を確認してください"}
-          ),
-          Clear(colAttend);
-          ClearCollect(colHomeNews,{SortKey:1,Line:"最新情報を取得できません。メニュー操作は継続できます。"});
-          Notify("データ接続を確認してください。画面操作は継続できます。", NotificationType.Warning)
+        ClearCollect(colHomeNews,
+          {SortKey: 1, Line: "最近の予定・進行状況"},
+          {SortKey: 2, Line: "本日 " & Text(Today(), "yyyy/mm/dd") & " ｜ " & User().FullName},
+          {SortKey: 3, Line: "申請・日報・カレンダーの最新状況を確認してください"}
         )
     Children:
       - S1_Header:
