@@ -86,7 +86,7 @@ jobs:
           set -euo pipefail
           MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
           test -n "$MSAPP"
-          pac canvas pack --sources "${{ env.SOURCE_PATH }}" --msapp "$MSAPP" --layout SourceCode --overwrite
+          "$POWERPLATFORMTOOLS_PACPATH" canvas pack --sources "${{ env.SOURCE_PATH }}" --msapp "$MSAPP" --layout SourceCode --overwrite
 
       - name: Pack solution
         uses: microsoft/powerplatform-actions/pack-solution@v1
