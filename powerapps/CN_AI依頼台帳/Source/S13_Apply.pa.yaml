@@ -1,0 +1,197 @@
+Screens:
+  S13_Apply:
+    Properties:
+      Fill: =RGBA(6,18,10,1)
+      OnVisible: =Set(varApplyDate, Today())
+    Children:
+      - S13_Header:
+          Control: Rectangle@2.3.0
+          Properties:
+            Fill: =RGBA(8,34,20,1)
+            Height: =72
+            Width: =Parent.Width
+      - S13_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(255,255,255,1)
+            Fill: =RGBA(8,34,20,1)
+            Height: =44
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="←"
+            Width: =52
+            X: =8
+            Y: =14
+      - S13_Title:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =21
+            Text: ="申請"
+            Width: =Parent.Width-120
+            X: =60
+            Y: =14
+      - S13_OCR:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(9,42,24,1)
+            FontWeight: =FontWeight.Bold
+            Height: =54
+            OnSelect: =Notify("OCR自動記載画面を接続中です", NotificationType.Information)
+            Text: ="OCR自動記載"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =88
+      - S13_TypeLabel:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =24
+            Text: ="申請種別 *"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =158
+      - S13_Type:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            Color: =RGBA(255,255,255,1)
+            Default: ="残業"
+            Fill: =RGBA(20,28,24,1)
+            Height: =44
+            Width: =Parent.Width-32
+            X: =16
+            Y: =182
+      - S13_DateLabel:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =24
+            Text: ="対象日 *"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =238
+      - S13_Date:
+          Control: Classic/DatePicker@2.6.0
+          Properties:
+            DefaultDate: =Today()
+            Format: ="yyyy/mm/dd"
+            Height: =44
+            Width: =Parent.Width-32
+            X: =16
+            Y: =262
+      - S13_SiteLabel:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =24
+            Text: ="現場名"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =318
+      - S13_Site:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            Color: =RGBA(255,255,255,1)
+            Fill: =RGBA(20,28,24,1)
+            Height: =44
+            Width: =Parent.Width-32
+            X: =16
+            Y: =342
+      - S13_TimeLabel:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =24
+            Text: ="開始 / 終了"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =398
+      - S13_Start:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            Color: =RGBA(255,255,255,1)
+            Fill: =RGBA(20,28,24,1)
+            Height: =44
+            HintText: ="17:00"
+            Width: =(Parent.Width-48)/2
+            X: =16
+            Y: =422
+      - S13_End:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            Color: =RGBA(255,255,255,1)
+            Fill: =RGBA(20,28,24,1)
+            Height: =44
+            HintText: ="19:00"
+            Width: =(Parent.Width-48)/2
+            X: =32+(Parent.Width-48)/2
+            Y: =422
+      - S13_ReasonLabel:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =24
+            Text: ="申請理由 *"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =478
+      - S13_Reason:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            Color: =RGBA(255,255,255,1)
+            Fill: =RGBA(20,28,24,1)
+            Height: =92
+            Mode: =TextMode.MultiLine
+            Width: =Parent.Width-32
+            X: =16
+            Y: =502
+      - S13_Submit:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(0,0,0,1)
+            Fill: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Height: =54
+            OnSelect: |-
+              =If(
+                IsBlank(S13_Type.Text) || IsBlank(S13_Reason.Text),
+                Notify("申請種別と申請理由を入力してください", NotificationType.Error),
+                IfError(
+                  Patch(
+                    CN_申請台帳,
+                    Defaults(CN_申請台帳),
+                    {
+                      Title: S13_Type.Text & " " & Text(S13_Date.SelectedDate,"yyyy/mm/dd") & " " & User().FullName,
+                      ApplyType: S13_Type.Text,
+                      ApplicantName: User().FullName,
+                      ApplicantEmail: User().Email,
+                      TargetDate: S13_Date.SelectedDate,
+                      StartTime: S13_Start.Text,
+                      EndTime: S13_End.Text,
+                      WorkHours: If(IsBlank(S13_Start.Text)||IsBlank(S13_End.Text),Blank(),DateDiff(TimeValue(S13_Start.Text),TimeValue(S13_End.Text),TimeUnit.Minutes)/60),
+                      SiteName: S13_Site.Text,
+                      Reason: S13_Reason.Text,
+                      Status: "申請中"
+                    }
+                  ),
+                  Notify("申請を保存できませんでした：" & FirstError.Message, NotificationType.Error),
+                  Notify("申請を送信しました", NotificationType.Success);
+                  Reset(S13_Reason); Reset(S13_Start); Reset(S13_End)
+                )
+              )
+            Text: ="申請する"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =610
