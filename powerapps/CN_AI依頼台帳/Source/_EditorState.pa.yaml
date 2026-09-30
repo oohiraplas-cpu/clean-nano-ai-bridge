@@ -21,3 +21,4 @@ EditorState:
     - S9_UserConfirm
     - S10_RegistrationComplete
     - S11_Report
+    - S13_Apply
