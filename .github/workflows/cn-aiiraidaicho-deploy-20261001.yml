@@ -1,0 +1,118 @@
+name: CN_AI依頼台帳 one-time safe deploy 2026-10-01
+
+on:
+  push:
+    branches:
+      - fix/cn-aiiraidaicho-safe-export-20260926
+    paths:
+      - ".github/deploy/cn-aiiraidaicho-release-20261001.trigger"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  ENVIRONMENT_URL: https://org0bbb24c5.crm7.dynamics.com
+  SOLUTION_NAME: CN_AIIraiDaicho
+  SOURCE_PATH: powerapps/CN_AI依頼台帳/Source
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
+
+      - name: Export current production solution as backup
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          solution-name: ${{ env.SOLUTION_NAME }}
+          solution-output-file: out/backup.zip
+
+      - name: Verify backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s out/backup.zip
+          python3 - <<'PY'
+          import zipfile
+          z=zipfile.ZipFile('out/backup.zip')
+          assert z.testzip() is None
+          req={'solution.xml','customizations.xml','[Content_Types].xml'}
+          missing=req-set(z.namelist())
+          assert not missing, missing
+          meta=z.read('solution.xml').decode('utf-8-sig')
+          assert '<UniqueName>CN_AIIraiDaicho</UniqueName>' in meta
+          PY
+
+      - name: Upload pre-deploy backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: CN_AIIraiDaicho-predeploy-20261001
+          path: out/backup.zip
+          retention-days: 30
+
+      - name: Unpack current solution
+        uses: microsoft/powerplatform-actions/unpack-solution@v1
+        with:
+          solution-file: out/backup.zip
+          solution-folder: out/solution
+          solution-type: Unmanaged
+          overwrite-files: true
+
+      - name: Validate edited source exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "${{ env.SOURCE_PATH }}/App.pa.yaml"
+          test -s "${{ env.SOURCE_PATH }}/S1_Home.pa.yaml"
+          test -s "${{ env.SOURCE_PATH }}/S2_Calendar.pa.yaml"
+          test -s "${{ env.SOURCE_PATH }}/S11_Report.pa.yaml"
+          test -s "${{ env.SOURCE_PATH }}/S12_CalendarHub.pa.yaml"
+          test -s "${{ env.SOURCE_PATH }}/S13_Apply.pa.yaml"
+
+      - name: Pack edited canvas source into exported solution
+        shell: bash
+        run: |
+          set -euo pipefail
+          MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
+          test -n "$MSAPP"
+          pac canvas pack --sources "${{ env.SOURCE_PATH }}" --msapp "$MSAPP" --layout SourceCode --overwrite
+
+      - name: Pack solution
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: out/solution
+          solution-file: out/CN_AIIraiDaicho-deploy.zip
+          solution-type: Unmanaged
+
+      - name: Import solution
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          solution-file: out/CN_AIIraiDaicho-deploy.zip
+          force-overwrite: false
+          publish-changes: false
+
+      - name: Publish solution
+        uses: microsoft/powerplatform-actions/publish-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+
+      - name: Record deployed source commit
+        run: echo "deployed_commit=${GITHUB_SHA}"
