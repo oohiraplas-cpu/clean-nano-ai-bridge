@@ -10,7 +10,18 @@ Screens:
   S8_UserOnboarding:
     Properties:
       Fill: =RGBA(255, 255, 255, 1)
-      LoadingSpinnerColor: =RGBA(0, 120, 212, 1)
+      LoadingSpinnerColor: =RGBA(0, 255, 102, 1)
+      OnVisible: |-
+        =Set(gblMyDataLoadFailed, false);
+        Set(gblMyData, Blank());
+        IfError(
+          Refresh(CN_本人マイデータ);
+          Set(gblMyData, LookUp(CN_本人マイデータ, UserUPN = Lower(User().Email)));
+          If(IsBlank(gblMyData), NewForm(Form3), EditForm(Form3)),
+          Set(gblMyDataLoadFailed, true);
+          ViewForm(Form3);
+          Notify("本人情報を取得できません。再度開いてください。", NotificationType.Error)
+        )
     Children:
       - Form3:
           Control: Form@2.4.4
@@ -19,11 +30,15 @@ Screens:
           Properties:
             BorderColor: =RGBA(245, 245, 245, 1)
             DataSource: ='CN_本人マイデータ'
-            DefaultMode: =FormMode.New
+            DefaultMode: =If(gblMyDataLoadFailed, FormMode.View, If(IsBlank(gblMyData), FormMode.New, FormMode.Edit))
+            Item: =gblMyData
+            Height: =Parent.Height - 152
+            Width: =Parent.Width - 32
             NumberOfColumns: =1
             OnSuccess: =Navigate(S10_RegistrationComplete)
-            X: =40
-            Y: =40
+            OnFailure: =Notify("保存できませんでした。入力内容を確認して再度保存してください。", NotificationType.Error)
+            X: =16
+            Y: =72
           Children:
             - タイトル_DataCard1:
                 Control: TypedDataCard@1.0.7
@@ -257,7 +272,8 @@ Screens:
                   DisplayName: =DataSourceInfo([@CN_本人マイデータ],DataSourceInfo.DisplayName,'UserUPN')
                   MaxLength: =DataSourceInfo([@CN_本人マイデータ], DataSourceInfo.MaxLength, 'UserUPN')
                   Required: =true
-                  Update: =DataCardValue25.Text
+                  Update: =Lower(User().Email)
+                  DisplayMode: =DisplayMode.View
                   X: =0
                   Y: =2
                 Children:
@@ -1143,7 +1159,8 @@ Screens:
             HoverBorderColor: =RGBA(0, 0, 0, 0)
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(16, 110, 190, 1)
-            OnSelect: =If(Form3.Valid, Navigate(S9_UserConfirm), Notify("必須項目を入力してください", NotificationType.Error))
+            DisplayMode: =If(gblMyDataLoadFailed, DisplayMode.Disabled, DisplayMode.Edit)
+            OnSelect: =If(!gblMyDataLoadFailed && Form3.Valid, Navigate(S9_UserConfirm), Notify("必須項目とデータ接続を確認してください", NotificationType.Error))
             PressedBorderColor: =RGBA(0, 69, 120, 1)
             PressedColor: =RGBA(255, 255, 255, 1)
             PressedFill: =RGBA(16, 110, 190, 1)
@@ -1152,5 +1169,24 @@ Screens:
             RadiusTopLeft: =0
             RadiusTopRight: =0
             Text: ="登録内容を確認"
-            X: =60
-            Y: =60
+            Height: =56
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 72
+      - MyDataBack:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Text: ="戻る"
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Height: =48
+            Width: =96
+            X: =16
+            Y: =12
+      - MyDataHeading:
+          Control: Label@2.5.1
+          Properties:
+            Text: =If(IsBlank(gblMyData), "本人情報を登録", "本人情報を編集")
+            Height: =48
+            Width: =Parent.Width - 144
+            X: =128
+            Y: =12
