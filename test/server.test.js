@@ -353,7 +353,7 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   const server = await createTestServer([], { mcpApiKey: 'mcp-secret' });
   t.after(() => server.close());
 
-  const response = await fetch(`${server.baseUrl}/mcp/tools/list`);
+  const response = await fetch(`${server.baseUrl}/mcp/tools/list`, { headers: { 'x-api-key': 'mcp-secret' } });
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.tools.map((tool) => tool.name), [
