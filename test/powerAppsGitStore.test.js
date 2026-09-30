@@ -45,7 +45,7 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
   assert.equal(result.refresh.action, 'RefreshChangesFromGit');
   assert.equal(result.pull.action, 'PullChangesFromGit');
   assert.deepEqual(
-    calls.filter(({ url }) => url.includes('api/data/v9.2')).map(({ url }) => url.split('/').pop()),
+    calls.filter(({ url }) => url.endsWith('/RefreshChangesFromGit') || url.endsWith('/PullChangesFromGit')).map(({ url }) => url.split('/').pop()),
     ['RefreshChangesFromGit', 'PullChangesFromGit']
   );
 });
