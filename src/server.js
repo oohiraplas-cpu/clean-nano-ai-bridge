@@ -51,7 +51,7 @@ function apiKeyMiddleware(getKey) {
     // Accept the same configured secret through these transports without
     // changing the secret itself or weakening the comparison.
     const authorization = req.get('authorization') || '';
-    const bearer = authorization.match(/^Bearer\\s+(.+)$/i);
+    const bearer = authorization.match(/^Bearer\s+(.+)$/i);
     const candidates = [
       req.get('x-api-key'),
       bearer ? bearer[1] : '',
