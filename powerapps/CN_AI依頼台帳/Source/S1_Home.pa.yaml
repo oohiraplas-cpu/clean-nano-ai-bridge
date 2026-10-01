@@ -176,6 +176,20 @@ Screens:
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
             Y: =578
+      - S1_GoApply:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
+            Size: =14
+            Text: ="申請"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =638
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
