@@ -232,6 +232,20 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =752
+      - S1_GoEstimate:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Navigate(S24_EstimateDraft, ScreenTransition.None)
+            Size: =13
+            Text: ="見積書（下書き）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =806
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
