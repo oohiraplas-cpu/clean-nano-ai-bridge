@@ -1,0 +1,31 @@
+Screens:
+  S15_OCR:
+    Properties:
+      Fill: =RGBA(6,18,10,1)
+    Children:
+      - S15_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="← ホーム"
+            X: =16
+            Y: =16
+      - S15_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Size: =22
+            Text: ="OCR自動記載"
+            X: =16
+            Y: =80
+            Width: =Parent.Width-32
+      - S15_Info:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =110
+            Text: ="OCR → 読取プレビュー → 自動記載 → 最終プレビュー。CN_OCR受信箱への実接続は確認済みです。OCR実行はフロー確認後に有効化します。"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =140
