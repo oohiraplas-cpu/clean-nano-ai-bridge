@@ -1,0 +1,31 @@
+Screens:
+  S14_Expense:
+    Properties:
+      Fill: =RGBA(6,18,10,1)
+    Children:
+      - S14_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="← ホーム"
+            X: =16
+            Y: =16
+      - S14_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Size: =22
+            Text: ="経費"
+            X: =16
+            Y: =80
+            Width: =Parent.Width-32
+      - S14_Info:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =90
+            Text: ="経費・領収書の入口です。CN_経費台帳への実接続は確認済みです。保存処理は列型確認後に有効化します。"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =140
