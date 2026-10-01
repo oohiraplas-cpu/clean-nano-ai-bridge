@@ -190,6 +190,34 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =638
+      - S1_GoOCR:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Navigate(S13_MyDataOCR, ScreenTransition.None)
+            Size: =13
+            Text: ="OCR自動記載"
+            Width: =(Parent.Width - 48) / 2
+            X: =16
+            Y: =698
+      - S1_GoExpense:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Set(gblSelDate, Today()); Navigate(S14_DateDocuments, ScreenTransition.None)
+            Size: =13
+            Text: ="経費・領収書"
+            Width: =(Parent.Width - 48) / 2
+            X: =32 + (Parent.Width - 48) / 2
+            Y: =698
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
