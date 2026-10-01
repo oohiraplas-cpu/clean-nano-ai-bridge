@@ -42,8 +42,8 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
 
   assert.equal(result.status, 'ok');
   assert.equal(result.update.commitSha, 'commit-sha');
-  assert.equal(result.refresh.action, 'RefreshChangesFromGit');
-  assert.equal(result.pull.action, 'PullChangesFromGit');
+  assert.equal(result.sync.refresh.action, 'RefreshChangesFromGit');
+  assert.equal(result.sync.pull.action, 'PullChangesFromGit');
   assert.deepEqual(
     calls.filter(({ url }) => url.endsWith('/RefreshChangesFromGit') || url.endsWith('/PullChangesFromGit')).map(({ url }) => url.split('/').pop()),
     ['RefreshChangesFromGit', 'PullChangesFromGit']
