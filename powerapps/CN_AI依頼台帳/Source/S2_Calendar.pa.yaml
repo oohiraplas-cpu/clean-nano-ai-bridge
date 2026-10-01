@@ -154,6 +154,22 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =Parent.Height - 70 - 50
+      - S2_SalaryButton:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =40
+            HoverFill: =RGBA(0, 204, 102, 0.2)
+            OnSelect: =Navigate(S5_Salary, ScreenTransition.None)
+            PressedFill: =RGBA(0, 204, 102, 0.35)
+            Size: =13
+            Text: ="本人の出勤・総支給見込みを見る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 70 - 96
       - S2_NavBar:
           Control: Rectangle@2.3.0
           Properties:
