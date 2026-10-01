@@ -1,0 +1,58 @@
+Screens:
+  S16_OperationsHub:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S16_OperationsHub_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =52
+            Size: =20
+            Text: ="運営管理"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S16_OperationsHub_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - S16_OperationsHub_Note:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =125
+            Size: =15
+            Text: ="自社情報と月次経理の入口です。管理者向けの画面として準備中です。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - S16_OperationsHub_Action1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S17_CompanyInfoOCR, ScreenTransition.None)
+            Text: ="自社情報・OCR"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =278
+      - S16_OperationsHub_Action2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S15_OperationsMonthly, ScreenTransition.None)
+            Text: ="月次経理"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =332

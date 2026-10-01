@@ -148,6 +148,104 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =510
+      - S1_GoSalary:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            OnSelect: =Navigate(S5_Salary, ScreenTransition.None)
+            Size: =14
+            Text: ="給与・総支給見込み"
+            Width: =(Parent.Width - 48) / 2
+            X: =16
+            Y: =Parent.Height - 328
+      - S1_GoReport:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            OnSelect: =Navigate(S11_Report, ScreenTransition.None)
+            Size: =14
+            Text: ="電子日報"
+            Width: =(Parent.Width - 48) / 2
+            X: =32 + (Parent.Width - 48) / 2
+            Y: =Parent.Height - 328
+      - S1_GoApply:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
+            Size: =14
+            Text: ="申請"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 268
+      - S1_GoOCR:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Navigate(S13_MyDataOCR, ScreenTransition.None)
+            Size: =13
+            Text: ="OCR自動記載"
+            Width: =(Parent.Width - 48) / 2
+            X: =16
+            Y: =Parent.Height - 208
+      - S1_GoExpense:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Set(gblSelDate, Today()); Navigate(S14_DateDocuments, ScreenTransition.None)
+            Size: =13
+            Text: ="経費・領収書"
+            Width: =(Parent.Width - 48) / 2
+            X: =32 + (Parent.Width - 48) / 2
+            Y: =Parent.Height - 208
+      - S1_GoInvoice:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Navigate(S23_InvoiceDraft, ScreenTransition.None)
+            Size: =13
+            Text: ="請求書（下書き）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 154
+      - S1_GoEstimate:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Navigate(S24_EstimateDraft, ScreenTransition.None)
+            Size: =13
+            Text: ="見積書（下書き）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 104
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:

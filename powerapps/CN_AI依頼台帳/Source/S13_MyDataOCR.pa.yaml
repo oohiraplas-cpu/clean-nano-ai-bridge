@@ -1,0 +1,54 @@
+Screens:
+  S13_MyDataOCR:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - MyDataOCR_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            Size: =20
+            Text: ="マイデータ OCR自動記載"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - MyDataOCR_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
+            Text: ="マイデータへ戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - MyDataOCR_Steps:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =110
+            Size: =16
+            Text: ="OCR → 読取プレビュー → 自動記載 → 完成プレビュー → FAX または PDF"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - MyDataOCR_Status:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =150
+            Size: =14
+            Text: ="本人・会社書類の抽出定義と保存先の列型を確認中です。現在はOCR読取、マイデータへの転記、FAX送信、PDF出力はできません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =260
+      - MyDataOCR_Preview:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Height: =44
+            OnSelect: =Navigate(S18_OcrReadPreview, ScreenTransition.None)
+            Text: ="読取プレビューを見る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =426

@@ -1,0 +1,88 @@
+Screens:
+  S21_MonthlyBS:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S21_MonthlyBS_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =52
+            Size: =20
+            Text: ="月次貸借対照表"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S21_MonthlyBS_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S15_OperationsMonthly, ScreenTransition.None)
+            Text: ="戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - S21_MonthlyBS_Note:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =125
+            Size: =15
+            Text: ="資産・負債・純資産と累計利益を確認する下書き画面です。期首残高と預金の照合が済むまで金額は表示しません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - S21_MonthlyBS_Action1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="貸借対照表PDF（照合待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =278
+      - S21_MonthlyBS_Action2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Navigate(S20_MonthlyPL, ScreenTransition.None)
+            Text: ="損益表を見る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =332
+      - S21_MonthlyBS_Field1:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="資産：未集計"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =402
+      - S21_MonthlyBS_Field2:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="負債：未集計"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =446
+      - S21_MonthlyBS_Field3:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="純資産：未集計"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =490
