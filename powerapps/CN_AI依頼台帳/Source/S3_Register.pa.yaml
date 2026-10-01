@@ -12,7 +12,7 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
+        If(IsBlank(gblEmpID), Set(gblEmpID, LookUp(CN_本人マイデータ, UserUPN = Lower(User().Email)).EmployeeID));
         If(IsBlank(gblSelDate), Set(gblSelDate, Today()))
     Children:
       - S3_Title:
