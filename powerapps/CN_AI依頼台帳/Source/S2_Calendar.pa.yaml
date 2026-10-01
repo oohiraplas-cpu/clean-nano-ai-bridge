@@ -170,6 +170,20 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =Parent.Height - 70 - 96
+      - S2_ExpenseButton:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =40
+            OnSelect: =If(IsBlank(gblSelDate), Set(gblSelDate, Today())); Navigate(S14_DateDocuments, ScreenTransition.None)
+            Size: =13
+            Text: ="選択日の経費・領収書"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 70 - 142
       - S2_NavBar:
           Control: Rectangle@2.3.0
           Properties:
