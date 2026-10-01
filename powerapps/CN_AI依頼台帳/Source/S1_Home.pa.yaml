@@ -161,7 +161,7 @@ Screens:
             Text: ="給与・総支給見込み"
             Width: =(Parent.Width - 48) / 2
             X: =16
-            Y: =578
+            Y: =Parent.Height - 328
       - S1_GoReport:
           Control: Classic/Button@2.2.0
           Properties:
@@ -175,7 +175,7 @@ Screens:
             Text: ="電子日報"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
-            Y: =578
+            Y: =Parent.Height - 328
       - S1_GoApply:
           Control: Classic/Button@2.2.0
           Properties:
@@ -189,7 +189,7 @@ Screens:
             Text: ="申請"
             Width: =Parent.Width - 32
             X: =16
-            Y: =638
+            Y: =Parent.Height - 268
       - S1_GoOCR:
           Control: Classic/Button@2.2.0
           Properties:
@@ -203,7 +203,7 @@ Screens:
             Text: ="OCR自動記載"
             Width: =(Parent.Width - 48) / 2
             X: =16
-            Y: =698
+            Y: =Parent.Height - 208
       - S1_GoExpense:
           Control: Classic/Button@2.2.0
           Properties:
@@ -217,7 +217,7 @@ Screens:
             Text: ="経費・領収書"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
-            Y: =698
+            Y: =Parent.Height - 208
       - S1_GoInvoice:
           Control: Classic/Button@2.2.0
           Properties:
@@ -231,7 +231,7 @@ Screens:
             Text: ="請求書（下書き）"
             Width: =Parent.Width - 32
             X: =16
-            Y: =752
+            Y: =Parent.Height - 154
       - S1_GoEstimate:
           Control: Classic/Button@2.2.0
           Properties:
@@ -245,7 +245,7 @@ Screens:
             Text: ="見積書（下書き）"
             Width: =Parent.Width - 32
             X: =16
-            Y: =806
+            Y: =Parent.Height - 104
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
