@@ -1,0 +1,66 @@
+name: CN_AI依頼台帳 source safety check
+
+on:
+  pull_request:
+    paths:
+      - "powerapps/CN_AI依頼台帳/Source/**"
+      - ".github/workflows/cn-aiiraidaicho-source-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source structure and navigation targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="powerapps/CN_AI依頼台帳/Source"
+          test -d "$ROOT"
+          test -f "$ROOT/S1_Home.pa.yaml"
+          test -f "$ROOT/S2_Calendar.pa.yaml"
+          test -f "$ROOT/S11_Report.pa.yaml"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, sys
+          root=Path("powerapps/CN_AI依頼台帳/Source")
+          files=list(root.glob("*.pa.yaml"))
+          screens=set()
+          contents={}
+          for p in files:
+              s=p.read_text(encoding="utf-8")
+              contents[p]=s
+              m=re.search(r"(?m)^  ([A-Za-z0-9_]+):\s*$",s)
+              if m and m.group(1)!="Screens":
+                  screens.add(m.group(1))
+              else:
+                  m=re.search(r"(?m)^  ([A-Za-z0-9_]+):\s*\n    Properties:",s)
+                  if m: screens.add(m.group(1))
+          missing=[]
+          for p,s in contents.items():
+              for target in re.findall(r"Navigate\(\s*([A-Za-z0-9_]+)",s):
+                  if target not in screens:
+                      missing.append((p.name,target))
+          if missing:
+              print("Missing navigation targets:")
+              for x in missing: print(*x)
+              sys.exit(1)
+          forbidden=[]
+          for p,s in contents.items():
+              if p.name in {"S23_InvoiceDraft.pa.yaml","S24_EstimateDraft.pa.yaml"}:
+                  for token in ("Patch(", "SubmitForm(", ".Run("):
+                      if token in s: forbidden.append((p.name,token))
+          if forbidden:
+              print("Review-only screens contain write/action calls:",forbidden)
+              sys.exit(1)
+          print(f"OK: {len(files)} source files; {len(screens)} screens; all Navigate targets resolved.")
+          PY
+
+      - name: Confirm production deployment is not part of this check
+        run: |
+          echo "Static source check only. No Power Platform login, import, save, publish, or deployment."
