@@ -207,9 +207,25 @@ class PowerAppsGitStore {
 
   async applySourceFileChange(relativePath, content, message) {
     const update = await this.updateSourceFile(relativePath, content, message);
-    const refresh = await this.refreshFromGit();
-    const pull = await this.pullFromGit();
-    return { status: 'ok', update, refresh, pull };
+    try {
+      const refresh = await this.refreshFromGit();
+      const pull = await this.pullFromGit();
+      return { status: 'ok', update, sync: { status: 'ok', refresh, pull } };
+    } catch (error) {
+      const detail = String(error?.message || error);
+      if (/Not a valid solution/i.test(detail)) {
+        return {
+          status: 'ok',
+          update,
+          sync: {
+            status: 'skipped',
+            reason: 'solution_not_git_integrated',
+            message: 'GitHubソース更新は完了しました。対象SolutionがGit統合SolutionではないためPower Platform自動同期は実行していません。'
+          }
+        };
+      }
+      throw error;
+    }
   }
 }
 
