@@ -1,0 +1,31 @@
+Screens:
+  S16_Invoice:
+    Properties:
+      Fill: =RGBA(6,18,10,1)
+    Children:
+      - S16_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="← ホーム"
+            X: =16
+            Y: =16
+      - S16_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Size: =22
+            Text: ="見積書・請求書"
+            X: =16
+            Y: =80
+            Width: =Parent.Width-32
+      - S16_Info:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(220,255,230,1)
+            Height: =110
+            Text: ="CN_請求台帳への実接続は確認済みです。税率・端数処理・経理承認・社長最終承認の確認完了まで確定・送信は行いません。"
+            Width: =Parent.Width-32
+            X: =16
+            Y: =140
