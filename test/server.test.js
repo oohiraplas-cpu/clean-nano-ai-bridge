@@ -649,6 +649,7 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
+  // 17 tools includes ensure_sharepoint_columns.
   assert.equal(listedBody.result.tools.length, 17);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
