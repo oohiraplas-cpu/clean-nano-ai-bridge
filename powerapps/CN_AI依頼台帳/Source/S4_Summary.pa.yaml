@@ -145,7 +145,7 @@ Screens:
                   Height: =Parent.TemplateHeight
                   Size: =12
                   Text: =Text(ThisItem.StartAt, "m/d") & "（" & Left(Text(ThisItem.StartAt, "dddd"), 1) & "）"
-                  Width: =90
+                  Width: =72
                   X: =8
             - S4_RowStatus:
                 Control: Label@2.5.1
@@ -156,8 +156,8 @@ Screens:
                   Height: =26
                   Size: =11
                   Text: =ThisItem.WorkStatus.Value
-                  Width: =50
-                  X: =98
+                  Width: =46
+                  X: =80
                   Y: =12
             - S4_RowInfo:
                 Control: Label@2.5.1
@@ -166,8 +166,8 @@ Screens:
                   Height: =Parent.TemplateHeight
                   Size: =11
                   Text: =Text(ThisItem.StartAt, "hh:mm") & "-" & Text(ThisItem.EndAt, "hh:mm") & "　" & Coalesce(LookUp(CN_現場台帳, SiteID = ThisItem.SiteID).Title, ThisItem.SiteID)
-                  Width: =Parent.TemplateWidth - 164
-                  X: =156
+                  Width: =Parent.TemplateWidth - 138
+                  X: =134
       - S4_GoSalary:
           Control: Classic/Button@2.2.0
           Properties:
@@ -175,7 +175,7 @@ Screens:
             Color: =RGBA(10, 10, 10, 1)
             Fill: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =52
+            Height: =56
             HoverFill: =RGBA(0, 230, 115, 1)
             OnSelect: =Navigate(S5_Salary, ScreenTransition.None)
             PressedFill: =RGBA(0, 160, 80, 1)
