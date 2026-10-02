@@ -18,6 +18,22 @@ function validateGetSharePointListParams(params) {
   return null;
 }
 
+function validateEnsureSharePointColumnsParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (!params.listId && !params.listName) return 'listIdまたはlistNameのいずれかが必要です';
+  if (!Array.isArray(params.columns) || params.columns.length < 1) return 'columnsは1件以上必要です';
+  if (params.approvedByHuman !== true) return 'approvedByHuman:trueが必要です（人間承認が必要な操作です）';
+  const allowedTypes = new Set(['text', 'number', 'dateTime', 'boolean', 'choice']);
+  for (const column of params.columns) {
+    if (!isPlainObject(column)) return 'columnsの各要素はJSONオブジェクトである必要があります';
+    if (typeof column.name !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/.test(column.name)) return 'column.nameは英字開始の英数字/アンダースコアのみ使用できます';
+    if (typeof column.displayName !== 'string' || !column.displayName.trim()) return 'column.displayNameが必要です';
+    if (!allowedTypes.has(column.type)) return 'column.typeはtext/number/dateTime/boolean/choiceのいずれかです';
+    if (column.type === 'choice' && (!Array.isArray(column.choices) || column.choices.length < 1)) return 'choice列にはchoicesが必要です';
+  }
+  return null;
+}
+
 function validateRunPowerAutomateFlowParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
   if (typeof params.flowKey !== 'string' || !params.flowKey.trim()) return 'flowKeyが必要です';
@@ -45,6 +61,7 @@ function validateUpdateEmployeeLedgerEntryParams(params) {
 
 module.exports = {
   validateGetSharePointListParams,
+  validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
   validateUpdateEmployeeLedgerEntryParams

@@ -47,10 +47,11 @@ class SharePointReader {
     return this._token;
   }
 
-  async _graphFetch(path) {
+  async _graphFetch(path, options = {}) {
     const token = await this._getAccessToken();
     const response = await this._fetch(`${this.graphBaseUrl}${path}`, {
-      headers: { authorization: `Bearer ${token}` }
+      ...options,
+      headers: { authorization: `Bearer ${token}`, ...(options.headers || {}) }
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
@@ -65,6 +66,48 @@ class SharePointReader {
     const match = (data.value || [])[0];
     if (!match) throw new Error(`指定されたSharePointリストが見つかりません: ${listName}`);
     return match.id;
+  }
+
+  async ensureColumns(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
+    if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
+
+    const current = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/columns?$select=id,name,displayName`);
+    const existing = new Set((current.value || []).flatMap((column) => [column.name, column.displayName].filter(Boolean)));
+    const created = [];
+    const skipped = [];
+
+    for (const column of params.columns || []) {
+      if (existing.has(column.name) || existing.has(column.displayName)) {
+        skipped.push({ name: column.name, displayName: column.displayName, reason: 'already_exists' });
+        continue;
+      }
+      const definition = {
+        name: column.name,
+        displayName: column.displayName,
+        description: column.description || '',
+        required: column.required === true
+      };
+      if (column.type === 'text') definition.text = { allowMultipleLines: column.multiline === true };
+      else if (column.type === 'number') definition.number = { decimalPlaces: column.decimalPlaces ?? 'automatic' };
+      else if (column.type === 'dateTime') definition.dateTime = { format: column.format || 'dateTime' };
+      else if (column.type === 'boolean') definition.boolean = {};
+      else if (column.type === 'choice') definition.choice = { choices: column.choices || [], allowTextEntry: false };
+      else throw new Error(`未対応の列型です: ${column.type}`);
+
+      const made = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/columns`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(definition)
+      });
+      created.push({ id: made.id, name: made.name, displayName: made.displayName });
+      existing.add(column.name);
+      existing.add(column.displayName);
+    }
+    return { status: 'ok', siteId: targetSiteId, listId: targetListId, created, skipped };
   }
 
   // params: { siteId?, listId?, listName?, top? } — listIdまたはlistNameのいずれかが必要。

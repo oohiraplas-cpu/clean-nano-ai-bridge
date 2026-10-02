@@ -31,6 +31,7 @@ const {
 } = require('./powerAppsValidation');
 const {
   validateGetSharePointListParams,
+  validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
   validateUpdateEmployeeLedgerEntryParams
@@ -72,7 +73,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'run_power_automate_flow',
+  'get_sharepoint_list', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry'
 ]);
 
@@ -197,6 +198,38 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' },
         top: { type: 'number', description: '取得件数の上限（既定50、最大200）' }
       },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'ensure_sharepoint_columns',
+    description: 'SharePointリストに不足列だけを追加します。既存列は変更・削除せずスキップします。人間承認（approvedByHuman:true）が必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string' },
+        listName: { type: 'string' },
+        siteId: { type: 'string' },
+        columns: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              displayName: { type: 'string' },
+              type: { type: 'string', enum: ['text','number','dateTime','boolean','choice'] },
+              required: { type: 'boolean' },
+              multiline: { type: 'boolean' },
+              choices: { type: 'array', items: { type: 'string' } },
+              description: { type: 'string' }
+            },
+            required: ['name','displayName','type'],
+            additionalProperties: false
+          }
+        },
+        approvedByHuman: { type: 'boolean' }
+      },
+      required: ['columns','approvedByHuman'],
       additionalProperties: false
     }
   },
@@ -403,6 +436,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetSharePointListParams(params);
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(sharePointReader.listItems(params));
+  }
+  if (method === 'ensure_sharepoint_columns') {
+    const paramError = validateEnsureSharePointColumnsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.ensureColumns(params));
   }
   if (method === 'run_power_automate_flow') {
     // approvedByHuman:trueはvalidateRunPowerAutomateFlowParamsで必須チェック済み。
