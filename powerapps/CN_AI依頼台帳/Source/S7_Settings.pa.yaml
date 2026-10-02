@@ -37,8 +37,8 @@ Screens:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(255, 255, 255, 1)
-            Height: =50
-            Size: '=10  '
+            Height: =64
+            Size: =12
             Text: ="ログイン中：" & User().FullName & Char(10) & User().Email
             Width: =Parent.Width - 64
             X: =32
@@ -48,11 +48,12 @@ Screens:
           Properties:
             Color: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =30
+            Height: =44
+            Size: =12
             Text: ="表示中の作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択") & "（" & gblEmpID & "）"
             Width: =Parent.Width - 64
             X: =32
-            Y: =132
+            Y: =142
       - S7_Month:
           Control: Label@2.5.1
           Properties:
@@ -62,7 +63,7 @@ Screens:
             Text: ="表示中の月：" & Text(gblMonth, "yyyy年m月")
             Width: =Parent.Width - 64
             X: =32
-            Y: =170
+            Y: =184
       - S7_GoMembers:
           Control: Classic/Button@2.2.0
           Properties:
@@ -70,14 +71,14 @@ Screens:
             Color: =RGBA(10, 10, 10, 1)
             Fill: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =52
+            Height: =56
             HoverFill: =RGBA(0, 230, 115, 1)
             OnSelect: =Navigate(S6_Members, ScreenTransition.None)
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="作業員を切り替える（メンバー一覧）"
             Width: =Parent.Width - 32
             X: =16
-            Y: =236
+            Y: =244
       - S7_Reload:
           Control: Classic/Button@2.2.0
           Properties:
