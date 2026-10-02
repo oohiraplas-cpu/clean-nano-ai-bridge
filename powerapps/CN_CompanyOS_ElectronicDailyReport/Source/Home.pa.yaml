@@ -153,7 +153,7 @@ Screens:
             PressedBorderColor: =Self.Fill
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
-            OnSelect: =Set(varBridgeTasks, CN_AI_Bridge.GetTasks()); Set(varBridgeNextTask, CN_AI_Bridge.GetNextTask()); Notify("AI接続確認完了", NotificationType.Success)
+            OnSelect: =Notify("AI機能は管理側Bridgeへ分離済みです", NotificationType.Information)
             Text: ="AI編集確認"
             Width: =206
             Y: =993
