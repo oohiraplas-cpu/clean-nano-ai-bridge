@@ -45,7 +45,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Default: =LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =48
+            Height: =52
             Items: =Sort(CN_社員台帳, Title).Title
             Items.Value: =Title
             OnChange: |-
@@ -139,7 +139,7 @@ Screens:
             Color: =RGBA(10, 10, 10, 1)
             Fill: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =56
+            Height: =60
             HoverFill: =RGBA(0, 230, 115, 1)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
             PressedFill: =RGBA(0, 160, 80, 1)
@@ -154,7 +154,7 @@ Screens:
             Fill: =RGBA(26, 58, 42, 1)
             Height: =70
             Width: =Parent.Width
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S1_Nav1:
           Control: Classic/Button@2.2.0
           Properties:
@@ -162,7 +162,7 @@ Screens:
             Color: =RGBA(0, 204, 102, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S1_Home, ScreenTransition.None)
@@ -175,7 +175,7 @@ Screens:
             Text: ="ホーム"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S1_Nav2:
           Control: Classic/Button@2.2.0
           Properties:
@@ -183,7 +183,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
@@ -196,7 +196,7 @@ Screens:
             Text: ="カレンダー"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S1_Nav3:
           Control: Classic/Button@2.2.0
           Properties:
@@ -204,7 +204,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
@@ -217,7 +217,7 @@ Screens:
             Text: ="登録"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S1_Nav4:
           Control: Classic/Button@2.2.0
           Properties:
@@ -225,7 +225,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S4_Summary, ScreenTransition.None) '
@@ -238,7 +238,7 @@ Screens:
             Text: ="集計"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S1_Nav5:
           Control: Classic/Button@2.2.0
           Properties:
@@ -246,7 +246,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
@@ -259,7 +259,7 @@ Screens:
             Text: ="設定"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - Button9:
           Control: Classic/Button@2.2.0
           Properties:
