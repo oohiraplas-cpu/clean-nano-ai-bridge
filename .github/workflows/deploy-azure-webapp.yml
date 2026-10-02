@@ -2,6 +2,8 @@ name: Deploy clean-nano-ai-bridge to Azure Web App
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
