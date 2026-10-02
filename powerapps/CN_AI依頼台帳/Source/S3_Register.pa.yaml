@@ -292,6 +292,7 @@ Screens:
                       )))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =16
+            Size: =16
             Text: ="登録する"
             Width: =Parent.Width - 32
             X: =16
@@ -302,7 +303,7 @@ Screens:
             Fill: =RGBA(26, 58, 42, 1)
             Height: =70
             Width: =Parent.Width
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S3_Nav1:
           Control: Classic/Button@2.2.0
           Properties:
@@ -310,7 +311,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S1_Home, ScreenTransition.None)
@@ -323,7 +324,7 @@ Screens:
             Text: ="ホーム"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S3_Nav2:
           Control: Classic/Button@2.2.0
           Properties:
@@ -331,7 +332,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
@@ -344,7 +345,7 @@ Screens:
             Text: ="カレンダー"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S3_Nav3:
           Control: Classic/Button@2.2.0
           Properties:
@@ -352,7 +353,7 @@ Screens:
             Color: =RGBA(0, 204, 102, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
@@ -365,7 +366,7 @@ Screens:
             Text: ="登録"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S3_Nav4:
           Control: Classic/Button@2.2.0
           Properties:
@@ -373,7 +374,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S4_Summary, ScreenTransition.None) '
@@ -386,7 +387,7 @@ Screens:
             Text: ="集計"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
       - S3_Nav5:
           Control: Classic/Button@2.2.0
           Properties:
@@ -394,7 +395,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =76
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
@@ -407,4 +408,4 @@ Screens:
             Text: ="設定"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 76
