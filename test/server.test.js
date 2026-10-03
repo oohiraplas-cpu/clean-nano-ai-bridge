@@ -427,6 +427,9 @@ test('get_sharepoint_listは設定が揃っていれば項目を取得できる'
     if (url.includes('/items?')) {
       return new Response(JSON.stringify({ value: [{ id: 'item-1', fields: { Title: '2026-09-18分' } }] }), { status: 200 });
     }
+    if (url.includes('/columns')) {
+      return new Response(JSON.stringify({ value: [{ id: 'c1', name: 'Title', displayName: 'タイトル', required: false, text: { allowMultipleLines: false } }] }), { status: 200 });
+    }
     return new Response(JSON.stringify({ error: 'unexpected url' }), { status: 404 });
   };
   const server = await createTestServer([seedTask], {
