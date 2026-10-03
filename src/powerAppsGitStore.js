@@ -106,7 +106,7 @@ class PowerAppsGitStore {
   }
 
   async getSourceFile(relativePath) {
-    const clean = String(relativePath || '').replace(/^\\/+/, '');
+    const clean = String(relativePath || '').replace(/^\/+/, '');
     if (!clean) throw new Error('relativePathが必要です');
     if (clean.includes('..')) throw new Error('relativePathに..は使用できません');
 
