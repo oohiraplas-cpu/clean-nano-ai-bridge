@@ -47,6 +47,8 @@ class PowerAppsGitStore {
     this.githubRepo = config.githubRepo || '';
     this.githubBranch = config.githubBranch || 'main';
     this.githubRoot = (config.githubRoot || '').replace(/^\/+|\/+$/g, '');
+    this.githubFallbackBranches = [...new Set([...(config.githubFallbackBranches || []), 'sync/cn-aiiraidaicho-live-review-20260926', 'main'].filter(Boolean))];
+    this.githubFallbackRoots = [...new Set([...(config.githubFallbackRoots || []), 'powerapps/CN_AI依頼台帳/Source'].map((value) => String(value || '').replace(/^\/+|\/+$/g, '')).filter(Boolean))];
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new OAuthTokenCache();
   }
@@ -104,19 +106,43 @@ class PowerAppsGitStore {
   }
 
   async getSourceFile(relativePath) {
-    const filePath = this._sourcePath(relativePath);
-    const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
-    const data = await this._githubRequest(
-      `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/contents/${encodedPath}?ref=${encodeURIComponent(this.githubBranch)}`
-    );
-    if (!data || data.type !== 'file') throw new Error('指定したPower Appsソースファイルを取得できません');
-    return {
-      status: 'ok',
-      path: filePath,
-      sha: data.sha,
-      branch: this.githubBranch,
-      content: Buffer.from(data.content || '', 'base64').toString('utf8')
-    };
+    const clean = String(relativePath || '').replace(/^\\/+/, '');
+    if (!clean) throw new Error('relativePathが必要です');
+    if (clean.includes('..')) throw new Error('relativePathに..は使用できません');
+
+    const explicitPath = clean.includes('/');
+    const roots = explicitPath
+      ? ['']
+      : [...new Set([this.githubRoot, ...this.githubFallbackRoots, ''].filter((value) => value !== undefined))];
+    const branches = [...new Set([this.githubBranch, ...this.githubFallbackBranches].filter(Boolean))];
+    let lastNotFound = null;
+
+    for (const branch of branches) {
+      for (const root of roots) {
+        const filePath = root ? `${root}/${clean}` : clean;
+        const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+        try {
+          const data = await this._githubRequest(
+            `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`
+          );
+          if (!data || data.type !== 'file') continue;
+          return {
+            status: 'ok',
+            path: filePath,
+            sha: data.sha,
+            branch,
+            content: Buffer.from(data.content || '', 'base64').toString('utf8')
+          };
+        } catch (error) {
+          if (/GitHub API エラー \\(404\\)/.test(String(error?.message || error))) {
+            lastNotFound = error;
+            continue;
+          }
+          throw error;
+        }
+      }
+    }
+    throw lastNotFound || new Error('指定したPower Appsソースファイルを取得できません');
   }
 
   async updateSourceFile(relativePath, content, message) {
@@ -129,7 +155,7 @@ class PowerAppsGitStore {
       message: message || `Update Power Apps source: ${filePath}`,
       content: Buffer.from(content, 'utf8').toString('base64'),
       sha: current.sha,
-      branch: this.githubBranch
+      branch: current.branch
     };
     const result = await this._githubRequest(
       `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/contents/${encodedPath}`,
@@ -139,7 +165,7 @@ class PowerAppsGitStore {
       status: 'ok',
       operationId,
       path: filePath,
-      branch: this.githubBranch,
+      branch: current.branch,
       commitSha: result?.commit?.sha || null,
       contentSha: result?.content?.sha || null
     };
