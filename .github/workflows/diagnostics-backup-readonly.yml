@@ -1,0 +1,32 @@
+name: Bridge diagnostics and backup verification (read-only)
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: 'Existing successful manual backup workflow run ID'
+        required: true
+        default: '36268367241'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      POWERAPPS_APP_ID: f42a9b03-59b9-49d3-a33b-0a210cd3d51e
+      POWERAPPS_ENVIRONMENT_ID: 4d0aab59-43ec-ecf1-a9d1-869f2517adbb
+      POWERAPPS_SOLUTION_UNIQUE_NAME: CN_AIIraiDaicho
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Existing Bridge regression tests
+        run: npm test
+      - name: Verify exact target and existing backup artifact
+        run: node scripts/diagnose-backup.js
