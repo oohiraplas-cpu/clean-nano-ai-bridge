@@ -4,7 +4,7 @@ const { getConfig } = require('../src/config');
 
 test('既存CN_CompanyOS環境をPower Apps Git同期の既定値にする', () => {
   const config = getConfig({});
-  assert.equal(config.powerApps.orgUrl, 'https://orgcf455a58.crm7.dynamics.com');
+  assert.equal(config.powerApps.orgUrl, 'https://org0bbb24c5.crm7.dynamics.com');
   assert.equal(config.powerApps.solutionUniqueName, 'CN_CompanyOS');
 });
 
