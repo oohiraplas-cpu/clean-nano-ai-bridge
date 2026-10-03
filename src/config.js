@@ -49,7 +49,9 @@ function getConfig(env = process.env) {
       githubOwner: env.POWERAPPS_GITHUB_OWNER || 'oohiraplas-cpu',
       githubRepo: env.POWERAPPS_GITHUB_REPO || 'clean-nano-ai-bridge',
       githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
-      githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source'
+      githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_AI依頼台帳/Source',
+      githubFallbackBranches: (env.POWERAPPS_GITHUB_FALLBACK_BRANCHES || 'sync/cn-aiiraidaicho-live-review-20260926,main').split(',').map((v) => v.trim()).filter(Boolean),
+      githubFallbackRoots: (env.POWERAPPS_GITHUB_FALLBACK_ROOTS || 'powerapps/CN_AI依頼台帳/Source').split(',').map((v) => v.trim()).filter(Boolean)
     },
     powerAutomate: {
       flows: parsePowerAutomateFlows(env.POWER_AUTOMATE_FLOWS)
