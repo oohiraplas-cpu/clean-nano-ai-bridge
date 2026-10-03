@@ -370,6 +370,7 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
     'save_powerapps_app',
     'publish_powerapps_app',
     'get_sharepoint_list',
+    'get_sharepoint_columns',
     'ensure_sharepoint_columns',
     'run_power_automate_flow',
     'create_employee_ledger_entry',
@@ -649,8 +650,8 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  // 17 tools includes ensure_sharepoint_columns.
-  assert.equal(listedBody.result.tools.length, 17);
+  // 18 tools includes read-only get_sharepoint_columns and ensure_sharepoint_columns.
+  assert.equal(listedBody.result.tools.length, 18);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
@@ -790,4 +791,39 @@ test('MCP認証はX-API-Key・Bearer・queryの同一秘密値を受け付ける
   }
 
   assert.equal((await request(`${server.baseUrl}/mcp?api_key=wrong`)).status, 401);
+});
+
+
+test('get_sharepoint_columnsは列内部名・表示名・型・Choice候補を読み取り専用で取得できる', async (t) => {
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (url.includes('/lists?')) {
+      return new Response(JSON.stringify({ value: [{ id: 'list-1', displayName: 'CN_電子日報台帳' }] }), { status: 200 });
+    }
+    if (url.includes('/columns')) {
+      return new Response(JSON.stringify({ value: [
+        { id: 'c1', name: 'WorkDate', displayName: '作業日', required: true, dateTime: { format: 'dateOnly' } },
+        { id: 'c2', name: 'SubmissionStatus', displayName: '提出状態', required: false, choice: { choices: ['下書き', '提出済'], allowTextEntry: false } }
+      ] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: 'unexpected url' }), { status: 404 });
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({ method: 'get_sharepoint_columns', params: { listName: 'CN_電子日報台帳' } })
+  });
+  assert.equal(called.status, 200);
+  const body = await called.json();
+  assert.equal(body.result.status, 'ok');
+  assert.equal(body.result.columns[0].name, 'WorkDate');
+  assert.equal(body.result.columns[0].type, 'dateTime');
+  assert.deepEqual(body.result.columns[1].choices, ['下書き', '提出済']);
 });

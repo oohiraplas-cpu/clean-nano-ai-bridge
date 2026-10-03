@@ -31,6 +31,7 @@ const {
 } = require('./powerAppsValidation');
 const {
   validateGetSharePointListParams,
+  validateGetSharePointColumnsParams,
   validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
@@ -73,7 +74,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'ensure_sharepoint_columns', 'run_power_automate_flow',
+  'get_sharepoint_list', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry'
 ]);
 
@@ -197,6 +198,19 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         listName: { type: 'string', description: 'listId未指定時に表示名で検索するためのリスト名' },
         siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' },
         top: { type: 'number', description: '取得件数の上限（既定50、最大200）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_sharepoint_columns',
+    description: 'SharePointリストの列定義（内部名・表示名・型・必須・Choice候補等）を読み取り専用で取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: '取得するSharePointリストのID' },
+        listName: { type: 'string', description: 'listId未指定時に表示名で検索するためのリスト名' },
+        siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' }
       },
       additionalProperties: false
     }
@@ -436,6 +450,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetSharePointListParams(params);
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(sharePointReader.listItems(params));
+  }
+  if (method === 'get_sharepoint_columns') {
+    const paramError = validateGetSharePointColumnsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.listColumns(params));
   }
   if (method === 'ensure_sharepoint_columns') {
     const paramError = validateEnsureSharePointColumnsParams(params);

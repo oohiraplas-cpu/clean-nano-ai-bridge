@@ -110,6 +110,36 @@ class SharePointReader {
     return { status: 'ok', siteId: targetSiteId, listId: targetListId, created, skipped };
   }
 
+  // params: { siteId?, listId?, listName? } — SharePoint列定義を読み取り専用で取得する。
+  async listColumns(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) {
+      throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    }
+    const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
+    if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
+
+    const data = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/columns`);
+    const columns = (data.value || []).map((column) => {
+      const type = ['text', 'number', 'dateTime', 'boolean', 'choice', 'lookup', 'personOrGroup', 'currency', 'hyperlinkOrPicture']
+        .find((key) => column[key] !== undefined) || 'unknown';
+      return {
+        id: column.id,
+        name: column.name,
+        displayName: column.displayName,
+        type,
+        required: column.required === true,
+        readOnly: column.readOnly === true,
+        hidden: column.hidden === true,
+        ...(column.choice ? { choices: column.choice.choices || [], allowTextEntry: column.choice.allowTextEntry === true } : {}),
+        ...(column.text ? { allowMultipleLines: column.text.allowMultipleLines === true } : {}),
+        ...(column.dateTime ? { dateTimeFormat: column.dateTime.format || null } : {})
+      };
+    });
+    return { status: 'ok', siteId: targetSiteId, listId: targetListId, count: columns.length, columns };
+  }
+
   // params: { siteId?, listId?, listName?, top? } — listIdまたはlistNameのいずれかが必要。
   // 読み取り専用（作成・更新・削除は行わない）。
   async listItems(params = {}) {
