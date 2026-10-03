@@ -151,9 +151,19 @@ class SharePointReader {
     const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
     if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
     const limit = Math.min(Math.max(Number.parseInt(params.top, 10) || 50, 1), 200);
-    const data = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/items?expand=fields&$top=${limit}`);
+    const [data, schema] = await Promise.all([
+      this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/items?expand=fields&$top=${limit}`),
+      this.listColumns({ siteId: targetSiteId, listId: targetListId })
+    ]);
     const items = (data.value || []).map((item) => ({ itemId: item.id, fields: item.fields || {} }));
-    return { status: 'ok', siteId: targetSiteId, listId: targetListId, count: items.length, items };
+    return {
+      status: 'ok',
+      siteId: targetSiteId,
+      listId: targetListId,
+      count: items.length,
+      items,
+      columns: schema.columns
+    };
   }
 }
 
