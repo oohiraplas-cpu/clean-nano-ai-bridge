@@ -134,7 +134,7 @@ class PowerAppsGitStore {
             content: Buffer.from(data.content || '', 'base64').toString('utf8')
           };
         } catch (error) {
-          if (/GitHub API エラー \\(404\\)/.test(String(error?.message || error))) {
+          if (String(error?.message || error).includes('GitHub API エラー (404)')) {
             lastNotFound = error;
             continue;
           }
