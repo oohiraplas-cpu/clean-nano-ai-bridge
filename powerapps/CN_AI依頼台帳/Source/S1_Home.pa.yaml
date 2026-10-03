@@ -147,7 +147,7 @@ Screens:
             Text: ="今日のカレンダー"
             Width: =Parent.Width - 32
             X: =16
-            Y: =406
+            Y: =S1_Card2.Y + S1_Card2.Height + 12
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
@@ -162,7 +162,7 @@ Screens:
             Color: =RGBA(0, 204, 102, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =S1_NavBar.Height
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S1_Home, ScreenTransition.None)
@@ -183,7 +183,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =S1_NavBar.Height
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
@@ -204,7 +204,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =S1_NavBar.Height
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
@@ -225,7 +225,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =S1_NavBar.Height
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
@@ -246,7 +246,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =S1_NavBar.Height
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
