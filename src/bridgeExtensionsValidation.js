@@ -18,6 +18,15 @@ function validateGetSharePointListParams(params) {
   return null;
 }
 
+function validateGetSharePointColumnsParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  if (params.listId !== undefined && typeof params.listId !== 'string') return 'listIdは文字列である必要があります';
+  if (params.listName !== undefined && typeof params.listName !== 'string') return 'listNameは文字列である必要があります';
+  if (!params.listId && !params.listName) return 'listIdまたはlistNameのいずれかが必要です';
+  if (params.siteId !== undefined && typeof params.siteId !== 'string') return 'siteIdは文字列である必要があります';
+  return null;
+}
+
 function validateEnsureSharePointColumnsParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
   if (!params.listId && !params.listName) return 'listIdまたはlistNameのいずれかが必要です';
@@ -61,6 +70,7 @@ function validateUpdateEmployeeLedgerEntryParams(params) {
 
 module.exports = {
   validateGetSharePointListParams,
+  validateGetSharePointColumnsParams,
   validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
