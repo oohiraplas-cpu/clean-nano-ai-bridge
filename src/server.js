@@ -439,7 +439,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsStore.publishApp();
+    return withUpstreamErrorStatus(powerAppsStore.publishApp());
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
