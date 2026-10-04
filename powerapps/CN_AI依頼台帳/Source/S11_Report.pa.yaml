@@ -63,6 +63,7 @@ Screens:
       - dpWorkDate:
           Control: Classic/DatePicker@2.6.0
           Properties:
+            DefaultDate: =Today()
             Format: ="yyyy/mm/dd"
             Height: =38
             Size: =13
