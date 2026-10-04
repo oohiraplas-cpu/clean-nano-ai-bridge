@@ -367,7 +367,7 @@ class PowerAppsStore {
     try {
       const before = await this.getAppState();
       const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2016-11-01`;
-      await this._managementFetch(path, { method: 'POST', body: JSON.stringify({ strategy: 'immediate' }) });
+      await this._managementFetch(path, { method: 'POST' });
       this._cache.invalidate(this.appId);
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, {
         status: 'success',
