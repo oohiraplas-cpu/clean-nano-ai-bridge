@@ -366,7 +366,7 @@ class PowerAppsStore {
     const operationId = crypto.randomUUID();
     try {
       const before = await this.getAppState();
-      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2016-11-01`;
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2018-10-01`;
       await this._managementFetch(path, { method: 'POST' });
       this._cache.invalidate(this.appId);
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, {
