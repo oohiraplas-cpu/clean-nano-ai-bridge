@@ -1,9 +1,9 @@
 name: Power Apps inspection safety
 on:
   push:
-    branches: [feature/add-powerapps-inspection-safety-tools]
+    branches: [main, feature/add-powerapps-inspection-safety-tools]
   pull_request:
-    branches: [feature/add-nine-mcp-tools]
+    branches: [main, feature/add-nine-mcp-tools]
 permissions:
   contents: read
 jobs:
