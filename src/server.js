@@ -15,6 +15,10 @@ const { DeploymentService } = require('./deploymentService');
 const { PermissionsService } = require('./permissionsService');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
+const { INSPECTION_TOOLS, validateInspectionParams } = require('./powerAppsInspectionValidation');
+const { PowerAppsStructureService } = require('./powerAppsStructureService');
+const { PowerAppsImpactService } = require('./powerAppsImpactService');
+const { ChangeSnapshotService } = require('./changeSnapshotService');
 const {
   validateMcpInput,
   validateStatusInput,
@@ -91,7 +95,8 @@ const MCP_METHODS = Object.freeze([
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
-  'get_permissions', 'update_permissions'
+  'get_permissions', 'update_permissions',
+  ...INSPECTION_TOOLS.map(tool => tool.name)
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -479,7 +484,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['targetType', 'action', 'principalId', 'principalType', 'roleName', 'approvedByHuman'],
       additionalProperties: false
     }
-  }
+  },
+  ...INSPECTION_TOOLS
 ]);
 
 async function tasksPayload(store) {
@@ -562,6 +568,13 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
 }
 
 async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices) {
+  if (INSPECTION_TOOLS.some(tool => tool.name === method)) {
+    const error = validateInspectionParams(method, params);
+    if (error) throw requestError(error);
+    if (method === 'inspect_powerapps_structure') return bridgeServices.structure.inspect(params);
+    if (method === 'analyze_change_impact') return bridgeServices.impact.analyze(params);
+    return bridgeServices.snapshots.create(params);
+  }
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -716,6 +729,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
 // 新ツール（検証・デプロイ・権限）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
 function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injected = {}) {
+  const structure = injected.structure || new PowerAppsStructureService({
+    sourceProvider: branch => powerAppsGitStore.getSourceBundle(branch),
+    canonicalBranch: powerAppsGitStore.canonicalBranch,
+    secrets: [config.webhookApiKey, config.mcpApiKey, config.powerApps?.clientSecret, config.powerApps?.githubToken, config.sharepoint?.clientSecret, config.deployment?.githubToken, ...Object.values(config.powerAutomate?.flows || {})].filter(Boolean)
+  });
+  const impact = injected.impact || new PowerAppsImpactService(structure);
+  const snapshots = injected.snapshots || new ChangeSnapshotService({ structureService: structure, impactService: impact, directory: config.powerApps?.snapshotDirectory });
   const deployment = injected.deployment || new DeploymentService(config.deployment || {});
   const permissions = injected.permissions || new PermissionsService({ powerAppsStore, config: config.permissions || {} });
 
@@ -759,6 +779,9 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
   }
 
   return {
+    structure,
+    impact,
+    snapshots,
     deployment,
     permissions,
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
@@ -866,7 +889,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(result) }],
             structuredContent: result,
-            isError: false
+            isError: INSPECTION_TOOLS.some(tool => tool.name === name) && ['blocked', 'incomplete'].includes(result.status)
           }));
         } catch (error) {
           if (!error.status) return next(error);

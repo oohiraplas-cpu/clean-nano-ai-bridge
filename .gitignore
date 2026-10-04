@@ -7,3 +7,4 @@ coverage/
 *.log
 data/deployments.jsonl
 data/powerapps-operations.jsonl
+data/change-snapshots/

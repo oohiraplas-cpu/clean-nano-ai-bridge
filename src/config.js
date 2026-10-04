@@ -53,6 +53,7 @@ function getConfig(env = process.env) {
       environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
       appId: env.POWERAPPS_APP_ID || '',
       logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
+      snapshotDirectory: path.resolve(env.POWERAPPS_SNAPSHOT_DIR || 'data/change-snapshots'),
       orgUrl: env.POWERAPPS_ORG_URL || DEFAULT_POWERAPPS_ORG_URL,
       solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || DEFAULT_POWERAPPS_SOLUTION,
       githubToken: env.POWERAPPS_GITHUB_TOKEN || '',
