@@ -290,42 +290,41 @@ Screens:
                         Text: ="全員を登録 → 日報へ"
                         OnSelect: |-
                           =If(!gblSaving,
-                           With({siteName: Coalesce(Trim(S3_SiteManual.Text), S3_Site.Selected.Title), company: Trim(S3_Prime.Text), s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
-                            With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
-                             If(IsEmpty(S3_Workers.SelectedItems), Notify("全員の作業員を選択してください", NotificationType.Error),
-                              IsBlank(siteName) || IsBlank(company), Notify("現場名と元請会社を入力してください", NotificationType.Error),
-                              DateDiff(s, e, TimeUnit.Minutes) <= S3_Break.Selected.Value, Notify("時刻と休憩を確認してください", NotificationType.Error),
-                              Set(gblSaving, true); Clear(colCalendarErrors);
-                              ForAll(S3_Workers.SelectedItems As worker,
-                               With({k: worker.EmployeeID & "_" & Text(gblSelDate, "yyyymmdd")},
-                                If(IsBlank(worker.EmployeeID), Collect(colCalendarErrors, {workerName: worker.Title, message: "社員IDが未登録です"}); false,
-                                 !IsBlank(LookUp(CN_勤怠明細台帳, AttendanceKey = k)),
-        With({existing: LookUp(CN_勤怠明細台帳, AttendanceKey = k)},
-         If(IfError(Text(ParseJSON(existing.OriginalInput).siteName), "") <> siteName || IfError(Text(ParseJSON(existing.OriginalInput).primeCompany), "") <> company,
-          Collect(colCalendarErrors, {workerName: worker.Title, message: "別の現場・元請で登録済みです"}); false, true)),
-
-                                 IfError(
-                                  Patch(CN_勤怠明細台帳, Defaults(CN_勤怠明細台帳), {
-                                   Title: "出勤_" & k, AttendanceKey: k, DailyReportKey: "未連携", EmployeeRecordKey: worker.EmployeeID,
-                                   DeviceSubmissionId: GUID(), RecordStatus: {Value: "Submitted"}, StartAt: s, EndAt: e,
-                                   BreakMinutes: S3_Break.Selected.Value, WorkStatus: {Value: S3_Status.Selected.Value}, WorkType: {Value: gblCalType},
-                                   SiteID: If(IsBlank(Trim(S3_SiteManual.Text)), LookUp(CN_現場台帳, Title = S3_Site.Selected.Title).SiteID, Blank()),
-                                   Notes: S3_Note.Text,
-                                   OriginalInput: JSON({schemaVersion: 1, siteName: siteName, primeCompany: company, primeContact: Trim(S3_Contact.Text), employeeName: worker.Title, workContent: S3_Note.Text}, JSONFormat.Compact)
-                                  }); true,
-                                  Collect(colCalendarErrors, {workerName: worker.Title, message: FirstError.Message}); false
-                                 )
-                                )
-                               )
-                              );
-                              Set(gblSaving, false); Refresh(CN_勤怠明細台帳);
-                              If(IsEmpty(colCalendarErrors),
-                               Set(gblEmpID, First(S3_Workers.SelectedItems).EmployeeID); Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1)); Set(gblReportFromCalendar, true); Set(gblReportSite, siteName); Set(gblReportPrime, company); Set(gblReportContact, Trim(S3_Contact.Text)); Set(gblReportContent, S3_Note.Text); Set(gblReportStart, s); Set(gblReportEnd, e); Navigate(S11_Report, ScreenTransition.None),
-                               Notify("登録できなかった作業員：" & Concat(colCalendarErrors, workerName & "：" & message, " / "), NotificationType.Error)
-                              )
-                             )
-                            )
-                           )
+                          With({siteName: Coalesce(Trim(S3_SiteManual.Text), S3_Site.Selected.Title), company: Trim(S3_Prime.Text), s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
+                          With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
+                          If(IsEmpty(S3_Workers.SelectedItems), Notify("全員の作業員を選択してください", NotificationType.Error),
+                          IsBlank(siteName) || IsBlank(company), Notify("現場名と元請会社を入力してください", NotificationType.Error),
+                          DateDiff(s, e, TimeUnit.Minutes) <= S3_Break.Selected.Value, Notify("時刻と休憩を確認してください", NotificationType.Error),
+                          Set(gblSaving, true); Clear(colCalendarErrors);
+                          ForAll(S3_Workers.SelectedItems As worker,
+                          With({k: worker.EmployeeID & "_" & Text(gblSelDate, "yyyymmdd")},
+                          If(IsBlank(worker.EmployeeID), Collect(colCalendarErrors, {workerName: worker.Title, message: "社員IDが未登録です"}); false,
+                          !IsBlank(LookUp(CN_勤怠明細台帳, AttendanceKey = k)),
+                          With({existing: LookUp(CN_勤怠明細台帳, AttendanceKey = k)},
+                          If(IfError(Text(ParseJSON(existing.OriginalInput).siteName), "") <> siteName || IfError(Text(ParseJSON(existing.OriginalInput).primeCompany), "") <> company,
+                          Collect(colCalendarErrors, {workerName: worker.Title, message: "別の現場・元請で登録済みです"}); false, true)),
+                          IfError(
+                          Patch(CN_勤怠明細台帳, Defaults(CN_勤怠明細台帳), {
+                          Title: "出勤_" & k, AttendanceKey: k, DailyReportKey: "未連携", EmployeeRecordKey: worker.EmployeeID,
+                          DeviceSubmissionId: GUID(), RecordStatus: {Value: "Submitted"}, StartAt: s, EndAt: e,
+                          BreakMinutes: S3_Break.Selected.Value, WorkStatus: {Value: S3_Status.Selected.Value}, WorkType: {Value: gblCalType},
+                          SiteID: If(IsBlank(Trim(S3_SiteManual.Text)), LookUp(CN_現場台帳, Title = S3_Site.Selected.Title).SiteID, Blank()),
+                          Notes: S3_Note.Text,
+                          OriginalInput: JSON({schemaVersion: 1, siteName: siteName, primeCompany: company, primeContact: Trim(S3_Contact.Text), employeeName: worker.Title, workContent: S3_Note.Text}, JSONFormat.Compact)
+                          }); true,
+                          Collect(colCalendarErrors, {workerName: worker.Title, message: FirstError.Message}); false
+                          )
+                          )
+                          )
+                          );
+                          Set(gblSaving, false); Refresh(CN_勤怠明細台帳);
+                          If(IsEmpty(colCalendarErrors),
+                          Set(gblEmpID, First(S3_Workers.SelectedItems).EmployeeID); Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1)); Set(gblReportFromCalendar, true); Set(gblReportSite, siteName); Set(gblReportPrime, company); Set(gblReportContact, Trim(S3_Contact.Text)); Set(gblReportContent, S3_Note.Text); Set(gblReportStart, s); Set(gblReportEnd, e); Navigate(S11_Report, ScreenTransition.None),
+                          Notify("登録できなかった作業員：" & Concat(colCalendarErrors, workerName & "：" & message, " / "), NotificationType.Error)
+                          )
+                          )
+                          )
+                          )
                           )
                         Y: =1244
       - S3_NavBar:
