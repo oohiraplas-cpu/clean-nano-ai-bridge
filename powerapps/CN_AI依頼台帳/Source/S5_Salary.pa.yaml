@@ -79,12 +79,12 @@ Screens:
             Visible: =IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
-            Y: =510
+            Y: =584
       - S5_Card:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =330
+            Height: =390
             Visible: =!IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
@@ -169,6 +169,63 @@ Screens:
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
             Y: =214
+      - S5_WorkTimeCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Text: ="実作業時間"
+            Width: =(Parent.Width - 64) / 2
+            X: =32
+            Y: =248
+      - S5_WorkTimeVal:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Right
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Text: =Text(Sum(colAttend, Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60, "0.0") & "時間"
+            Width: =(Parent.Width - 64) / 2
+            X: =16 + (Parent.Width - 32) / 2
+            Y: =248
+      - S5_OvertimeCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Text: ="残業時間"
+            Width: =(Parent.Width - 64) / 2
+            X: =32
+            Y: =282
+      - S5_OvertimeVal:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Right
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Text: =Text(Sum(Filter(colAttend, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60, "0.0") & "時間"
+            Width: =(Parent.Width - 64) / 2
+            X: =16 + (Parent.Width - 32) / 2
+            Y: =282
+      - S5_OvertimePayCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Text: ="残業手当"
+            Width: =(Parent.Width - 64) / 2
+            X: =32
+            Y: =316
+      - S5_OvertimePayVal:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Right
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =30
+            Text: =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text((Sum(Filter(colAttend, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60) * Coalesce(m.'残業単価（1時間）', 0), "¥#,##0"))
+            Width: =(Parent.Width - 64) / 2
+            X: =16 + (Parent.Width - 32) / 2
+            Y: =316
       - S5_TaxCap:
           Control: Label@2.5.1
           Properties:
@@ -177,7 +234,7 @@ Screens:
             Text: ="税金控除"
             Width: =(Parent.Width - 64) / 2
             X: =32
-            Y: =256
+            Y: =350
       - S5_TaxVal:
           Control: Label@2.5.1
           Properties:
@@ -188,7 +245,7 @@ Screens:
               =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, "−" & Text(Coalesce(m.税金控除, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
-            Y: =256
+            Y: =350
       - S5_InsCap:
           Control: Label@2.5.1
           Properties:
@@ -197,7 +254,7 @@ Screens:
             Text: ="保険控除"
             Width: =(Parent.Width - 64) / 2
             X: =32
-            Y: =290
+            Y: =384
       - S5_InsVal:
           Control: Label@2.5.1
           Properties:
@@ -208,7 +265,7 @@ Screens:
               =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, "−" & Text(Coalesce(m.保険控除, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
-            Y: =290
+            Y: =384
       - S5_NetCap:
           Control: Label@2.5.1
           Properties:
@@ -217,7 +274,7 @@ Screens:
             Text: ="差引支給見込み"
             Width: =Parent.Width - 64
             X: =32
-            Y: =340
+            Y: =426
       - S5_Net:
           Control: Label@2.5.1
           Properties:
@@ -227,20 +284,20 @@ Screens:
             Height: =50
             Size: =26
             Text: |-
-              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(Coalesce(m.基本給, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0) - Coalesce(m.税金控除, 0) - Coalesce(m.保険控除, 0), "¥#,##0"))
+              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(Coalesce(m.基本給, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0) + (Sum(Filter(colAttend, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60) * Coalesce(m.'残業単価（1時間）', 0) - Coalesce(m.税金控除, 0) - Coalesce(m.保険控除, 0), "¥#,##0"))
             Width: =Parent.Width - 64
             X: =32
-            Y: =370
+            Y: =456
       - S5_Note:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(120, 120, 120, 1)
             Height: =70
             Size: =11
-            Text: ="※残業 " & CountRows(Filter(colAttend, WorkStatus.Value = "残業")) & "日分は単価の列がないため金額に含めていません。表示は見込みで、正式な給与計算ではありません。"
+            Text: ="※作業時間は確定勤務分を優先し、未確定時は開始〜終了−休憩で算出します。残業は残業単価（1時間）を使用。税・保険は社員マスタ登録値を使用する見込み計算です。"
             Width: =Parent.Width - 32
             X: =16
-            Y: =440
+            Y: =514
       - S5_NavBar:
           Control: Rectangle@2.3.0
           Properties:
