@@ -87,6 +87,7 @@ Screens:
           BorderColor: =RGBA(0, 204, 102, 1)
           Color: =RGBA(255, 255, 255, 1)
           Fill: =RGBA(26, 58, 42, 1)
+          DefaultDate: =Today()
           Format: ="yyyy/mm/dd"
           Size: =13
           Width: =Parent.Width - 32
@@ -209,7 +210,7 @@ Screens:
           Fill: =RGBA(0, 204, 102, 1)
           FontWeight: =FontWeight.Bold
           Height: =52
-          OnSelect: "=If(\n    IsBlank(S13_Calc.Text) || Value(S13_Calc.Text) <= 0,\n    Notify(\"開始・終了の時刻を 17:00 の形で正しく入力してください\", NotificationType.Error),\n    IsBlank(Trim(S13_Reason.Text)),\n    Notify(\"理由を入力してください\", NotificationType.Error),\n    Patch(\n        CN_申請台帳,\n        Defaults(CN_申請台帳),\n        {\n            件名: locType & \" \" & Text(S13_Date.SelectedDate, \"yyyy/mm/dd\") & \" \" & User().FullName,\n            申請種別: {Value: locType},\n            申請者名: User().FullName,\n            申請者メール: User().Email,\n            対象日: S13_Date.SelectedDate,\n            開始時刻: S13_Start.Text,\n            終了時刻: S13_End.Text,\n            時間数: Value(S13_Calc.Text),\n            現場名: S13_Site.Selected.Value,\n            理由: S13_Reason.Text,\n            ステータス: {Value: \"申請中\"}\n        }\n    );\n    If(\n        IsEmpty(Errors(CN_申請台帳)),\n        Notify(\"申請しました\", NotificationType.Success); Reset(S13_Reason),\n        Notify(\"保存できませんでした：\" & First(Errors(CN_申請台帳)).Message, NotificationType.Error)\n    )\n)"
+          OnSelect: "=If(\n    IsBlank(S13_Date.SelectedDate),\n    Notify(\"対象日を選択してください\", NotificationType.Error),\n    IsBlank(S13_Calc.Text) || Value(S13_Calc.Text) <= 0,\n    Notify(\"開始・終了の時刻を 17:00 の形で正しく入力してください\", NotificationType.Error),\n    IsBlank(Trim(S13_Reason.Text)),\n    Notify(\"理由を入力してください\", NotificationType.Error),\n    IfError(\n      Patch(\n        CN_申請台帳,\n        Defaults(CN_申請台帳),\n        {\n            件名: locType & \" \" & Text(S13_Date.SelectedDate, \"yyyy/mm/dd\") & \" \" & User().FullName,\n            申請種別: {Value: locType},\n            申請者名: User().FullName,\n            申請者メール: User().Email,\n            対象日: S13_Date.SelectedDate,\n            開始時刻: S13_Start.Text,\n            終了時刻: S13_End.Text,\n            時間数: Value(S13_Calc.Text),\n            現場名: S13_Site.Selected.Value,\n            理由: S13_Reason.Text,\n            ステータス: {Value: \"申請中\"}\n        }\n      ),\n      Notify(\"保存できませんでした：\" & FirstError.Message, NotificationType.Error),\n      Notify(\"申請しました\", NotificationType.Success); Reset(S13_Reason)\n    )\n)"
           PressedFill: =RGBA(0, 160, 80, 1)
           Text: ="申請する"
           Width: =Parent.Width - 32
