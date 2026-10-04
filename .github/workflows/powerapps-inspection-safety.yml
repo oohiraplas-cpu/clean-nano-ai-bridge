@@ -24,3 +24,4 @@ jobs:
       - run: npm run check:secrets
       - run: npm audit --audit-level=low
       - run: npm run inspect:local
+      - run: npm run validate:snapshot

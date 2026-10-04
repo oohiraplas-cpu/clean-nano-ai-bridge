@@ -13,13 +13,13 @@ deployment, Power Apps, SharePoint, or permission APIs from inspection.
 `confirmed` means directly observed static definitions/references; `possible` means unresolved,
 dynamic or external dependencies. Runtime/compiler binding is always unverified. Report
 `incomplete`/`blocked` honestly; JSON-RPC sets `isError:true` for these outcomes.
-Snapshot creation refuses findings or unresolved dependencies, uses canonical SHA-256 IDs,
+Snapshot creation accepts only source_files_only recovery: refuse issues, skipped formulas and missing source definitions. Preserve evidence and exclusions for unverified runtime bindings; never claim full application recovery. Format v2 validates per-file SHA-256, byte totals and completeness, uses canonical SHA-256 IDs,
 atomic no-replace publication and re-verification of existing snapshots; never overwrite
 tampered evidence. Snapshots must remain Git-ignored or outside any Git checkout, with no
 symlink path components. `POWERAPPS_SNAPSHOT_DIR` defaults to ignored `data/change-snapshots`.
 
 Validation: `npm test`, `npm run validate:openapi`, `npm run check:secrets`,
-`npm audit --audit-level=low`, `npm run inspect:local`. Local inspection reads committed
+`npm audit --audit-level=low`, `npm run inspect:local`, `npm run validate:snapshot`. Local inspection reads committed
 Git source (no remote application mutation) and includes performance measurements.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

@@ -9,7 +9,7 @@ JSON-RPC `tools/call` と既存 `{method, params}` の両形式で利用でき�
 | --- | --- | --- |
 | `inspect_powerapps_structure` | `branch`（必須） | 正本branchの完全なソースを同一commitに固定して構造・参照を解析 |
 | `analyze_change_impact` | `branch`, `changes`（必須） | 全ソースへ変更案を重ね、定義・直接参照の影響と推定影響を分離 |
-| `create_change_snapshot` | `branch`（必須）, `changes`（任意） | 安全検査済みの変更前後ソースをSHA-256でローカル保存 |
+| `create_change_snapshot` | `branch`（必須）, `changes`（任意）, `recoveryScope:source_files_only`（任意） | 安全検査済みの変更前後ソースをSHA-256でローカル保存 |
 
 `changes` は1〜50件の `{relativePath, content}` または
 `{relativePath, delete:true}`。既存ファイルのみ対象とし、未知のプロパティ、
@@ -26,7 +26,7 @@ JSON-RPCではどちらも `isError:true`、legacyは `result.status` と `issue
 を確認してください。完全成功・保存許可・本番安全性を意味しません。
 ソース本文・式本文・上流エラー本文は応答へ含めません。
 
-スナップショットは不備や未解決の依存が残る場合、保存前に422で停止します。
+スナップショットは `source_files_only` に限定します。復旧に必要なソース定義の欠落、解析漏れ、不備は422で停止します。外部接続・列・実行時状態は証拠と除外理由を記録し、元ソースのバイト列復元に不要な場合だけ保存を許可します。アプリ全体の復旧は未検証です。
 保存先 `POWERAPPS_SNAPSHOT_DIR` の既定はGit管理対象外の `data/change-snapshots/`。
 Git管理対象・未ignore・symlink経由の保存を拒否し、directory 0700 / file 0600、
 canonical JSONのSHA-256、原子的な上書き禁止の保存、同一入力で同一ID、
@@ -41,14 +41,14 @@ npm run validate:openapi
 npm run check:secrets
 npm audit --audit-level=low
 npm run inspect:local
+npm run validate:snapshot
 ```
 
 実ソースはコミットから再測定します（ソースの編集や外部API呼び出しなし）。
 Base `8b76bac42f695a03c96d9c3760d78efce65a7699` の日報アプリで13ファイル・
 230,766バイト・3,398式・11画面・280コントロールを確認しました。
 直接の `Navigate` 遷移は12件、履歴依存の `Back` は5件（呼び出し合計17）。
-`Back` の行き先を確定した辺として扱いません。このソースには未解決の静的依存が
-あるため解析は `incomplete`、スナップショット保存は拒否されます。
+`Back` の行き先を確定した辺として扱いません。全3,398式を分類し、復元を阻害する静的依存の欠落は0件です。実行時依存1,484件は未検証として保持し、解析は `incomplete`、ソース限定スナップショットは許可します。全依存の証拠は `docs/powerapps-dependency-inventory.json` を参照してください。
 `inspect:local` はウォームアップ後5回の解析時間・影響分析時間・heap使用量も出力します。
 
 Power Apps、Power Automate、Copilot StudioからHTTPSで呼び出せるNode.js/Express Bridge APIです。

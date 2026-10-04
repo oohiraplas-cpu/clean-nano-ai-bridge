@@ -12,7 +12,8 @@
     "test:safety": "node --test test/powerAppsGitStore.test.js",
     "test:inspection": "node --test test/powerAppsInspection.test.js",
     "check:secrets": "node scripts/check-secrets.js",
-    "inspect:local": "node scripts/inspect-local-source.js"
+    "inspect:local": "node scripts/inspect-local-source.js",
+    "validate:snapshot": "node scripts/validate-source-snapshot.js"
   },
   "engines": {
     "node": ">=20"

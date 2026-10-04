@@ -175,11 +175,11 @@ class PowerAppsGitStore {
       const hash = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
       if (hash !== entry.sha || bytes.length !== entry.size) throw bridgeError('ソースblobの整合性検査に失敗しました', 502);
       let content;
-      try { content = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+      try { content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
       catch { throw bridgeError('ソースencodingが非対応です', 422); }
       files.push({ relativePath: entry.path.slice(root.length + 1), content });
     }
-    return { branch, commitSha, complete: true, files };
+    return { branch, commitSha, complete: true, files, source: { host: 'github.com', owner: this.githubOwner, repository: this.githubRepo, root: this.githubRoot } };
   }
 
   // 正本branch以外への更新・保存・公開を拒否するための共通ガード（HTTP 409相当）。

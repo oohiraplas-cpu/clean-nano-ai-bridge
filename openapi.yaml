@@ -104,7 +104,8 @@ paths:
         構造・影響解析のincomplete/blockedは完全成功ではなく、JSON-RPC tools/callではisError:true。
         confirmedは静的な直接参照、possibleは推定・未検証。秘密値・参照切れ・解析不能は安全停止。
         スナップショットはSHA-256でGit管理対象外へ原子的・冪等に保存し、改ざんを検出します。
-        未解決依存があれば保存しません。保存はPower Apps・SharePoint・デプロイ・権限変更を伴いません。
+        復旧に必要な定義の欠落・解析漏れは保存を拒否します。source_files_onlyで実行時依存の証拠・除外理由を保存し、アプリ全体の復旧は未検証です。
+        保存はPower Apps・SharePoint・デプロイ・権限変更を伴いません。
         paramsの厳密な定義はInspectPowerAppsStructureParams / AnalyzeChangeImpactParams / CreateChangeSnapshotParams。
         JSON-RPC形式は {jsonrpc: "2.0", id, method: "tools/call", params: {name, arguments}}、
         legacy形式は {method, params}。両形式のツール引数は同じschemaで検証します。
@@ -319,5 +320,51 @@ components:
       required:
         - branch
       properties:
-        branch: *ref_0
-        changes: *ref_1
+        branch:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: >-
+            ^(?!.*(?:\.\.|[~^:?*\\\s\[\x00-\x1f]))(?!/)(?!.*//)(?!.*@\{)(?!.*\.lock(?:/|$))(?!.*[/.]$)[^/]+(?:/[^/]+)*$
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - relativePath
+            properties:
+              relativePath:
+                type: string
+                minLength: 1
+                maxLength: 300
+                pattern: ^(?!/)(?!.*(?:\.\.|\\|//|[\x00-\x1f]))[^/]+(?:/[^/]+)*\.(?:pa\.yaml|yaml|yml|json)$
+              content:
+                type: string
+                minLength: 1
+                maxLength: 1000000
+              delete:
+                type: boolean
+            oneOf:
+              - required:
+                  - content
+                properties:
+                  delete:
+                    enum:
+                      - false
+              - required:
+                  - delete
+                properties:
+                  delete:
+                    enum:
+                      - true
+                not:
+                  required:
+                    - content
+        recoveryScope:
+          type: string
+          enum:
+            - source_files_only
+          description: 省略時もsource_files_only。外部接続・データ・メディア等を再作成するアプリ全体の復旧は対象外です。

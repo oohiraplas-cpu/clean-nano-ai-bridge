@@ -1,16 +1,12 @@
 // Read only committed local source; no Power Apps, SharePoint, Graph or write API calls.
-const { execFileSync } = require('node:child_process');
 const { performance } = require('node:perf_hooks');
 const { PowerAppsStructureService } = require('../src/powerAppsStructureService');
 const { PowerAppsImpactService } = require('../src/powerAppsImpactService');
-const git = args => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 5000000 });
+const { localSource } = require('./local-source');
 async function main() {
-  const branch = git(['branch', '--show-current']).trim() || 'detached-local-source';
-  const commitSha = git(['rev-parse', 'HEAD']).trim();
-  const root = 'powerapps/CN_CompanyOS_ElectronicDailyReport/Source';
-  const paths = git(['ls-tree', '-r', '--name-only', '-z', commitSha, '--', root]).split('\0').filter(Boolean);
-  const files = paths.map(p => ({ relativePath: p.slice(root.length + 1), content: git(['show', `${commitSha}:${p}`]) }));
-  const structure = new PowerAppsStructureService({ canonicalBranch: branch, sourceProvider: async () => ({ branch, commitSha, complete: true, files }) });
+  const bundle = localSource();
+  const { branch, commitSha, files } = bundle;
+  const structure = new PowerAppsStructureService({ canonicalBranch: branch, sourceProvider: async () => bundle });
   const impact = new PowerAppsImpactService(structure);
   const measurements = [];
   let result;
@@ -25,6 +21,7 @@ async function main() {
   console.log(JSON.stringify({ branch, commitSha, scope: 'committed_local_source', status: result.status,
     summary: result.summary, historyNavigation, navigationInvocations: result.summary.transitionEdges + historyNavigation,
     confirmed: result.confirmed.length, possible: result.possible.length, issues: result.issues,
+    classification: result.classification, recovery: result.recovery,
     impactStatus: proposal.status, performance: {
       iterations: measurements.length, inspectMinMs: Math.min(...measurements), inspectMaxMs: Math.max(...measurements),
       inspectMeanMs: measurements.reduce((a, b) => a + b, 0) / measurements.length,

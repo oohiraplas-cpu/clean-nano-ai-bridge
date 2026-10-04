@@ -13,7 +13,7 @@ const changes = {
 const INSPECTION_TOOLS = [
   { name: 'inspect_powerapps_structure', description: '正本branchの全ソースを同一commitで取得し構造と参照を静的解析します。解析範囲・未検証・参照切れを区別し、ソースや秘密値を応答しません。', inputSchema: { type: 'object', additionalProperties: false, required: ['branch'], properties: { branch } } },
   { name: 'analyze_change_impact', description: '正本ソース全体に変更案を重ね、confirmed（定義・直接参照）とpossible（推定・動的参照）の影響を分離します。外部への変更は実行しません。', inputSchema: { type: 'object', additionalProperties: false, required: ['branch', 'changes'], properties: { branch, changes } } },
-  { name: 'create_change_snapshot', description: '安全検査済みの正本全ソースと変更案をGit管理対象外へSHA-256で原子的・冪等に保存します。未検証・参照切れ・秘密値・改ざんは拒否します。', inputSchema: { type: 'object', additionalProperties: false, required: ['branch'], properties: { branch, changes } } }
+  { name: 'create_change_snapshot', description: '正本全ソースと変更案をsource_files_onlyの復旧範囲でSHA-256・原子的・冪等に保存します。実行時の外部依存は根拠と未収録を記録し、ソース復旧に必要な定義欠落・解析不能・秘密値・改ざんは拒否します。アプリ全体の復旧を保証しません。', inputSchema: { type: 'object', additionalProperties: false, required: ['branch'], properties: { branch, changes, recoveryScope: { type: 'string', enum: ['source_files_only'], description: '省略時もsource_files_only。外部接続・データ・メディア等を再作成するアプリ全体の復旧は対象外です。' } } } }
 ];
 
 function validateSchema(value, schema) {

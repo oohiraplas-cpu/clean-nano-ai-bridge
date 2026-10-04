@@ -7,6 +7,23 @@ const { promisify } = require('node:util');
 const { canonical, sha256, assertNoSecrets, stop } = require('./powerAppsStructureService');
 const { notConfiguredError } = require('./errors');
 const run = promisify(execFile);
+const comparePath = (a, b) => a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0;
+
+function verifyManifest(payload) {
+  if (!payload || payload.formatVersion !== 2 || payload.scope !== 'source_files_only' || !/^[0-9a-f]{40}$/i.test(payload.commitSha || '') || typeof payload.branch !== 'string') stop('snapshot_tampered');
+  for (const side of ['before', 'after']) {
+    const files = payload[side]; const receipt = payload.analysis?.[side];
+    if (!Array.isArray(files) || !files.length || files.length > 100 || !receipt || receipt.recovery?.allowed !== true || receipt.recovery?.scope !== 'source_files_only' || receipt.issues.length) stop('snapshot_tampered');
+    const paths = new Set(); let bytes = 0;
+    for (const f of files) {
+      if (!f || Object.keys(f).sort().join(',') !== 'bytes,content,relativePath,sha256' || typeof f.content !== 'string' || typeof f.relativePath !== 'string'
+        || !/^[^\\:\x00-\x1f]+\.(?:yaml|yml|json)$/.test(f.relativePath) || f.relativePath.startsWith('/') || f.relativePath.split('/').some(p => !p || p === '.' || p === '..') || paths.has(f.relativePath)
+        || f.bytes !== Buffer.byteLength(f.content) || f.sha256 !== sha256(f.content) || f.bytes > 1000000) stop('snapshot_tampered');
+      paths.add(f.relativePath); bytes += f.bytes;
+    }
+    if (bytes > 4000000 || receipt.summary.files !== files.length || receipt.summary.bytes !== bytes || canonical([...files].sort(comparePath)) !== canonical(files)) stop('snapshot_tampered');
+  }
+}
 
 class ChangeSnapshotService {
   constructor({ structureService, impactService, directory, repositoryRoot = process.cwd() }) {
@@ -55,35 +72,44 @@ class ChangeSnapshotService {
         || envelope.snapshotId !== id || sha256(canonical(envelope.payload)) !== id
         || canonical(envelope) !== text) stop('snapshot_tampered');
       assertNoSecrets(envelope.payload, this.structureService.secrets);
+      verifyManifest(envelope.payload);
       return envelope;
     } catch (e) { if (e.code === 'ENOENT') throw e; stop('snapshot_tampered'); }
     finally { if (handle) await handle.close(); }
   }
   async create(params) {
+    if (params.recoveryScope !== undefined && params.recoveryScope !== 'source_files_only') stop('snapshot_recovery_scope_unsupported', 400);
     const loaded = await this.structureService.load(params.branch);
     const { bundle, structure } = loaded;
-    // Fail before even making a snapshot directory if references cannot be safely resolved.
-    if (structure.issues.length || structure.possible.length) stop('snapshot_analysis_incomplete', 422);
+    // Runtime/schema/history dependencies do not prevent byte-for-byte source-file restoration.
+    // They are retained as explicit exclusions; required source definitions still block recovery.
+    if (!structure.recovery.allowed) stop('snapshot_analysis_incomplete', 422, { recovery: structure.recovery });
     let candidate = bundle.files;
+    let after = structure;
     if (params.changes) {
       const evaluated = this.impactService.evaluate(loaded, params.changes);
-      if (evaluated.report.issues.length || evaluated.report.possible.length) stop('snapshot_analysis_incomplete', 422);
+      if (!evaluated.report.recovery.allowed) stop('snapshot_analysis_incomplete', 422, { recovery: evaluated.report.recovery });
       candidate = evaluated.files;
+      after = evaluated.afterStructure;
     }
-    const sorted = files => [...files].sort((a, b) => a.relativePath.localeCompare(b.relativePath)).map(f => ({ relativePath: f.relativePath, content: f.content, sha256: sha256(f.content) }));
-    const payload = { formatVersion: 1, scope: 'static_source_snapshot', branch: bundle.branch, commitSha: bundle.commitSha, before: sorted(bundle.files), after: sorted(candidate) };
+    const sorted = files => [...files].sort(comparePath).map(f => ({ relativePath: f.relativePath, content: f.content, bytes: Buffer.byteLength(f.content), sha256: sha256(f.content) }));
+    const receipt = s => ({ summary: s.summary, status: s.status, classification: s.classification, recovery: s.recovery, issues: s.issues, dependencies: s.dependencies.filter(d => d.resolution !== 'confirmed'), limitations: s.limitations });
+    const payload = { formatVersion: 2, scope: 'source_files_only', branch: bundle.branch, commitSha: bundle.commitSha, source: bundle.source || null, before: sorted(bundle.files), after: sorted(candidate), analysis: { before: receipt(structure), after: receipt(after) } };
+    verifyManifest(payload);
     assertNoSecrets(payload, this.structureService.secrets);
     const snapshotId = sha256(canonical(payload));
     const directory = await this.safeDirectory();
     const finalPath = path.join(directory, `${snapshotId}.json`);
     const envelope = { snapshotId, algorithm: 'SHA-256', payload };
-    try { await this.readVerified(finalPath, snapshotId); return this.result(snapshotId, true); }
+    const text = canonical(envelope);
+    if (Buffer.byteLength(text) > 12000000) stop('snapshot_size_limit', 413);
+    try { await this.readVerified(finalPath, snapshotId); return this.result(snapshotId, true, structure, after); }
     catch (e) { if (e.code !== 'ENOENT') throw e; }
     const temporary = path.join(directory, `.${crypto.randomUUID()}.tmp`);
     let handle;
     try {
       handle = await fs.open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-      await handle.writeFile(canonical(envelope)); await handle.sync(); await handle.close(); handle = null;
+      await handle.writeFile(text); await handle.sync(); await handle.close(); handle = null;
       // Atomic no-replace publication. A concurrent identical writer verifies the existing file.
       try { await fs.link(temporary, finalPath); }
       catch (e) { if (e.code !== 'EEXIST') throw e; }
@@ -97,10 +123,13 @@ class ChangeSnapshotService {
       if (handle) await handle.close();
       await fs.unlink(temporary).catch(e => { if (e.code !== 'ENOENT') throw e; });
     }
-    return this.result(snapshotId, false);
+    return this.result(snapshotId, false, structure, after);
   }
-  result(snapshotId, reused) {
-    return { status: 'saved', snapshotId, algorithm: 'SHA-256', reused, scope: 'static_source_snapshot', runtimeVerified: false };
+  result(snapshotId, reused, before, after) {
+    return { status: 'saved', snapshotId, algorithm: 'SHA-256', reused, scope: 'source_files_only', runtimeVerified: false,
+      sourceFileRecovery: 'verified', applicationRecovery: 'not_verified', analysisStatus: { before: before.status, after: after.status },
+      excludedRuntimeDependencyCount: { before: before.recovery.excludedRuntimeDependencyCount, after: after.recovery.excludedRuntimeDependencyCount },
+      exclusions: [...new Set([...before.recovery.exclusions, ...after.recovery.exclusions])].sort() };
   }
 }
-module.exports = { ChangeSnapshotService };
+module.exports = { ChangeSnapshotService, verifyManifest };

@@ -78,7 +78,9 @@ test('Power Fx case-insensitivity, unset export properties, scope shadowing and 
   assert.equal(scoped.transitions.length, 0); assert.ok(scoped.possible.some(p => p.reason === 'dynamic_navigation'));
   for (const expression of ['=', '=unknownVariable', '=UnverifiedFunction()']) {
     const r = analyzeStructure([file('Home.pa.yaml', home.replace('=Navigate(Detail)', expression)), files[1]]);
-    assert.equal(r.status, 'incomplete'); assert.ok(r.possible.length);
+    assert.equal(r.status, 'incomplete');
+    if (expression === '=') assert.ok(r.confirmed.some(d => d.category === 'unset_export_property'));
+    else { assert.ok(r.possible.length); assert.equal(r.recovery.allowed, false); }
   }
   const invalid = analyzeStructure([file('Home.pa.yaml', home.replace('=Navigate(Detail)', '=1+')), files[1]]);
   assert.equal(invalid.status, 'blocked');
@@ -169,7 +171,7 @@ test('unsafe, nonignored, unconfigured paths and unresolved analyses do not crea
   const destination = path.join(directory, 'linked'); await fs.symlink(directory, destination);
   snapshot.directory = destination; await assert.rejects(snapshot.create({ branch }), reason('snapshot_path_unsafe'));
   snapshot.directory = undefined; await assert.rejects(snapshot.create({ branch }), e => e.payload.status === 'not_configured');
-  const unresolved = await snapshots(t, [file('Home.pa.yaml', home.replace('Navigate(Detail)', 'Back()')), files[1]]);
+  const unresolved = await snapshots(t, [file('Home.pa.yaml', home.replace('Navigate(Detail)', 'Navigate(Missing)')), files[1]]);
   await assert.rejects(unresolved.snapshot.create({ branch }), reason('snapshot_analysis_incomplete'));
   assert.deepEqual(await fs.readdir(unresolved.directory), []);
   const notIgnored = await fs.mkdtemp(path.join(process.cwd(), 'snapshot-test-local-'));
