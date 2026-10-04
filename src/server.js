@@ -637,7 +637,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
-    return powerAppsStore.publishApp();
+    return withUpstreamErrorStatus(powerAppsStore.publishApp());
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
