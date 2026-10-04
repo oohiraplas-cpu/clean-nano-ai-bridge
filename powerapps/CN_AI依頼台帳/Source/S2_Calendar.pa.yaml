@@ -12,7 +12,7 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
+        If(IsBlank(gblEmpID), Set(gblEmpID, LookUp(CN_本人マイデータ, UserUPN = Lower(User().Email)).EmployeeID));
         ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
     Children:
       - S2_Title:
@@ -68,6 +68,21 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =70
+      - S2_PlanSheet:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(8,34,20,1)
+            FontWeight: =FontWeight.Bold
+            Height: =28
+            OnSelect: =Navigate(S15_OCR, ScreenTransition.None)
+            Size: =10
+            Text: ="計画実施表"
+            Width: =134
+            X: =Parent.Width - 150
+            Y: =70
       - S2_WeekHead:
           Control: Gallery@2.15.0
           Variant: Horizontal
@@ -95,13 +110,13 @@ Screens:
           Control: Gallery@2.15.0
           Variant: Vertical
           Properties:
-            Height: =Min((Parent.Width - 32) / 7 * 6 + 12, Parent.Height - 134 - 70 - 60)
+            Height: =Min((Parent.Width - 32) / 7 * 6 + 12, Parent.Height * 0.58)
             Items: |-
               =ForAll(Sequence(42, 0), {d: DateAdd(gblMonth, Value - Weekday(gblMonth) + 1, TimeUnit.Days)})
             OnSelect: =Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None)
             ShowScrollbar: =false
             TemplatePadding: =2
-            TemplateSize: =Min((Parent.Width - 32) / 7, (Parent.Height - 134 - 70 - 60 - 12) / 6)
+            TemplateSize: =Min((Parent.Width - 32) / 7, (Parent.Height * 0.58 - 12) / 6)
             Width: =Parent.Width - 32
             WrapCount: =7
             X: =16
@@ -143,17 +158,69 @@ Screens:
                   Text: =LookUp(colAttend, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).WorkStatus.Value
                   Width: =Parent.TemplateWidth
                   Y: =Parent.TemplateHeight - 26
-      - S2_Sum:
-          Control: Label@2.5.1
+      - S2_PayPanel:
+          Control: Rectangle@2.3.0
           Properties:
-            Align: =Align.Center
-            Color: =RGBA(0, 204, 102, 1)
-            FontWeight: =FontWeight.Bold
-            Size: =15
-            Text: ="今月の出勤：" & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & " 日"
+            BorderColor: =RGBA(0, 255, 102, 1)
+            BorderThickness: =1
+            Fill: =RGBA(8, 34, 20, 1)
+            Height: =Parent.Height * 0.24
             Width: =Parent.Width - 32
             X: =16
-            Y: =Parent.Height - 70 - 50
+            Y: =Parent.Height - 70 - Self.Height - 10
+      - S2_PayTitle:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Height: =28
+            Size: =13
+            Text: ="本人の今月実績（今日まで）"
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =S2_PayPanel.Y + 10
+      - S2_AttendNow:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255,255,255,1)
+            Height: =28
+            Size: =12
+            Text: ="出勤 " & CountRows(Distinct(Filter(colAttend, StartAt <= Today()), Text(StartAt, "yyyymmdd"))) & "日"
+            Width: =(Parent.Width - 64) / 2
+            X: =32
+            Y: =S2_PayPanel.Y + 42
+      - S2_ShiftNow:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255,255,255,1)
+            Height: =44
+            Size: =11
+            Text: ="日勤 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "日勤")) & " / 夜勤 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "夜勤")) & Char(10) & "早出 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "早出")) & " / 残業 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "残業"))
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =S2_PayPanel.Y + 72
+      - S2_GrossCaption:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(210,255,226,1)
+            Height: =24
+            Size: =11
+            Text: ="現在の総支給額"
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =S2_PayPanel.Y + 120
+      - S2_GrossValue:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Right
+            Color: =RGBA(0,255,102,1)
+            FontWeight: =FontWeight.Bold
+            Height: =42
+            Size: =22
+            Text: =If(IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID)), "単価未登録", With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当,0) + CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当,0) + CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "早出")) * Coalesce(m.早出手当,0), "¥#,##0")))
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =S2_PayPanel.Y + 144
       - S2_NavBar:
           Control: Rectangle@2.3.0
           Properties:
