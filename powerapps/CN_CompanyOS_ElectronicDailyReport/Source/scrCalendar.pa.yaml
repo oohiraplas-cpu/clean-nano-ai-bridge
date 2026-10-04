@@ -9,7 +9,7 @@
 Screens:
   scrCalendar:
     Properties:
-      Fill: =RGBA(0, 13, 75, 1)
+      Fill: =RGBA(3, 18, 14, 1)
       LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
     Children:
       - Label2:
@@ -19,8 +19,8 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Font: =Font.'Open Sans'
             Text: ="CLEAN NANO｜共有カレンダー"
-            X: =40
-            Y: =40
+            X: =24
+            Y: =24
       - DatePicker1:
           Control: Classic/DatePicker@2.6.0
           Properties:
@@ -32,9 +32,9 @@ Screens:
             IconFill: =RGBA(255, 255, 255, 1)
             OnChange: |
               =Set(varReportDate, Self.SelectedDate); NewForm(EditForm1); Navigate(Screen2, ScreenTransition.Cover)
-            Width: =250
-            X: =60
-            Y: =60
+            Width: =Parent.Width - 48
+            X: =24
+            Y: =104
       - Label3:
           Control: Label@2.5.1
           Properties:
@@ -66,8 +66,9 @@ Screens:
               ="
 
               電子日報作成"
-            X: =330
-            Y: =60
+            Width: =Parent.Width - 48
+            X: =24
+            Y: =174
       - Button11:
           Control: Classic/Button@2.2.0
           Properties:
@@ -83,6 +84,7 @@ Screens:
             PressedBorderColor: =Self.Fill
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
-            Text: =
-            X: =100
-            Y: =100
+            Text: ="← ホーム"
+            Width: =Parent.Width - 48
+            X: =24
+            Y: =1040
