@@ -140,7 +140,7 @@ Screens:
               =Color.White
 
             Fill: |+
-              =RGBA(15, 48, 87, 1)
+              =RGBA(3, 18, 14, 1)
 
             Font: =Font.'Open Sans'
             FontWeight: |+
@@ -155,7 +155,7 @@ Screens:
             Text: |
               =UniChar(20803)&UniChar(35531)&UniChar(12369)&UniChar(38651)&UniChar(23376)&UniChar(32626)&UniChar(21517)
             Width: |+
-              =640
+              =Parent.Width
 
             X: |+
               =0
