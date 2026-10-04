@@ -165,7 +165,11 @@ class PowerAppsStore {
         throw await buildUpstreamError('Power Apps管理API呼び出し', response);
       }
       this._metrics.record(duration, true, false);
-      return response.status === 204 ? null : response.json();
+      // Power Apps publish may return a successful 2xx response with an empty
+      // body (not only 204). Do not force JSON parsing when there is no body.
+      if (response.status === 204) return null;
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
     });
   }
 
