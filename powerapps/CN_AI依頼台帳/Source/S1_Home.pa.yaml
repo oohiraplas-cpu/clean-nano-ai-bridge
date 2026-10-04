@@ -20,12 +20,12 @@ Screens:
           Properties:
             Color: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =50
-            Size: =22
-            Text: ="解体工カレンダー"
+            Height: =44
+            Size: =20
+            Text: ="clean nano"
             Width: =Parent.Width - 32
             X: =16
-            Y: =16
+            Y: =12
       - S1_EmpLabel:
           Control: Label@2.5.1
           Properties:
@@ -35,7 +35,7 @@ Screens:
             Text: ="作業員"
             Width: =Parent.Width - 32
             X: =16
-            Y: =76
+            Y: =60
       - S1_EmpDrop:
           Control: Classic/DropDown@2.3.1
           Properties:
@@ -45,7 +45,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Default: =LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =48
+            Height: =44
             Items: =Sort(CN_社員台帳, Title).Title
             Items.Value: =Title
             OnChange: |-
@@ -55,7 +55,7 @@ Screens:
             Size: =14
             Width: =Parent.Width - 32
             X: =16
-            Y: =106
+            Y: =88
       - S1_MonthLabel:
           Control: Label@2.5.1
           Properties:
@@ -66,15 +66,15 @@ Screens:
             Text: =Text(gblMonth, "yyyy年m月") & " の実績"
             Width: =Parent.Width - 32
             X: =16
-            Y: =174
+            Y: =144
       - S1_Card1:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =130
+            Height: =102
             Width: =Parent.Width - 32
             X: =16
-            Y: =214
+            Y: =180
       - S1_DaysCap:
           Control: Label@2.5.1
           Properties:
@@ -84,18 +84,18 @@ Screens:
             Text: ="今月の出勤日数"
             Width: =Parent.Width - 64
             X: =32
-            Y: =224
+            Y: =188
       - S1_DaysVal:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =72
-            Size: =36
+            Height: =54
+            Size: =28
             Text: =CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & " 日"
             Width: =Parent.Width - 64
             X: =32
-            Y: =258
+            Y: =216
       - S1_Card2:
           Control: Rectangle@2.3.0
           Properties:
@@ -103,7 +103,7 @@ Screens:
             Height: =130
             Width: =Parent.Width - 32
             X: =16
-            Y: =360
+            Y: =294
       - S1_AllowCap:
           Control: Label@2.5.1
           Properties:
@@ -113,7 +113,7 @@ Screens:
             Text: ="今月の手当合計（見込み）"
             Width: =Parent.Width - 64
             X: =32
-            Y: =370
+            Y: =302
       - S1_AllowVal:
           Control: Label@2.5.1
           Properties:
@@ -131,7 +131,7 @@ Screens:
                           "¥#,##0")))
             Width: =Parent.Width - 64
             X: =32
-            Y: =404
+            Y: =330
       - S1_GoCal:
           Control: Classic/Button@2.2.0
           Properties:
@@ -139,15 +139,15 @@ Screens:
             Color: =RGBA(10, 10, 10, 1)
             Fill: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
-            Height: =56
+            Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =16
-            Text: ="カレンダーを見る"
+            Text: ="今日のカレンダー"
             Width: =Parent.Width - 32
             X: =16
-            Y: =510
+            Y: =406
       - S1_GoSalary:
           Control: Classic/Button@2.2.0
           Properties:
@@ -161,7 +161,7 @@ Screens:
             Text: ="給与・総支給見込み"
             Width: =(Parent.Width - 48) / 2
             X: =16
-            Y: =Parent.Height - 328
+            Y: =470
       - S1_GoReport:
           Control: Classic/Button@2.2.0
           Properties:
@@ -175,7 +175,7 @@ Screens:
             Text: ="電子日報"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
-            Y: =Parent.Height - 328
+            Y: =470
       - S1_GoApply:
           Control: Classic/Button@2.2.0
           Properties:
@@ -189,7 +189,7 @@ Screens:
             Text: ="申請"
             Width: =Parent.Width - 32
             X: =16
-            Y: =Parent.Height - 268
+            Y: =526
       - S1_GoOCR:
           Control: Classic/Button@2.2.0
           Properties:
@@ -203,7 +203,7 @@ Screens:
             Text: ="OCR自動記載"
             Width: =(Parent.Width - 48) / 2
             X: =16
-            Y: =Parent.Height - 208
+            Y: =582
       - S1_GoExpense:
           Control: Classic/Button@2.2.0
           Properties:
@@ -217,7 +217,7 @@ Screens:
             Text: ="経費・領収書"
             Width: =(Parent.Width - 48) / 2
             X: =32 + (Parent.Width - 48) / 2
-            Y: =Parent.Height - 208
+            Y: =582
       - S1_GoInvoice:
           Control: Classic/Button@2.2.0
           Properties:
@@ -231,7 +231,7 @@ Screens:
             Text: ="請求書（下書き）"
             Width: =Parent.Width - 32
             X: =16
-            Y: =Parent.Height - 154
+            Y: =634
       - S1_GoEstimate:
           Control: Classic/Button@2.2.0
           Properties:
@@ -245,14 +245,14 @@ Screens:
             Text: ="見積書（下書き）"
             Width: =Parent.Width - 32
             X: =16
-            Y: =Parent.Height - 104
+            Y: =686
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =70
+            Height: =64
             Width: =Parent.Width
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 64
       - S1_Nav1:
           Control: Classic/Button@2.2.0
           Properties:
@@ -273,7 +273,7 @@ Screens:
             Text: ="ホーム"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 64
       - S1_Nav2:
           Control: Classic/Button@2.2.0
           Properties:
@@ -294,7 +294,7 @@ Screens:
             Text: ="カレンダー"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 64
       - S1_Nav3:
           Control: Classic/Button@2.2.0
           Properties:
@@ -312,10 +312,10 @@ Screens:
             RadiusTopLeft: =0
             RadiusTopRight: =0
             Size: =11
-            Text: ="登録"
+            Text: ="出勤"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 64
       - S1_Nav4:
           Control: Classic/Button@2.2.0
           Properties:
@@ -326,17 +326,17 @@ Screens:
             Height: =70
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
-            OnSelect: '=Navigate(S4_Summary, ScreenTransition.None) '
+            OnSelect: =Navigate(S13_Apply, ScreenTransition.None)
             PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
             RadiusTopRight: =0
             Size: =11
-            Text: ="集計"
+            Text: ="申請"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
-            Y: =Parent.Height - 70
+            Y: =Parent.Height - 64
       - S1_Nav5:
           Control: Classic/Button@2.2.0
           Properties:
@@ -347,37 +347,14 @@ Screens:
             Height: =70
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
-            OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
+            OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
             PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
             RadiusTopRight: =0
             Size: =11
-            Text: ="設定"
+            Text: ="マイデータ"
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
-            Y: =Parent.Height - 70
-      - Button9:
-          Control: Classic/Button@2.2.0
-          Properties:
-            BorderColor: =RGBA(0, 0, 0, 0)
-            BorderStyle: =BorderStyle.None
-            Color: =RGBA(255, 255, 255, 1)
-            DisabledBorderColor: =RGBA(0, 0, 0, 0)
-            DisabledColor: =RGBA(161, 159, 157, 1)
-            DisabledFill: =RGBA(242, 242, 241, 0)
-            Fill: =RGBA(0, 120, 212, 1)
-            Font: =Font.'Segoe UI'
-            HoverBorderColor: =RGBA(0, 0, 0, 0)
-            HoverColor: =RGBA(255, 255, 255, 1)
-            HoverFill: =RGBA(16, 110, 190, 1)
-            PressedBorderColor: =RGBA(0, 69, 120, 1)
-            PressedColor: =RGBA(255, 255, 255, 1)
-            PressedFill: =RGBA(16, 110, 190, 1)
-            RadiusBottomLeft: =0
-            RadiusBottomRight: =0
-            RadiusTopLeft: =0
-            RadiusTopRight: =0
-            X: =40
-            Y: =40
+            Y: =Parent.Height - 64
