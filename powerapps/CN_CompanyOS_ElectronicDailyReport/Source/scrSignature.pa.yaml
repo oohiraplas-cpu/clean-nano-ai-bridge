@@ -233,7 +233,7 @@ Screens:
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =ColorFade(RGBA(56, 96, 178, 1), -20%)
             OnSelect: |
-              =If(IsBlank(Trim(TextInput1.Text)),Notify("署名者名を入力してください。",NotificationType.Error),Set(varSignerName,Trim(TextInput1.Text));Set(varSignatureJson,JSON(PenInput1.Image,JSONFormat.IncludeBinaryData));Set(varSignatureConfirmed,true);Navigate(Screen3,ScreenTransition.Cover))
+              =If(IsBlank(Trim(TextInput1.Text)), Notify("署名者名を入力してください。", NotificationType.Error), If(IsBlank(gblSavedReport), Notify("保存済みの日報が見つかりません。日報画面から保存し直してください。", NotificationType.Error), Set(varSignerName, Trim(TextInput1.Text)); Set(varSignatureJson, JSON(PenInput1.Image, JSONFormat.IncludeBinaryData)); IfError(Patch('CN_電子日報台帳', gblSavedReport, {PrimeSignerName: varSignerName, PrimeSignedAt: Now(), PrimeSignatureStatus: {Value:"署名済"}, PrimeSignature: PenInput1.Image}); Set(varSignatureConfirmed, true); Set(gblSavedReport, LookUp('CN_電子日報台帳', ID = gblSavedReport.ID)); Notify("署名を保存しました。PDF共有へ進みます。", NotificationType.Success); Navigate(Screen3, ScreenTransition.Cover), Notify("署名を保存できませんでした。通信と入力内容を確認してください。", NotificationType.Error))))
             PressedBorderColor: =Self.Fill
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
