@@ -11,6 +11,10 @@ const { PowerAppsGitStore } = require('./powerAppsGitStore');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
+const { DeploymentService } = require('./deploymentService');
+const { PermissionsService } = require('./permissionsService');
+const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
+const { runStaticTests } = require('./powerAppsStaticTests');
 const {
   validateMcpInput,
   validateStatusInput,
@@ -27,7 +31,10 @@ const {
   validateSavePowerAppsAppParams,
   validatePublishPowerAppsAppParams,
   validateGetPowerAppsOperationResultParams,
-  validateGetPowerAppsSourceParams
+  validateGetPowerAppsSourceParams,
+  validateValidatePowerAppsChangeParams,
+  validateRunPowerAppsTestsParams,
+  validateVerifySaveResultParams
 } = require('./powerAppsValidation');
 const {
   validateGetSharePointListParams,
@@ -35,7 +42,13 @@ const {
   validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
-  validateUpdateEmployeeLedgerEntryParams
+  validateUpdateEmployeeLedgerEntryParams,
+  validateDeployToTestParams,
+  validateVerifyDeploymentParams,
+  validateGetDeploymentLogsParams,
+  validateRollbackDeploymentParams,
+  validateGetPermissionsParams,
+  validateUpdatePermissionsParams
 } = require('./bridgeExtensionsValidation');
 
 function createDefaultStore(config) {
@@ -75,7 +88,10 @@ const MCP_METHODS = Object.freeze([
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
   'get_sharepoint_list', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
-  'create_employee_ledger_entry', 'update_employee_ledger_entry'
+  'create_employee_ledger_entry', 'update_employee_ledger_entry',
+  'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
+  'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
+  'get_permissions', 'update_permissions'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -173,7 +189,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         updateData: { type: 'object', description: 'Power Apps管理APIへ送る更新内容' },
         relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
         content: { type: 'string', description: '更新後のファイル内容' },
-        message: { type: 'string', description: '更新のコミットメッセージ' }
+        message: { type: 'string', description: '更新のコミットメッセージ' },
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' }
       },
       additionalProperties: false
     }
@@ -181,12 +198,20 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'save_powerapps_app',
     description: 'GitHubの既存Power AppsソースをPower Platformへ同期し、保存状態を確認します。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    inputSchema: {
+      type: 'object',
+      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      additionalProperties: false
+    }
   },
   {
     name: 'publish_powerapps_app',
     description: '既存Power Appsアプリを公開します。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    inputSchema: {
+      type: 'object',
+      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      additionalProperties: false
+    }
   },
   {
     name: 'get_sharepoint_list',
@@ -297,6 +322,163 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['itemId', 'record', 'approvedByHuman'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'get_powerapps_operation_result',
+    description: 'Power Apps操作（更新・保存・公開）のoperationIdから、記録された結果を取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: { operationId: { type: 'string', description: '操作ID（更新・保存・公開の応答に含まれるoperationId）' } },
+      required: ['operationId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'validate_powerapps_change',
+    description: 'Power Appsソース変更を適用前に検査します（branch・relativePath・対象ファイル・削除・大規模差分・構文）。valid・errors・warnings・summaryを返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: '変更対象のbranch（正本branchと一致する必要があります）' },
+        relativePath: { type: 'string', description: '対象ソースファイルの相対パス' },
+        content: { type: 'string', description: '更新後のファイル内容（削除の場合は指定しません）' },
+        currentContent: { type: 'string', description: '現在のファイル内容（省略時は正本branchから取得します）' },
+        currentExists: { type: 'boolean', description: '対象ファイルが現在存在するか（currentContent未指定時の補足）' },
+        delete: { type: 'boolean', description: 'ファイル削除を検査する場合はtrue' },
+        create: { type: 'boolean', description: '新規ファイル作成を許可する場合はtrue' },
+        allowLargeDiff: { type: 'boolean', description: '大規模差分（変更率80%以上）を意図したものとして許可する場合はtrue' }
+      },
+      required: ['branch', 'relativePath'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'run_powerapps_tests',
+    description: 'Power Appsソース変更の静的検査（構文・括弧・引用符・重複定義・画面遷移・データソース参照・危険な削除）を実行します。実行不能の項目は成功扱いにせずskippedとreasonを返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          description: '検査する変更ファイル（1〜50件）',
+          items: {
+            type: 'object',
+            properties: {
+              relativePath: { type: 'string' },
+              content: { type: 'string', description: '更新後の内容（削除の場合は指定しません）' },
+              delete: { type: 'boolean', description: '削除するファイルの場合はtrue' }
+            },
+            required: ['relativePath'],
+            additionalProperties: false
+          }
+        },
+        knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
+        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
+      },
+      required: ['files'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'verify_save_result',
+    description: '保存後にアプリ状態と正本ソースを再取得し、branch・relativePath・期待SHAまたは期待内容・エラー状態を検証します。expectedShaまたはexpectedContentのいずれかが必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        relativePath: { type: 'string', description: '検証するソースファイルの相対パス' },
+        branch: { type: 'string', description: '想定しているbranch（正本branchと一致する必要があります）' },
+        expectedSha: { type: 'string', description: '期待するファイルのSHA（40桁の16進）' },
+        expectedContent: { type: 'string', description: '期待するファイル内容' }
+      },
+      required: ['relativePath'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'deploy_to_test',
+    description: '構成済みの非本番テスト環境へだけデプロイを要求します。本番・環境不明・設定不足・branch不一致は拒否します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: 'デプロイ元branch（許可branchと一致する必要があります）' },
+        environment: { type: 'string', description: '対象環境名（省略時は構成済みのテスト環境）。本番は指定できません' },
+        ref: { type: 'string', description: 'デプロイするコミットSHA（省略時はbranch先頭）' }
+      },
+      required: ['branch'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'verify_deployment',
+    description: '対象環境・バージョン・デプロイ結果・healthのHTTP状態と応答内容を検証します。確認できない項目は成功扱いにしません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        environment: { type: 'string', description: '検証する環境名（省略時は構成済みのテスト環境）' },
+        deploymentId: { type: 'string', description: 'deploy_to_testが返したdeploymentId（デプロイ結果の検証に使用）' },
+        expectedVersion: { type: 'string', description: '期待するバージョン（healthの応答のversionと比較）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_deployment_logs',
+    description: '構成済みのデプロイ基盤から診断ログ（workflow run・job・step）を取得します。トークン・APIキー・接続文字列などはマスクされます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        environment: { type: 'string', description: '対象環境名（省略時は構成済みのテスト環境）' },
+        deploymentId: { type: 'string', description: '対象のdeploymentId' },
+        runId: { type: 'integer', description: '対象のworkflow run ID（deploymentIdとは同時に指定できません）' },
+        limit: { type: 'integer', minimum: 1, maximum: 20, description: '取得件数（既定5、最大20）' },
+        includeJobLogs: { type: 'boolean', description: 'jobログ本文の末尾100行を含める場合はtrue' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'rollback_deployment',
+    description: '確認済み（verify_deploymentでverified）の復旧元へだけ戻します。本番はapprovedByHuman:trueが必須です。復旧後にhealthを再確認します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        environment: { type: 'string', description: '対象環境名（省略時は構成済みのテスト環境）' },
+        targetDeploymentId: { type: 'string', description: '復旧元のdeploymentId（確認済みのもののみ）' },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（本番ではtrue必須）' }
+      },
+      required: ['targetDeploymentId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_permissions',
+    description: '構成済み対象の権限を読み取り専用で取得します。対象種別・取得範囲・現在の権限を返し、秘密情報は返しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetType: { type: 'string', enum: ['powerapps_app', 'dataverse_user_roles'], description: '対象種別' },
+        principalId: { type: 'string', description: 'dataverse_user_rolesで対象とするsystemuserのGUID' }
+      },
+      required: ['targetType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'update_permissions',
+    description: '必要最小権限のみを付与・取消します。人間承認（approvedByHuman:true）が必須です。System Administrator等の強い権限・テナント全体共有・外部共有は拒否し、変更前後を検証します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetType: { type: 'string', enum: ['powerapps_app', 'dataverse_user_roles'], description: '対象種別' },
+        action: { type: 'string', enum: ['grant', 'revoke'], description: '付与または取消' },
+        principalId: { type: 'string', description: '対象のEntraオブジェクトID（GUID）またはメールアドレス（dataverse_user_rolesではsystemuserのGUID）' },
+        principalType: { type: 'string', enum: ['User', 'Group', 'Tenant'], description: '対象の種別（Tenantは常に拒否されます）' },
+        roleName: { type: 'string', description: 'ロール名（powerapps_app: CanView/CanEdit。dataverse_user_roles: 許可リストのロール）' },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（true必須）' }
+      },
+      required: ['targetType', 'action', 'principalId', 'principalType', 'roleName', 'approvedByHuman'],
+      additionalProperties: false
+    }
   }
 ]);
 
@@ -379,7 +561,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -426,11 +608,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return params.updateData
       ? powerAppsStore.updateApp(params.updateData)
-      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
+      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message, params.branch));
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    // get_powerapps_sourceが返したbranchが渡された場合、正本branchと一致しなければ保存を拒否する。
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '保存')));
     const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
     const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     const saved = await powerAppsStore.saveApp();
@@ -439,12 +623,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
     return powerAppsStore.publishApp();
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsStore.getOperationResult(params.operationId);
+    return withUpstreamErrorStatus(powerAppsStore.getOperationResult(params.operationId));
   }
   if (method === 'get_sharepoint_list') {
     const paramError = validateGetSharePointListParams(params);
@@ -481,6 +666,104 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(employeeLedgerEntries.updateEntry(params.itemId, params.record));
   }
+  if (method === 'validate_powerapps_change') {
+    const paramError = validateValidatePowerAppsChangeParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.validatePowerAppsChange(params));
+  }
+  if (method === 'run_powerapps_tests') {
+    const paramError = validateRunPowerAppsTestsParams(params);
+    if (paramError) throw requestError(paramError);
+    return runStaticTests(params);
+  }
+  if (method === 'verify_save_result') {
+    const paramError = validateVerifySaveResultParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.verifySaveResult(params));
+  }
+  if (method === 'deploy_to_test') {
+    const paramError = validateDeployToTestParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.deployToTest(params));
+  }
+  if (method === 'verify_deployment') {
+    const paramError = validateVerifyDeploymentParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.verifyDeployment(params));
+  }
+  if (method === 'get_deployment_logs') {
+    const paramError = validateGetDeploymentLogsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.getDeploymentLogs(params));
+  }
+  if (method === 'rollback_deployment') {
+    const paramError = validateRollbackDeploymentParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.rollbackDeployment(params));
+  }
+  if (method === 'get_permissions') {
+    const paramError = validateGetPermissionsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.permissions.getPermissions(params));
+  }
+  if (method === 'update_permissions') {
+    // approvedByHuman:trueはvalidateUpdatePermissionsParamsで必須チェック済み（AI単独承認禁止）。
+    const paramError = validateUpdatePermissionsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.permissions.updatePermissions(params));
+  }
+}
+
+// 新ツール（検証・デプロイ・権限）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
+function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injected = {}) {
+  const deployment = injected.deployment || new DeploymentService(config.deployment || {});
+  const permissions = injected.permissions || new PermissionsService({ powerAppsStore, config: config.permissions || {} });
+
+  async function validatePowerAppsChange(params) {
+    const canonicalBranch = powerAppsGitStore.canonicalBranch;
+    let currentContent = params.currentContent;
+    let currentExists = params.currentExists;
+    let sourceBranch = null;
+    const extraWarnings = [];
+    const pathLooksUnsafe = /\.\.|\\/.test(params.relativePath);
+    if (currentContent === undefined && currentExists === undefined && !pathLooksUnsafe) {
+      try {
+        const current = await powerAppsGitStore.getSourceFile(params.relativePath);
+        currentContent = current.content;
+        currentExists = true;
+        sourceBranch = current.branch;
+      } catch (error) {
+        if (/\(404\)/.test(String(error.message))) currentExists = false;
+        else if (/設定が不足/.test(String(error.message))) extraWarnings.push('GitHub設定が不足しているため、現在内容の取得と差分検査を実行していません（未検証）');
+        else throw error;
+      }
+    }
+    const result = validateChange({ ...params, currentContent, currentExists }, { canonicalBranch });
+    if (sourceBranch && sourceBranch !== canonicalBranch) {
+      result.errors.push(`対象ソースは正本branch以外(${sourceBranch})で見つかりました。正本branch(${canonicalBranch})へは存在しないため更新できません`);
+      result.valid = false;
+      result.summary.sourceBranch = sourceBranch;
+      result.summary.errorCount = result.errors.length;
+    }
+    result.warnings.push(...extraWarnings);
+    result.summary.warningCount = result.warnings.length;
+    return result;
+  }
+
+  function verifySave(params) {
+    return verifySaveResult(params, {
+      canonicalBranch: powerAppsGitStore.canonicalBranch,
+      getSourceFile: (relativePath) => powerAppsGitStore.getSourceFile(relativePath),
+      getAppState: () => powerAppsStore.getAppState()
+    });
+  }
+
+  return {
+    deployment,
+    permissions,
+    validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
+    verifySaveResult: injected.verifySaveResult || verifySave
+  };
 }
 
 function jsonRpcResult(id, result) {
@@ -493,7 +776,7 @@ function jsonRpcError(id, code, message, data) {
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
 
-function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner, injectedEmployeeLedgerWriter) {
+function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner, injectedEmployeeLedgerWriter, injectedBridgeServices = {}) {
   const store = injectedStore || createDefaultStore(config);
   const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
   const powerAppsGitStore = injectedPowerAppsGitStore || new PowerAppsGitStore(config.powerApps);
@@ -502,6 +785,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   const employeeLedgerWriter = injectedEmployeeLedgerWriter
     || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
   const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
+  const bridgeServices = createBridgeServices(config, powerAppsStore, powerAppsGitStore, injectedBridgeServices);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
@@ -578,7 +862,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
         try {
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
+          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(result) }],
             structuredContent: result,
@@ -588,7 +872,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           if (!error.status) return next(error);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: error.message }],
-            structuredContent: { error: error.message, ...(error.upstream ? { details: error.upstream } : {}) },
+            structuredContent: { error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) },
             isError: true
           }));
         }
@@ -601,10 +885,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const { method } = body;
     const params = body.params || {};
     try {
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
+      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
       return res.status(200).json({ accepted: true, method, result });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}) });
+      if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) });
       return next(error);
     }
   }
@@ -622,4 +906,4 @@ if (require.main === module) {
   createApp(config).listen(config.port, config.host, () => console.log(`Bridge API listening on ${config.host}:${config.port}`));
 }
 
-module.exports = { apiKeyMiddleware, createApp };
+module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS };

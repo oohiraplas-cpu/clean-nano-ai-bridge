@@ -32,6 +32,64 @@ npm start
 - `update_task_status`: `params.task_id`（必須）・`params.status`（必須、既存のstatus一覧のいずれか）・`params.result`（任意）でタスクの状態と結果を更新し、`result.task` を返します。`task_id` が存在しない場合は `404` です。
 - `get_task_result`: `params.task_id`（必須）で現在の `status`・`result` を返します。`task_id` が存在しない場合は `404` です。
 
+## 検証・デプロイ・権限の9ツール
+
+`POST /mcp`（JSON-RPC `tools/call` と legacy `{method, params}` の両形式）と `GET /mcp/tools/list` から使えます。各ツールの `inputSchema` は `additionalProperties: false` で、未定義のプロパティは実行時にも拒否します。エラーは既存規約どおり、`tools/call` は HTTP 200 + `isError:true`、legacy 形式は HTTP ステータス（400/403/404/409/502/503）で返します。
+
+| ツール | 内容 |
+|---|---|
+| `validate_powerapps_change` | 変更前検査。branch・relativePath・対象ファイル・削除・大規模差分・構文・秘密値混入。`valid` / `errors` / `warnings` / `summary` を返す |
+| `run_powerapps_tests` | 静的検査（構文・括弧・引用符・重複定義・画面遷移・データソース参照・危険な削除）。検証材料がない項目は `skipped` + `reason` |
+| `verify_save_result` | 保存後に正本ソースとアプリ状態を再取得し、branch・パス・期待SHAまたは内容・状態を検証 |
+| `deploy_to_test` | 構成済みの非本番テスト環境へ GitHub Actions の workflow_dispatch を要求 |
+| `verify_deployment` | 環境・バージョン・デプロイ結果・health の HTTP 状態と応答内容を検証 |
+| `get_deployment_logs` | workflow run / job / step と、任意でjobログ末尾を取得。秘密値はマスク |
+| `rollback_deployment` | 確認済み（`verify_deployment` で verified）の復旧元へ戻し、health を再確認。本番は `approvedByHuman:true` 必須 |
+| `get_permissions` | 構成済み対象の権限を読み取り専用で取得（対象種別・取得範囲・現在権限） |
+| `update_permissions` | `approvedByHuman:true` 必須。最小権限のみ付与・取消し、変更前後を検証 |
+
+### 未構成時の動作
+
+未設定の外部設定がある場合は、ダミー成功にせず HTTP 503（`tools/call` では `isError:true`）で次を返します。
+
+```json
+{ "error": "未構成のため実行できません: ...", "status": "not_configured", "reason": "...", "missingConfiguration": ["DEPLOY_GITHUB_TOKEN", "..."] }
+```
+
+設定項目は `.env.example` の「デプロイ連携」「権限管理」を参照してください。
+
+### 検証の限界（`run_powerapps_tests`）
+
+Power Apps Studio / Test Engine は実行しません（常に `power_apps_test_engine` が `skipped`）。結果は `passed`（全項目成功）・`failed`（1項目でも失敗）・`incomplete`（失敗はないが未検証項目あり）のいずれかで、`incomplete` は成功扱いではありません。画面遷移は `knownScreens`、データソース参照は `knownDataSources` を渡した場合のみ厳密に検証します。
+
+### デプロイの契約（`deploy_to_test` / `rollback_deployment`）
+
+- 実行基盤は GitHub Actions です。`DEPLOY_TEST_WORKFLOW`（本番ロールバック用に `DEPLOY_PRODUCTION_WORKFLOW`）に指定した workflow は `workflow_dispatch` の入力 `environment` と `git_ref`（コミットSHA）を受け取り、指定コミットを指定環境にだけ配備してください。**このリポジトリにはそのworkflowは含まれていません。別途用意が必要です。**
+- `deploy_to_test` は、本番（環境名が本番設定と同じ、または `prod` を含む）・未構成の環境名・許可branch以外・テスト環境設定が本番と同一/本番相当の場合を拒否します。
+- `rollback_deployment` の復旧元は、実行履歴（`data/deployments.jsonl`）に記録され、`verify_deployment` で `verified` になった実行のみです。復旧後の health 再確認は workflow 完了を意味しません（完了は `verify_deployment` で確認）。
+- `data/deployments.jsonl` はローカル履歴です。複数インスタンスや再デプロイで失われる環境では、復旧元が見つからず拒否されます（安全側の動作）。
+
+### 権限管理の対象
+
+- `powerapps_app`: 構成済みアプリの共有権限（付与できるロールは `CanView` / `CanEdit` のみ）。
+- `dataverse_user_roles`: 指定ユーザーの Dataverse セキュリティロール（`PERMISSIONS_ALLOWED_DATAVERSE_ROLES` の許可リストにあるロールのみ）。
+- 次は承認済みでも常に拒否します（上書きフラグはありません）: System Administrator / System Customizer / Delegate / `admin` を含むロール名、テナント全体への共有、`#EXT#` を含む外部ユーザーや許可ドメイン外のメールアドレス。
+- オブジェクトID（GUID）での指定は、外部ユーザーかどうかを判定できないため、応答の `warnings` にその旨を返します。
+- **Power Apps 管理 API / Dataverse の権限関連エンドポイントとの結合は、テストではモックでのみ確認しています。実環境での動作は未確認です。**
+
+### 正本branch保護（過去branchへの誤書き込み防止）
+
+`PowerAppsGitStore` はソースが見つからない場合に過去branch（フォールバック）を探しますが、**更新は正本branch（`POWERAPPS_GITHUB_BRANCH`）にあるファイルに対してのみ**行います。フォールバック先でしか見つからないソースへの `update_powerapps_app` は 409 で拒否し、GitHub への書き込みも Power Platform 同期も行いません。`get_powerapps_source` は `branch` / `canonicalBranch` / `isCanonicalBranch` を返します。`update_powerapps_app`・`save_powerapps_app`・`publish_powerapps_app` は任意の `branch`（`get_powerapps_source` が返した値）を受け取り、正本と異なれば拒否します。`branch` 未指定の呼び出しは従来どおりです（ただし更新時のフォールバック書き込み拒否は常に有効）。
+
+## 開発
+
+```bash
+npm test                 # 全テスト
+npm run test:mcp-tools   # 追加9ツール関連のテスト
+npm run test:safety      # 正本branch保護のテスト
+npm run validate:openapi
+```
+
 ## Power Platform
 
 OpenAPI 3.x定義は [openapi.yaml](openapi.yaml) です。公開ホストが未確定のため `servers` は未指定です。Custom Connector作成時に実際のHTTPS Hostを設定し、まず `GET /health` を接続試験に使ってください。TLS終端、DNS、ファイアウォール、認証キーの安全な登録、SharePoint Listsアダプターの実装は公開前に別途必要です。

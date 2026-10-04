@@ -196,6 +196,15 @@ class PowerAppsStore {
     });
   }
 
+  // 他のService（権限管理など）が、既存の認証・リトライ・エラー整形を再利用するための公開ラッパー。
+  async managementRequest(path, options = {}) {
+    return this._managementFetch(path, options);
+  }
+
+  async dataverseRequest(path, options = {}) {
+    return this._dataverseFetch(path, options);
+  }
+
   async _getCanvasRecord() {
     const key = `canvas_${this.appId}`;
     const cached = this._cache.get(key);
