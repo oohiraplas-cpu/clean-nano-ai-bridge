@@ -44,7 +44,7 @@ Screens:
             Height: =88
             Icon: =Icon.Send
             OnSelect: |+
-              =Set(_emailRecipientString,Concat(MyPeople,Mail & ";"));Office365Outlook.SendEmailV2(_emailRecipientString,TextEmailSubject1.Text,TextEmailMessage1.Text,{Importance:"Normal",Attachments:Table({Name:"電子日報_" & Text(Now(),"yyyymmdd_hhmm") & ".pdf",ContentBytes:PDF(Screen2,{ExpandContainers:true})},{Name:"元請け電子署名_" & Text(Now(),"yyyymmdd_hhmm") & ".pdf",ContentBytes:PDF(scrSignature,{ExpandContainers:true})})});Reset(TextEmailSubject1);Reset(TextEmailMessage1);Clear(MyPeople);Navigate(ホーム,ScreenTransition.UnCover)
+              =If(!varSignatureConfirmed, Notify("元請電子署名を確定してから共有してください。", NotificationType.Warning), If(!Connection.Connected, Notify("通信に接続してから共有してください。", NotificationType.Warning), Set(_emailRecipientString,Concat(MyPeople,Mail & ";")); IfError(Office365Outlook.SendEmailV2(_emailRecipientString,TextEmailSubject1.Text,TextEmailMessage1.Text,{Importance:"Normal",Attachments:Table({Name:"電子日報_" & Text(Now(),"yyyymmdd_hhmm") & ".pdf",ContentBytes:PDF(Screen2,{ExpandContainers:true})},{Name:"元請け電子署名_" & Text(Now(),"yyyymmdd_hhmm") & ".pdf",ContentBytes:PDF(scrSignature,{ExpandContainers:true})})}); Reset(TextEmailSubject1); Reset(TextEmailMessage1); Clear(MyPeople); Notify("日報PDFを共有しました。", NotificationType.Success); Navigate(ホーム,ScreenTransition.UnCover), Notify("PDF共有に失敗しました。宛先と通信状態を確認してください。", NotificationType.Error))))
             PaddingBottom: =24
             PaddingLeft: =24
             PaddingRight: =24
