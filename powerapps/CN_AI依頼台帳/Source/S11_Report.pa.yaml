@@ -263,6 +263,7 @@ Screens:
       - btnReportDraft:
           Control: Classic/Button@2.2.0
           Properties:
+            DisplayMode: =If(varReportSaving, DisplayMode.Disabled, DisplayMode.Edit)
             BorderColor: =RGBA(0, 204, 102, 1)
             BorderThickness: =1
             Color: =RGBA(255, 255, 255, 1)
@@ -270,33 +271,41 @@ Screens:
             Height: =If(Parent.Width <= 600, 44, 50)
             OnSelect: |-
               =If(
-                  IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.Title) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
-                  Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
-                  IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
-                  Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
+                  !varReportSaving,
+                  Set(varReportSaving, true);
                   IfError(
-                      Patch(
-                          CN_電子日報台帳,
-                          Defaults(CN_電子日報台帳),
-                          {
-                              日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
-                              作業日: dpWorkDate.SelectedDate,
-                              社員名: txtEmp.Text,
-                              現場名: ddSite.Selected.Title,
-                              作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
-                              作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
-                              人数: Value(txtPeople.Text),
-                              作業内容: txtContent.Text,
-                              元請会社: txtPrimeCompany.Text,
-                              元請担当者名: txtPrimeContact.Text,
-                              提出状態: {Value: "下書き"},
-                              元請電子サイン: penSign.Image
-                          }
+                      If(
+                          IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.Title) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
+                          Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
+                          IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
+                          Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
+                          IfError(
+                              Patch(
+                                  CN_電子日報台帳,
+                                  Defaults(CN_電子日報台帳),
+                                  {
+                                      日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
+                                      作業日: dpWorkDate.SelectedDate,
+                                      社員名: txtEmp.Text,
+                                      現場名: ddSite.Selected.Title,
+                                      作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
+                                      作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
+                                      人数: Value(txtPeople.Text),
+                                      作業内容: txtContent.Text,
+                                      元請会社: txtPrimeCompany.Text,
+                                      元請担当者名: txtPrimeContact.Text,
+                                      提出状態: {Value: "下書き"},
+                                      元請電子サイン: penSign.Image
+                                  }
+                              ),
+                              Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
+                              Notify("日報を保存しました（下書き）", NotificationType.Success);
+                              Reset(txtContent); Reset(penSign)
+                          )
                       ),
-                      Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
-                      Notify("日報を保存しました（下書き）", NotificationType.Success);
-                      Reset(txtContent); Reset(penSign)
-                  )
+                      Notify("保存処理を完了できませんでした：" & FirstError.Message, NotificationType.Error)
+                  );
+                  Set(varReportSaving, false)
               )
             Size: =14
             Text: ="下書き保存"
@@ -306,6 +315,7 @@ Screens:
       - btnReportSubmit:
           Control: Classic/Button@2.2.0
           Properties:
+            DisplayMode: =If(varReportSaving, DisplayMode.Disabled, DisplayMode.Edit)
             BorderThickness: =0
             Color: =RGBA(0, 0, 0, 1)
             Fill: =RGBA(0, 204, 102, 1)
@@ -313,34 +323,42 @@ Screens:
             Height: =If(Parent.Width <= 600, 44, 50)
             OnSelect: |-
               =If(
-                  IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.Title) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
-                  Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
-                  IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
-                  Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
+                  !varReportSaving,
+                  Set(varReportSaving, true);
                   IfError(
-                      Patch(
-                          CN_電子日報台帳,
-                          Defaults(CN_電子日報台帳),
-                          {
-                              日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
-                              作業日: dpWorkDate.SelectedDate,
-                              社員名: txtEmp.Text,
-                              現場名: ddSite.Selected.Title,
-                              作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
-                              作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
-                              人数: Value(txtPeople.Text),
-                              作業内容: txtContent.Text,
-                              元請会社: txtPrimeCompany.Text,
-                              元請担当者名: txtPrimeContact.Text,
-                              提出状態: {Value: "提出済"},
-                              元請署名状態: {Value: "署名済"},
-                              元請電子サイン: penSign.Image
-                          }
+                      If(
+                          IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.Title) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
+                          Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
+                          IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
+                          Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
+                          IfError(
+                              Patch(
+                                  CN_電子日報台帳,
+                                  Defaults(CN_電子日報台帳),
+                                  {
+                                      日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
+                                      作業日: dpWorkDate.SelectedDate,
+                                      社員名: txtEmp.Text,
+                                      現場名: ddSite.Selected.Title,
+                                      作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
+                                      作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
+                                      人数: Value(txtPeople.Text),
+                                      作業内容: txtContent.Text,
+                                      元請会社: txtPrimeCompany.Text,
+                                      元請担当者名: txtPrimeContact.Text,
+                                      提出状態: {Value: "提出済"},
+                                      元請署名状態: {Value: "署名済"},
+                                      元請電子サイン: penSign.Image
+                                  }
+                              ),
+                              Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
+                              Notify("日報を保存しました（提出済）", NotificationType.Success);
+                              Reset(txtContent); Reset(penSign)
+                          )
                       ),
-                      Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
-                      Notify("日報を保存しました（提出済）", NotificationType.Success);
-                      Reset(txtContent); Reset(penSign)
-                  )
+                      Notify("保存処理を完了できませんでした：" & FirstError.Message, NotificationType.Error)
+                  );
+                  Set(varReportSaving, false)
               )
             Size: =14
             Text: ="提出"
