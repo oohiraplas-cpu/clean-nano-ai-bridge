@@ -57,24 +57,24 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =84
-      - S1_Scan:
+      - S1_VisualCard:
           Control: Classic/Button@2.2.0
           Properties:
             BorderColor: =RGBA(133, 70, 168, 1)
             BorderThickness: =1
             Color: =RGBA(245, 245, 248, 1)
-            Fill: =RGBA(28, 88, 49, 1)
+            Fill: =RGBA(18, 54, 33, 1)
             FontWeight: =FontWeight.Bold
-            Height: =92
-            HoverFill: =RGBA(35, 108, 60, 1)
-            OnSelect: =Notify("書類スキャン：OCR接続確認後に読み取りを開始します。原本は変更しません。", NotificationType.Information)
-            PressedFill: =RGBA(20, 68, 39, 1)
-            Size: =20
-            Text: ="▣  書類スキャン" & Char(10) & "撮影・読み取り・自動仕分け"
+            Height: =112
+            HoverFill: =RGBA(27, 76, 46, 1)
+            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            PressedFill: =RGBA(12, 42, 25, 1)
+            Size: =18
+            Text: ="▦  設備カレンダー" & Char(10) & "今日の設備予定・車両情報を開く  →"
             Width: =Parent.Width - 32
             X: =16
             Y: =140
-      - S1_Calendar:
+      - S1_Scan:
           Control: Classic/Button@2.2.0
           Properties:
             BorderColor: =RGBA(126, 65, 160, 1)
@@ -83,12 +83,12 @@ Screens:
             Fill: =RGBA(22, 66, 39, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
-            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            OnSelect: =Notify("書類スキャン：OCR接続確認後に読み取りを開始します。原本は変更しません。", NotificationType.Information)
             Size: =15
-            Text: ="カレンダー"
+            Text: ="書類スキャン" & Char(10) & "撮影・OCR"
             Width: =(Parent.Width - 40) / 2
             X: =16
-            Y: =246
+            Y: =266
       - S1_Report:
           Control: Classic/Button@2.2.0
           Properties:
@@ -100,10 +100,10 @@ Screens:
             Height: =68
             OnSelect: =Set(gblReportFromCalendar, false); Navigate(S11_Report, ScreenTransition.None)
             Size: =15
-            Text: ="作業日報"
+            Text: ="作業日報" & Char(10) & "入力・PDF確認"
             Width: =(Parent.Width - 40) / 2
             X: =24 + (Parent.Width - 40) / 2
-            Y: =246
+            Y: =266
       - S1_Register:
           Control: Classic/Button@2.2.0
           Properties:
@@ -115,10 +115,10 @@ Screens:
             Height: =68
             OnSelect: =Navigate(S3_Register, ScreenTransition.None)
             Size: =15
-            Text: ="申請・登録"
+            Text: ="申請・登録" & Char(10) & "各種申請"
             Width: =(Parent.Width - 40) / 2
             X: =16
-            Y: =326
+            Y: =346
       - S1_MyData:
           Control: Classic/Button@2.2.0
           Properties:
@@ -130,10 +130,10 @@ Screens:
             Height: =68
             OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
             Size: =15
-            Text: ="マイデータ"
+            Text: ="マイデータ" & Char(10) & "社員情報"
             Width: =(Parent.Width - 40) / 2
             X: =24 + (Parent.Width - 40) / 2
-            Y: =326
+            Y: =346
       - S1_Summary:
           Control: Classic/Button@2.2.0
           Properties:
@@ -148,7 +148,7 @@ Screens:
             Text: ="実績・給与"
             Width: =(Parent.Width - 40) / 2
             X: =16
-            Y: =406
+            Y: =426
       - S1_Settings:
           Control: Classic/Button@2.2.0
           Properties:
@@ -163,24 +163,24 @@ Screens:
             Text: ="メンバー・設定"
             Width: =(Parent.Width - 40) / 2
             X: =24 + (Parent.Width - 40) / 2
-            Y: =406
+            Y: =426
       - S1_StatusCard:
           Control: Rectangle@2.3.0
           Properties:
             BorderColor: =RGBA(110, 58, 142, 1)
             BorderThickness: =1
             Fill: =RGBA(14, 20, 17, 1)
-            Height: =108
+            Height: =92
             Width: =Parent.Width - 32
             X: =16
-            Y: =480
+            Y: =500
       - S1_Status:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(235,235,240,1)
-            Height: =88
+            Height: =72
             Size: =13
-            Text: ="今月の実績" & Char(10) & "出勤 " & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & "日" & Char(10) & Text(gblMonth, "yyyy年m月")
+            Text: ="今月の実績" & Char(10) & "出勤 " & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & "日  ｜  " & Text(gblMonth, "yyyy年m月")
             Width: =Parent.Width - 64
             X: =32
-            Y: =490
+            Y: =510
