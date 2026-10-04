@@ -68,6 +68,21 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =70
+      - S2_PlanSheet:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(8,34,20,1)
+            FontWeight: =FontWeight.Bold
+            Height: =28
+            OnSelect: =Navigate(S15_OCR, ScreenTransition.None)
+            Size: =10
+            Text: ="計画実施表"
+            Width: =134
+            X: =Parent.Width - 150
+            Y: =70
       - S2_WeekHead:
           Control: Gallery@2.15.0
           Variant: Horizontal
