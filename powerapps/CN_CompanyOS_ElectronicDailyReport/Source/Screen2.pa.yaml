@@ -9,13 +9,14 @@
 Screens:
   Screen2:
     Properties:
-      LoadingSpinnerColor: =RGBA(56, 96, 178, 1)
+      Fill: =RGBA(3, 18, 14, 1)
+      LoadingSpinnerColor: =RGBA(57, 255, 20, 1)
     Children:
       - RectQuickActionBar1:
           Control: Rectangle@2.3.0
           Properties:
             BorderColor: =RGBA(0, 18, 107, 1)
-            Fill: =RGBA(56, 96, 178, 1)
+            Fill: =RGBA(3, 18, 14, 1)
             Height: =88
             Width: =Parent.Width
       - IconCancel1:
@@ -52,7 +53,7 @@ Screens:
             PaddingTop: =22
             PressedFill: =RGBA(255, 255, 255, 0.3)
             TabIndex: =0
-            Tooltip: ="項目の送信"
+            Tooltip: ="保存して署名へ"
             Width: =88
             X: =Parent.Width - Self.Width
       - LblAppName1:
@@ -63,7 +64,7 @@ Screens:
             Font: =Font.'Open Sans'
             Height: =88
             Size: =27
-            Text: ="電子日報 登録"
+            Text: ="CLEAN NANO｜電子日報"
             Width: =Parent.Width - IconCancel1.Width - IconAccept1.Width
             Wrap: =false
             X: =IconCancel1.X + IconCancel1.Width
