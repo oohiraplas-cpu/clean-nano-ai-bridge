@@ -201,10 +201,10 @@ Screens:
             Visible: |
               =!varSignatureConfirmed
             Width: |+
-              =180
+              =(Parent.Width - 72) / 2
 
             X: |+
-              =40
+              =24
 
             Y: |+
               =760
@@ -246,10 +246,10 @@ Screens:
             Visible: |
               =!varSignatureConfirmed
             Width: |+
-              =360
+              =(Parent.Width - 72) / 2
 
             X: |
-              =240
+              =Parent.Width / 2 + 12
             Y: |+
               =760
 
@@ -269,5 +269,6 @@ Screens:
             PressedColor: =Self.Fill
             PressedFill: =Self.Color
             Text: ="← 戻る"
-            X: =60
-            Y: =60
+            Width: =Parent.Width - 48
+            X: =24
+            Y: =860
