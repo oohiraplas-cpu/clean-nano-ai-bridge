@@ -19,7 +19,7 @@ Screens:
             Fill: =RGBA(0, 0, 0, 0)
             Height: =10
             Visible: =false
-            Width: =Min(Parent.Width - 40, 1100)
+            Width: =Min(Parent.Width - 24, 1100)
             X: =(Parent.Width - Min(Parent.Width - 40, 1100)) / 2
       - lblReportTitle:
           Control: Label@2.5.1
@@ -57,7 +57,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="作業日 *"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =72
       - dpWorkDate:
@@ -67,7 +67,7 @@ Screens:
             Format: ="yyyy/mm/dd"
             Height: =38
             Size: =13
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =96
       - lblEmp:
@@ -77,7 +77,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="社員名 *"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =134
       - txtEmp:
@@ -88,9 +88,30 @@ Screens:
             Default: =User().FullName
             Fill: =RGBA(20, 28, 24, 1)
             Height: =38
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =158
+      - lblHandler:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =24
+            Size: =12
+            Text: ="対応者"
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
+            X: =recFrame.X
+            Y: =196
+      - txtHandler:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            BorderColor: =RGBA(0, 204, 102, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Default: =""
+            Fill: =RGBA(20, 28, 24, 1)
+            Height: =38
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
+            X: =recFrame.X
+            Y: =220
       - lblSite:
           Control: Label@2.5.1
           Properties:
@@ -98,7 +119,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="現場 *"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =196
       - ddSite:
@@ -110,7 +131,7 @@ Screens:
             Height: =38
             Items: =CN_現場台帳.Title
             Items.Value: =Title
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =220
       - lblStart:
@@ -162,7 +183,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="人数"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =320
       - txtPeople:
@@ -174,7 +195,7 @@ Screens:
             Fill: =RGBA(20, 28, 24, 1)
             Format: =TextFormat.Number
             Height: =38
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =344
       - lblPrimeCompany:
@@ -184,7 +205,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="元請会社"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =382
       - txtPrimeCompany:
@@ -195,7 +216,7 @@ Screens:
             Default: =""
             Fill: =RGBA(20, 28, 24, 1)
             Height: =38
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =406
       - lblPrimeContact:
@@ -205,7 +226,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="元請担当者名 *"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =444
       - txtPrimeContact:
@@ -216,7 +237,7 @@ Screens:
             Default: =""
             Fill: =RGBA(20, 28, 24, 1)
             Height: =38
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
             Y: =468
       - lblContent:
@@ -226,7 +247,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="作業内容 *"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
             Y: =72
       - txtContent:
@@ -238,7 +259,7 @@ Screens:
             Fill: =RGBA(20, 28, 24, 1)
             Height: =140
             Mode: =TextMode.MultiLine
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
             Y: =96
       - lblSign:
@@ -248,7 +269,7 @@ Screens:
             Height: =24
             Size: =12
             Text: ="元請電子サイン *（枠内に手書き）"
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
             Y: =246
       - penSign:
@@ -257,7 +278,7 @@ Screens:
             BorderColor: =RGBA(0, 204, 102, 1)
             Fill: =RGBA(255, 255, 255, 1)
             Height: =170
-            Width: =(recFrame.Width - 30) / 2
+            Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X + (recFrame.Width - 30) / 2 + 30
             Y: =270
       - btnReportDraft:
@@ -286,6 +307,7 @@ Screens:
                               作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                               作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
                               人数: Value(txtPeople.Text),
+                              対応者: txtHandler.Text,
                               労働時間: If(IsBlank(txtStart.Text) || IsBlank(txtEnd.Text), Blank(), DateDiff(DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text), TimeUnit.Minutes) / 60),
                               作業内容: txtContent.Text,
                               元請会社: txtPrimeCompany.Text,
@@ -330,6 +352,7 @@ Screens:
                               作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                               作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
                               人数: Value(txtPeople.Text),
+                              対応者: txtHandler.Text,
                               労働時間: If(IsBlank(txtStart.Text) || IsBlank(txtEnd.Text), Blank(), DateDiff(DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text), TimeUnit.Minutes) / 60),
                               作業内容: txtContent.Text,
                               元請会社: txtPrimeCompany.Text,
