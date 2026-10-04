@@ -1,0 +1,86 @@
+# ************************************************************************************************
+# Review-only estimate draft screen. No production Patch/Submit/Flow call is permitted here.
+# ************************************************************************************************
+Screens:
+  S24_EstimateDraft:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S24_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            Size: =22
+            Text: ="見積書 下書き確認"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S24_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            Height: =42
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="← ホーム"
+            Width: =120
+            X: =16
+            Y: =72
+      - S24_Notice:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =76
+            Size: =12
+            Text: ="元請・現場・作業範囲・数量・単価・経費条件・税条件の実スキーマ確認前です。現在は確認専用で、保存・PDF出力・送信はできません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =126
+      - S24_Gates:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =260
+            Size: =15
+            Text: ="見積確定ゲート" & Char(10) & Char(10) & "□ 元請・顧客確認" & Char(10) & "□ 現場・作業範囲確認" & Char(10) & "□ 数量・人工条件確認" & Char(10) & "□ 契約単価確認" & Char(10) & "□ 許可経費確認" & Char(10) & "□ 税率・端数処理確認" & Char(10) & "□ 人間による最終確認"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =220
+      - S24_Status:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =56
+            Size: =15
+            Text: ="状態：見積下書き・実接続待ち"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =496
+      - S24_ToInvoice:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            Height: =48
+            OnSelect: =Navigate(S23_InvoiceDraft, ScreenTransition.None)
+            Text: ="請求下書きの確認へ"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =570
+      - S24_SaveDisabled:
+          Control: Classic/Button@2.2.0
+          Properties:
+            DisplayMode: =DisplayMode.Disabled
+            Height: =48
+            Text: ="見積書を確定・出力（ゲート完了後）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =632

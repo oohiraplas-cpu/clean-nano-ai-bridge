@@ -1,0 +1,74 @@
+# ************************************************************************************************
+# Review-only invoice draft screen. No production Patch/Submit/Flow call is permitted here.
+# ************************************************************************************************
+Screens:
+  S23_InvoiceDraft:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S23_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            Size: =22
+            Text: ="請求書 下書き確認"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S23_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(10, 25, 18, 1)
+            Height: =42
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Text: ="← ホーム"
+            Width: =120
+            X: =16
+            Y: =72
+      - S23_Notice:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =70
+            Size: =12
+            Text: ="契約・実績・経費・税計算・承認の実接続確認前です。現在は確認専用で、請求書の保存・確定・送信はできません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =126
+      - S23_Gates:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =250
+            Size: =15
+            Text: ="請求確定ゲート" & Char(10) & Char(10) & "□ 契約条件確認" & Char(10) & "□ 承認済み実績突合" & Char(10) & "□ 契約許可経費確認" & Char(10) & "□ 重複請求チェック" & Char(10) & "□ 税率・端数処理確認" & Char(10) & "□ 経理担当者承認" & Char(10) & "□ 社長最終承認"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =214
+      - S23_Status:
+          Control: Label@2.5.1
+          Properties:
+            Align: =Align.Center
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =56
+            Size: =15
+            Text: ="状態：下書き・実接続待ち"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =486
+      - S23_SaveDisabled:
+          Control: Classic/Button@2.2.0
+          Properties:
+            DisplayMode: =DisplayMode.Disabled
+            Height: =52
+            Text: ="請求書を確定（ゲート完了後に有効化）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =562
