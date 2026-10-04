@@ -46,14 +46,14 @@ Screens:
             Height: =88
             Icon: =Icon.Check
             DisplayMode: =If(gblIsSaving, DisplayMode.Disabled, DisplayMode.Edit)
-            OnSelect: =If(!Connection.Connected, Notify("通信に接続してから保存してください。入力内容はこの画面に残っています。", NotificationType.Warning), If(!EditForm1.Valid, Notify("必須項目と入力内容を確認してください。", NotificationType.Warning), Set(gblIsSaving, true); Set(gblError, Blank()); SubmitForm(EditForm1)))
+            OnSelect: =If(!Connection.Connected, Notify("通信に接続してください。入力内容はこの画面に残っています。", NotificationType.Warning), If(!EditForm1.Valid, Notify("必須項目と入力内容を確認してください。", NotificationType.Warning), Set(gblIsSaving, false); Set(gblSavedReport, Blank()); Set(varSignatureConfirmed, false); Notify("入力内容を保持しました。元請署名へ進みます。", NotificationType.Success); Navigate(scrSignature, ScreenTransition.Cover)))
             PaddingBottom: =22
             PaddingLeft: =22
             PaddingRight: =22
             PaddingTop: =22
             PressedFill: =RGBA(255, 255, 255, 0.3)
             TabIndex: =0
-            Tooltip: ="保存して署名へ"
+            Tooltip: ="入力確認して署名へ"
             Width: =88
             X: =Parent.Width - Self.Width
       - LblAppName1:
