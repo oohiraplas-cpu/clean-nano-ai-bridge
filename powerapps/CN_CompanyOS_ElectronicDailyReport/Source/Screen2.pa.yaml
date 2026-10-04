@@ -80,7 +80,7 @@ Screens:
               =
               Gallery1.Selected
             OnFailure: =Set(gblIsSaving, false); Set(gblError, EditForm1.Error); Notify("日報を保存できませんでした。入力内容を確認して、もう一度保存してください。 " & gblError, NotificationType.Error)
-            OnSuccess: =Set(gblIsSaving, false); Set(gblSavedReport, EditForm1.LastSubmit); Set(varSignatureConfirmed, false); Notify("日報を保存しました。署名へ進みます。", NotificationType.Success); Navigate(scrSignature, ScreenTransition.Cover)
+            OnSuccess: =Set(gblIsSaving, false); Set(gblSavedReport, EditForm1.LastSubmit); If(varSignatureConfirmed, Patch('CN_電子日報台帳', gblSavedReport, {PrimeSignerName: varSignerName, PrimeSignedAt: Now(), PrimeSignatureStatus: {Value:"署名済"}}); Set(gblSavedReport, LookUp('CN_電子日報台帳', ID = gblSavedReport.ID)); Notify("日報と元請署名を保存しました。PDF共有へ進みます。", NotificationType.Success); Navigate(Screen3, ScreenTransition.Cover), Notify("日報を保存しました。", NotificationType.Success))
             Width: =Parent.Width
             Y: =RectQuickActionBar1.Height
           Children:
@@ -1681,7 +1681,7 @@ Screens:
                   Default: =ThisItem.元請電子サイン
                   DisplayName: =DataSourceInfo([@CN_電子日報台帳],DataSourceInfo.DisplayName,'PrimeSignature')
                   Required: =false
-                  Update: =Image2.Image
+                  Update: =If(varSignatureConfirmed, PenInput1.Image, Image2.Image)
                   X: =0
                   Y: =16
                 Children:
