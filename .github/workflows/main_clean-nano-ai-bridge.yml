@@ -62,4 +62,18 @@ jobs:
           app-name: 'clean-nano-ai-bridge'
           slot-name: 'Production'
           package: .
-          
+
+      - name: Restart Azure Web App to load deployed code
+        run: |
+          RG="$(az webapp list --query "[?name=='clean-nano-ai-bridge'].resourceGroup | [0]" -o tsv)"
+          az webapp restart --name clean-nano-ai-bridge --resource-group "$RG"
+
+      - name: Verify restarted app health
+        run: |
+          RG="$(az webapp list --query "[?name=='clean-nano-ai-bridge'].resourceGroup | [0]" -o tsv)"
+          HOST="$(az webapp show --name clean-nano-ai-bridge --resource-group "$RG" --query defaultHostName -o tsv)"
+          for i in {1..12}; do
+            if curl --fail --silent --show-error "https://$HOST/health"; then exit 0; fi
+            sleep 5
+          done
+          exit 1
