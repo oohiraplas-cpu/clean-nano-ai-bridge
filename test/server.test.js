@@ -276,6 +276,30 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
   assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
 });
 
+test('save_powerapps_appはPower Apps APIが2xx成功かつ空bodyでもJSON解析エラーにしない', async (t) => {
+  const actions = [];
+  const mockFetch = async (url) => {
+    if (url.includes('/oauth2/v2.0/token')) return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    if (url.endsWith('/RefreshChangesFromGit') || url.endsWith('/PullChangesFromGit')) {
+      actions.push(url.split('/').pop());
+      return new Response('', { status: 200 });
+    }
+    if (url.includes('/canvasapps(')) return new Response(JSON.stringify({ displayname: 'Test App', appversion: '1.1' }), { status: 200 });
+    if (url.includes('/solutions?')) return new Response(JSON.stringify({ value: [{ solutionid: 'solution-1', uniquename: 'ActualSolution', friendlyname: 'Actual Solution', version: '1.0.0.0', ismanaged: false }] }), { status: 200 });
+    if (url.includes('/apps/test-app')) return new Response(JSON.stringify({ properties: { displayName: 'Test App', appVersion: '1.1' } }), { status: 200 });
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret', fetchImpl: mockFetch,
+    powerAppsOverrides: { orgUrl: 'https://example.crm.dynamics.com', solutionUniqueName: 'CN_CompanyOS', githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo' }
+  });
+  t.after(() => server.close());
+  const saved = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'save_powerapps_app', params: {} }) });
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).result.status, 'ok');
+  assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
+});
+
 test('get_powerapps_sourceはGitHub設定不足時も生の500/502で落ちずJSON-RPCエラーとして応答する', async (t) => {
   // GitHub連携設定（POWERAPPS_GITHUB_TOKEN等）が未設定の状態を再現する。
   // 修正前はpowerAppsGitStoreが投げるErrorにstatusが付かず、/mcpのtools/callハンドラが
