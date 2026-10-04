@@ -299,7 +299,11 @@ Screens:
                               ForAll(S3_Workers.SelectedItems As worker,
                                With({k: worker.EmployeeID & "_" & Text(gblSelDate, "yyyymmdd")},
                                 If(IsBlank(worker.EmployeeID), Collect(colCalendarErrors, {workerName: worker.Title, message: "社員IDが未登録です"}),
-                                 !IsBlank(LookUp(CN_勤怠明細台帳, AttendanceKey = k)), Collect(colCalendarErrors, {workerName: worker.Title, message: "この日はすでに登録されています"}),
+                                 !IsBlank(LookUp(CN_勤怠明細台帳, AttendanceKey = k)),
+        With({existing: LookUp(CN_勤怠明細台帳, AttendanceKey = k)},
+         If(IfError(Text(ParseJSON(existing.OriginalInput).siteName), "") <> siteName || IfError(Text(ParseJSON(existing.OriginalInput).primeCompany), "") <> company,
+          Collect(colCalendarErrors, {workerName: worker.Title, message: "別の現場・元請で登録済みです"}))),
+
                                  IfError(
                                   Patch(CN_勤怠明細台帳, Defaults(CN_勤怠明細台帳), {
                                    Title: "出勤_" & k, AttendanceKey: k, DailyReportKey: "未連携", EmployeeRecordKey: worker.EmployeeID,
