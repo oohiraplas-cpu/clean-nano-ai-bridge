@@ -63,6 +63,7 @@ Screens:
       - dpWorkDate:
           Control: Classic/DatePicker@2.6.0
           Properties:
+            DefaultDate: =Today()
             Format: ="yyyy/mm/dd"
             Height: =38
             Size: =13
@@ -285,6 +286,7 @@ Screens:
                               作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                               作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
                               人数: Value(txtPeople.Text),
+                              労働時間: If(IsBlank(txtStart.Text) || IsBlank(txtEnd.Text), Blank(), DateDiff(DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text), TimeUnit.Minutes) / 60),
                               作業内容: txtContent.Text,
                               元請会社: txtPrimeCompany.Text,
                               元請担当者名: txtPrimeContact.Text,
@@ -328,6 +330,7 @@ Screens:
                               作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                               作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
                               人数: Value(txtPeople.Text),
+                              労働時間: If(IsBlank(txtStart.Text) || IsBlank(txtEnd.Text), Blank(), DateDiff(DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text), TimeUnit.Minutes) / 60),
                               作業内容: txtContent.Text,
                               元請会社: txtPrimeCompany.Text,
                               元請担当者名: txtPrimeContact.Text,
