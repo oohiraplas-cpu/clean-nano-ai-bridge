@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { bridgeError, notConfiguredError } = require('./errors');
 
 class OAuthTokenCache {
   constructor() {
@@ -147,6 +148,38 @@ class PowerAppsGitStore {
       }
     }
     throw lastNotFound || new Error('指定したPower Appsソースファイルを取得できません');
+  }
+
+  // Inspection never falls back to another branch/root and pins every blob to one commit.
+  async getSourceBundle(branch) {
+    if (branch !== this.canonicalBranch) throw this._branchConflict('構造解析のbranchが正本と一致しません');
+    const required = [['POWERAPPS_GITHUB_TOKEN', this.githubToken], ['POWERAPPS_GITHUB_OWNER', this.githubOwner], ['POWERAPPS_GITHUB_REPO', this.githubRepo], ['POWERAPPS_GITHUB_ROOT', this.githubRoot]];
+    const missing = required.filter(([, value]) => !value).map(([key]) => key);
+    if (missing.length) throw notConfiguredError('powerapps_source', missing);
+    const root = this.githubRoot;
+    if (root.split('/').some(p => !p || p === '.' || p === '..') || /[\\:\x00-\x1f]/.test(root)) throw bridgeError('ソースrootが不正です');
+    const base = `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}`;
+    const head = await this._githubRequest(`${base}/commits/${encodeURIComponent(branch)}`);
+    const commitSha = head?.sha;
+    if (!/^[0-9a-f]{40}$/i.test(commitSha || '')) throw bridgeError('ソースcommitが不正です', 502);
+    const tree = await this._githubRequest(`${base}/git/trees/${commitSha}?recursive=1`);
+    if (tree?.truncated !== false || !Array.isArray(tree.tree)) throw bridgeError('ソースtreeの取得が不完全です', 502);
+    const entries = tree.tree.filter(e => typeof e.path === 'string' && e.path.startsWith(`${root}/`) && e.type !== 'tree');
+    if (!entries.length) throw bridgeError('ソースが存在しません', 404);
+    if (entries.length > 100 || entries.some(e => e.type !== 'blob' || e.mode !== '100644' || !/\.(?:yaml|yml|json)$/.test(e.path) || !Number.isInteger(e.size) || e.size > 1000000 || !/^[0-9a-f]{40}$/i.test(e.sha)) || entries.reduce((n, e) => n + e.size, 0) > 4000000) throw bridgeError('ソース形式またはサイズが非対応です', 422);
+    const files = [];
+    for (const entry of entries.sort((a, b) => a.path.localeCompare(b.path))) {
+      const data = await this._githubRequest(`${base}/git/blobs/${entry.sha}`);
+      if (data?.encoding !== 'base64' || typeof data.content !== 'string' || data.sha !== entry.sha) throw bridgeError('ソースblobが不完全です', 502);
+      const bytes = Buffer.from(data.content, 'base64');
+      const hash = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      if (hash !== entry.sha || bytes.length !== entry.size) throw bridgeError('ソースblobの整合性検査に失敗しました', 502);
+      let content;
+      try { content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+      catch { throw bridgeError('ソースencodingが非対応です', 422); }
+      files.push({ relativePath: entry.path.slice(root.length + 1), content });
+    }
+    return { branch, commitSha, complete: true, files, source: { host: 'github.com', owner: this.githubOwner, repository: this.githubRepo, root: this.githubRoot } };
   }
 
   // 正本branch以外への更新・保存・公開を拒否するための共通ガード（HTTP 409相当）。

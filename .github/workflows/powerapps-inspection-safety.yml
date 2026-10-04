@@ -1,0 +1,27 @@
+name: Power Apps inspection safety
+on:
+  push:
+    branches: [main, feature/add-powerapps-inspection-safety-tools]
+  pull_request:
+    branches: [main, feature/add-nine-mcp-tools]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['20', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run validate:openapi
+      - run: npm run check:secrets
+      - run: npm audit --audit-level=low
+      - run: npm run inspect:local
+      - run: npm run validate:snapshot

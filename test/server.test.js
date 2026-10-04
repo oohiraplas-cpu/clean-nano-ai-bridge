@@ -662,8 +662,8 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  // 既存18ツール + get_powerapps_operation_result(登録漏れ修正) + 新9ツール = 28ツール。
-  assert.equal(listedBody.result.tools.length, 28);
+  // 既存28ツールの後に構造解析・影響分析・スナップショットの3ツールを追加。
+  assert.equal(listedBody.result.tools.length, 31);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
@@ -936,7 +936,7 @@ test('MCP_METHODSとMCP_PUBLIC_TOOLSの登録が一致し、新9ツールとget_
   assert.deepEqual([...publicNames].sort(), [...MCP_METHODS].sort());
   assert.equal(new Set(publicNames).size, publicNames.length, '重複登録なし');
   for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result']) assert.ok(publicNames.includes(name), name);
-  assert.equal(publicNames.length, 28);
+  assert.equal(publicNames.length, 31);
   assert.deepEqual(publicNames.slice(0, 18), LEGACY_18_TOOL_NAMES, '既存18ツールは名前・順序とも不変');
 });
 

@@ -1,5 +1,27 @@
 # CLAUDE.md
 
+## Inspection safety tools
+
+Keep the first 28 MCP tool definitions, names, order and contracts unchanged. Append only
+`inspect_powerapps_structure`, `analyze_change_impact`, `create_change_snapshot` (31 total).
+Schemas and strict runtime validation live in `powerAppsInspectionValidation.js`; services
+are `powerAppsStructureService.js`, `powerAppsImpactService.js`, `changeSnapshotService.js`.
+Both JSON-RPC and legacy dispatch use these services. Do not fall back across branches:
+load the complete canonical root from one immutable Git commit and verify every blob.
+Never echo source, tokens, upstream error bodies, or YAML parser snippets. Never call write,
+deployment, Power Apps, SharePoint, or permission APIs from inspection.
+`confirmed` means directly observed static definitions/references; `possible` means unresolved,
+dynamic or external dependencies. Runtime/compiler binding is always unverified. Report
+`incomplete`/`blocked` honestly; JSON-RPC sets `isError:true` for these outcomes.
+Snapshot creation accepts only source_files_only recovery: refuse issues, skipped formulas and missing source definitions. Preserve evidence and exclusions for unverified runtime bindings; never claim full application recovery. Format v2 validates per-file SHA-256, byte totals and completeness, uses canonical SHA-256 IDs,
+atomic no-replace publication and re-verification of existing snapshots; never overwrite
+tampered evidence. Snapshots must remain Git-ignored or outside any Git checkout, with no
+symlink path components. `POWERAPPS_SNAPSHOT_DIR` defaults to ignored `data/change-snapshots`.
+
+Validation: `npm test`, `npm run validate:openapi`, `npm run check:secrets`,
+`npm audit --audit-level=low`, `npm run inspect:local`, `npm run validate:snapshot`. Local inspection reads committed
+Git source (no remote application mutation) and includes performance measurements.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
