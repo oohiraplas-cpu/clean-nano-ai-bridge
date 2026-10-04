@@ -23,8 +23,8 @@ Screens:
                 Properties:
                   DropShadow: =DropShadow.None
                   FillPortions: =0
-                  Height: =Max(1012, Parent.Height)
-                  LayoutMinHeight: =Max(1012, Parent.Height)
+                  Height: =Max(1620, Parent.Height)
+                  LayoutMinHeight: =Max(1620, Parent.Height)
                   LayoutMinWidth: =0
                   Width: =Parent.Width
                 Children:
@@ -40,7 +40,7 @@ Screens:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="作業日 *"
                         Width: =Parent.Width - 32
                         X: =16
@@ -49,63 +49,77 @@ Screens:
                       Control: Classic/DatePicker@2.6.0
                       Properties:
                         Format: ="yyyy/mm/dd"
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =44
+                        Y: =52
                   - lblEmp:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="社員名 *"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =100
+                        Y: =128
                   - txtEmp:
                       Control: Classic/TextInput@2.3.2
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
                         Default: =User().FullName
+                        DisplayMode: =DisplayMode.View
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =128
+                        Y: =164
                   - lblSite:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="現場 *"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =184
+                        Y: =240
                   - ddSite:
                       Control: Classic/DropDown@2.3.1
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =48
+                        Height: =64
                         Items: =CN_現場台帳.現場名
                         Items.Value: =Title
-                        Size: =15
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =212
+                        Y: =276
+                  - txtSiteManual:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Fill: =RGBA(20, 28, 24, 1)
+                        Height: =64
+                        Size: =18
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Default: =""
+                        HintText: ="現場名を手入力（入力するとこちらを優先）"
+                        Y: =352
                   - lblStart:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="開始（例 8:00）"
                         Width: =(Parent.Width - 40) / 2
                         X: =16
-                        Y: =268
+                        Y: =448
                   - txtStart:
                       Control: Classic/TextInput@2.3.2
                       Properties:
@@ -113,20 +127,20 @@ Screens:
                         Color: =RGBA(255, 255, 255, 1)
                         Default: ="8:00"
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =(Parent.Width - 40) / 2
                         X: =16
-                        Y: =296
+                        Y: =484
                   - lblEnd:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="終了（例 17:00）"
                         Width: =(Parent.Width - 40) / 2
                         X: =24 + (Parent.Width - 40) / 2
-                        Y: =268
+                        Y: =448
                   - txtEnd:
                       Control: Classic/TextInput@2.3.2
                       Properties:
@@ -134,20 +148,20 @@ Screens:
                         Color: =RGBA(255, 255, 255, 1)
                         Default: ="17:00"
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =(Parent.Width - 40) / 2
                         X: =24 + (Parent.Width - 40) / 2
-                        Y: =296
+                        Y: =484
                   - lblPeople:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="人数"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =352
+                        Y: =560
                   - txtPeople:
                       Control: Classic/TextInput@2.3.2
                       Properties:
@@ -156,62 +170,94 @@ Screens:
                         Default: ="1"
                         Fill: =RGBA(20, 28, 24, 1)
                         Format: =TextFormat.Number
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =380
+                        Y: =596
                   - lblPrimeCompany:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="元請会社"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =436
+                        Y: =672
+                  - ddPrimeCompany:
+                      Control: Classic/DropDown@2.3.1
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Fill: =RGBA(20, 28, 24, 1)
+                        Height: =64
+                        Size: =18
+                        Width: =Parent.Width - 32
+                        X: =16
+                        AllowEmptySelection: =true
+                        Default: =""
+                        Items: =Sort(Distinct(Filter(CN_電子日報台帳, !IsBlank(元請会社)), 元請会社), Value)
+                        Items.Value: =Value
+                        OnChange: =Reset(txtPrimeCompany)
+                        Y: =708
                   - txtPrimeCompany:
                       Control: Classic/TextInput@2.3.2
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: =""
+                        Default: =Coalesce(ddPrimeCompany.Selected.Value, "")
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =464
+                        Y: =788
                   - lblPrimeContact:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="元請担当者名 *"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =520
+                        Y: =864
+                  - ddPrimeContact:
+                      Control: Classic/DropDown@2.3.1
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Fill: =RGBA(20, 28, 24, 1)
+                        Height: =64
+                        Size: =18
+                        Width: =Parent.Width - 32
+                        X: =16
+                        AllowEmptySelection: =true
+                        Default: =""
+                        Items: =Sort(Distinct(Filter(CN_電子日報台帳, !IsBlank(元請担当者名) && (IsBlank(txtPrimeCompany.Text) || 元請会社 = txtPrimeCompany.Text)), 元請担当者名), Value)
+                        Items.Value: =Value
+                        OnChange: =Reset(txtPrimeContact)
+                        Y: =900
                   - txtPrimeContact:
                       Control: Classic/TextInput@2.3.2
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: =""
+                        Default: =Coalesce(ddPrimeContact.Selected.Value, "")
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =48
-                        Size: =15
+                        Height: =64
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =548
+                        Y: =980
                   - lblContent:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="作業内容 *"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =604
+                        Y: =1056
                   - txtContent:
                       Control: Classic/TextInput@2.3.2
                       Properties:
@@ -219,30 +265,30 @@ Screens:
                         Color: =RGBA(255, 255, 255, 1)
                         Default: =""
                         Fill: =RGBA(20, 28, 24, 1)
-                        Height: =140
+                        Height: =160
                         Mode: =TextMode.MultiLine
-                        Size: =15
+                        Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =632
+                        Y: =1092
                   - lblSign:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =24
+                        Height: =32
                         Text: ="元請電子サイン *（枠内に手書き）"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =784
+                        Y: =1264
                   - penSign:
                       Control: PenInput@2.3.0
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Fill: =RGBA(255, 255, 255, 1)
-                        Height: =180
+                        Height: =300
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =812
+                        Y: =1300
       - lblReportTitle:
           Control: Label@2.5.1
           Properties:
@@ -287,7 +333,7 @@ Screens:
                   Set(varReportSaving, true);
                   IfError(
                       If(
-                          IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.現場名) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
+                          IsBlank(User().FullName) || IsBlank(Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名)) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
                           Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
                           IsBlank(varBlankSignLen) || IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
                           Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
@@ -298,8 +344,8 @@ Screens:
                                   {
                                       日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
                                       作業日: dpWorkDate.SelectedDate,
-                                      社員名: txtEmp.Text,
-                                      現場名: ddSite.Selected.現場名,
+                                      社員名: User().FullName,
+                                      現場名: Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名),
                                       作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                                       作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
                                       人数: Value(txtPeople.Text),
@@ -339,7 +385,7 @@ Screens:
                   Set(varReportSaving, true);
                   IfError(
                       If(
-                          IsBlank(txtEmp.Text) || IsBlank(ddSite.Selected.現場名) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
+                          IsBlank(User().FullName) || IsBlank(Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名)) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
                           Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
                           IsBlank(varBlankSignLen) || IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
                           Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
@@ -350,8 +396,8 @@ Screens:
                                   {
                                       日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
                                       作業日: dpWorkDate.SelectedDate,
-                                      社員名: txtEmp.Text,
-                                      現場名: ddSite.Selected.現場名,
+                                      社員名: User().FullName,
+                                      現場名: Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名),
                                       作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                                       作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
                                       人数: Value(txtPeople.Text),
