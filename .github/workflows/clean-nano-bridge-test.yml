@@ -2,7 +2,7 @@ name: clean-nano-bridge Integration Test
 
 on:
   push:
-    branches: [main, develop]
+    branches: ['**']
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
@@ -42,13 +42,22 @@ jobs:
 
       # ステップ 5: npm install
       - name: "5. Install dependencies"
-        run: npm install
+        run: npm ci
 
       # ステップ 6: npm test (テスト実行)
       - name: "6. Run test suite"
         run: npm test
 
-      # ステップ 7: サーバーをバックグラウンド起動
+      - name: "7. Validate OpenAPI"
+        run: npm run validate:openapi
+
+      - name: "8. Validate MCP tool contract"
+        run: npm run test:mcp-tools
+
+      - name: "9. Validate canonical branch safety"
+        run: npm run test:safety
+
+      # ステップ 10: サーバーをバックグラウンド起動
       - name: "7. Start server in background"
         run: |
           npm start > server.log 2>&1 &
