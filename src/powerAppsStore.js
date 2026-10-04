@@ -375,8 +375,8 @@ class PowerAppsStore {
     const operationId = crypto.randomUUID();
     try {
       const before = await this.getAppState();
-      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2016-11-01`;
-      await this._managementFetch(path, { method: 'POST', body: JSON.stringify({ strategy: 'immediate' }) });
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2018-10-01`;
+      await this._managementFetch(path, { method: 'POST' });
       this._cache.invalidate(this.appId);
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, {
         status: 'success',
@@ -385,7 +385,13 @@ class PowerAppsStore {
       return { status: 'ok', operationId, appId: this.appId, message: '公開に成功しました。' };
     } catch (error) {
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, { status: 'error', error: error.message });
-      throw error;
+      return {
+        status: 'error',
+        operationId,
+        appId: this.appId,
+        error: String(error.message).slice(0, 500),
+        ...(error.upstream ? { details: error.upstream } : {})
+      };
     }
   }
 
