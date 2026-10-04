@@ -3,7 +3,22 @@ Screens:
     Properties:
       Fill: '=RGBA(10, 10, 10, 1) '
       LoadingSpinnerColor: =RGBA(0, 120, 212, 1)
-      OnVisible: '=Reset(penSign); Set(varBlankSignLen, Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)))    '
+      OnVisible: |-
+        =Reset(penSign); Set(varBlankSignLen, Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData))); Clear(colReportWorkers); Set(gblCalendarCountSafe, false);
+        If(gblReportFromCalendar,
+         IfError(
+          Refresh(CN_勤怠明細台帳);
+          ClearCollect(colReportDay, Filter(CN_勤怠明細台帳, 開始日時 >= gblSelDate, 開始日時 < DateAdd(gblSelDate, 1, TimeUnit.Days)));
+          If(CountRows(colReportDay) >= 500, Notify("登録件数が多いため人数を確定できません。集計方法の確認が必要です", NotificationType.Error),
+           ClearCollect(colReportWorkers,
+            Filter(AddColumns(colReportDay, CNReportSite, IfError(Text(ParseJSON(原入力).siteName), ""), CNReportPrime, IfError(Text(ParseJSON(原入力).primeCompany), ""), CNReportSchema, IfError(Value(ParseJSON(原入力).schemaVersion), 0)),
+             CNReportSchema = 1 && CNReportSite = gblReportSite && CNReportPrime = gblReportPrime && !IsBlank(社員レコードキー) && レコード状態.Value = "Submitted"));
+           Set(gblCalendarCountSafe, true)
+          ),
+          Notify("カレンダー集計に失敗しました：" & FirstError.Message, NotificationType.Error)
+         )
+        );
+        Reset(dpWorkDate); Reset(txtSiteManual); Reset(txtStart); Reset(txtEnd); Reset(txtPeople); Reset(txtPrimeCompany); Reset(txtPrimeContact); Reset(txtContent)
     Children:
       - S11_Report_MobileScroll:
           Control: GroupContainer@1.5.0
@@ -49,6 +64,8 @@ Screens:
                   - dpWorkDate:
                       Control: Classic/DatePicker@2.6.0
                       Properties:
+                        DefaultDate: =If(gblReportFromCalendar, gblSelDate, Today())
+                        DisplayMode: =If(gblReportFromCalendar, DisplayMode.View, DisplayMode.Edit)
                         Format: ="yyyy/mm/dd"
                         Height: =64
                         Size: =18
@@ -94,6 +111,7 @@ Screens:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
                         Fill: =RGBA(20, 28, 24, 1)
+                        Visible: =!gblReportFromCalendar
                         Height: =64
                         Items: =CN_現場台帳.現場名
                         Items.Value: =Title
@@ -111,7 +129,8 @@ Screens:
                         Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Default: =""
+                        Default: =If(gblReportFromCalendar, gblReportSite, "")
+                        DisplayMode: =If(gblReportFromCalendar, DisplayMode.View, DisplayMode.Edit)
                         HintText: ="現場名を手入力（入力するとこちらを優先）"
                         Y: =352
                   - lblStart:
@@ -129,7 +148,7 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: ="8:00"
+                        Default: =If(gblReportFromCalendar, Text(gblReportStart, "hh:mm"), "8:00")
                         Fill: =RGBA(20, 28, 24, 1)
                         Height: =64
                         Size: =18
@@ -151,7 +170,7 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: ="17:00"
+                        Default: =If(gblReportFromCalendar, Text(gblReportEnd, "hh:mm"), "17:00")
                         Fill: =RGBA(20, 28, 24, 1)
                         Height: =64
                         Size: =18
@@ -162,9 +181,9 @@ Screens:
                       Control: Label@2.5.1
                       Properties:
                         Color: =RGBA(255, 255, 255, 1)
-                        Height: =32
-                        Size: =18
-                        Text: ="人数"
+                        Height: =36
+                        Size: =15
+                        Text: ="人数（カレンダー登録から自動集計）"
                         Width: =Parent.Width - 32
                         X: =16
                         Y: =560
@@ -173,7 +192,8 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: ="1"
+                        Default: =Text(CountRows(Distinct(colReportWorkers, 社員レコードキー)))
+                        DisplayMode: =DisplayMode.View
                         Fill: =RGBA(20, 28, 24, 1)
                         Format: =TextFormat.Number
                         Height: =64
@@ -197,6 +217,7 @@ Screens:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
                         Fill: =RGBA(20, 28, 24, 1)
+                        DisplayMode: =If(gblReportFromCalendar, DisplayMode.View, DisplayMode.Edit)
                         Height: =64
                         Size: =18
                         Width: =Parent.Width - 32
@@ -212,7 +233,8 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: =Coalesce(ddPrimeCompany.Selected.Value, "")
+                        Default: =If(gblReportFromCalendar, gblReportPrime, Coalesce(ddPrimeCompany.Selected.Value, ""))
+                        DisplayMode: =If(gblReportFromCalendar, DisplayMode.View, DisplayMode.Edit)
                         Fill: =RGBA(20, 28, 24, 1)
                         Height: =64
                         Size: =18
@@ -235,6 +257,7 @@ Screens:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
                         Fill: =RGBA(20, 28, 24, 1)
+                        DisplayMode: =If(gblReportFromCalendar, DisplayMode.View, DisplayMode.Edit)
                         Height: =64
                         Size: =18
                         Width: =Parent.Width - 32
@@ -250,7 +273,7 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: =Coalesce(ddPrimeContact.Selected.Value, "")
+                        Default: =If(gblReportFromCalendar, gblReportContact, Coalesce(ddPrimeContact.Selected.Value, ""))
                         Fill: =RGBA(20, 28, 24, 1)
                         Height: =64
                         Size: =18
@@ -272,7 +295,7 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         Color: =RGBA(255, 255, 255, 1)
-                        Default: =""
+                        Default: =If(gblReportFromCalendar, gblReportContent, "")
                         Fill: =RGBA(20, 28, 24, 1)
                         Height: =160
                         Mode: =TextMode.MultiLine
@@ -307,7 +330,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =44
             Size: =20
-            Text: ="日報入力"
+            Text: ="日報確認・追記"
             Width: =Parent.Width - 148
             X: =132
             Y: =16
@@ -343,6 +366,8 @@ Screens:
                   Set(varReportSaving, true);
                   IfError(
                       If(
+                          !gblReportFromCalendar || !gblCalendarCountSafe || CountRows(Distinct(colReportWorkers, 社員レコードキー)) = 0,
+                          Notify("先にカレンダーで同じ日・現場・元請会社の全員を登録してください", NotificationType.Error),
                           IsBlank(User().FullName) || IsBlank(Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名)) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
                           Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
                           IsBlank(varBlankSignLen) || IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
@@ -358,7 +383,7 @@ Screens:
                                       現場名: Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名),
                                       作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                                       作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
-                                      人数: Value(txtPeople.Text),
+                                      人数: CountRows(Distinct(colReportWorkers, 社員レコードキー)),
                                       作業内容: txtContent.Text,
                                       元請会社: txtPrimeCompany.Text,
                                       元請担当者名: txtPrimeContact.Text,
@@ -395,6 +420,8 @@ Screens:
                   Set(varReportSaving, true);
                   IfError(
                       If(
+                          !gblReportFromCalendar || !gblCalendarCountSafe || CountRows(Distinct(colReportWorkers, 社員レコードキー)) = 0,
+                          Notify("先にカレンダーで同じ日・現場・元請会社の全員を登録してください", NotificationType.Error),
                           IsBlank(User().FullName) || IsBlank(Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名)) || IsBlank(txtContent.Text) || IsBlank(txtPrimeContact.Text),
                           Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
                           IsBlank(varBlankSignLen) || IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
@@ -410,7 +437,7 @@ Screens:
                                       現場名: Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名),
                                       作業開始時刻: If(IsBlank(txtStart.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtStart.Text)),
                                       作業終了時刻: If(IsBlank(txtEnd.Text), Blank(), DateTimeValue(Text(dpWorkDate.SelectedDate, "yyyy-mm-dd") & " " & txtEnd.Text)),
-                                      人数: Value(txtPeople.Text),
+                                      人数: CountRows(Distinct(colReportWorkers, 社員レコードキー)),
                                       作業内容: txtContent.Text,
                                       元請会社: txtPrimeCompany.Text,
                                       元請担当者名: txtPrimeContact.Text,
