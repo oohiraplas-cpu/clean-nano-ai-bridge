@@ -376,7 +376,13 @@ class PowerAppsStore {
       return { status: 'ok', operationId, appId: this.appId, message: '公開に成功しました。' };
     } catch (error) {
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, { status: 'error', error: error.message });
-      throw error;
+      return {
+        status: 'error',
+        operationId,
+        appId: this.appId,
+        error: String(error.message).slice(0, 500),
+        ...(error.upstream ? { details: error.upstream } : {})
+      };
     }
   }
 
