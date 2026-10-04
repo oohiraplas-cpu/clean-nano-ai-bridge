@@ -121,7 +121,7 @@ Screens:
             Text: ="現場 *"
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =196
+            Y: =If(Parent.Width < 600, 268, 196)
       - ddSite:
           Control: Classic/DropDown@2.3.1
           Properties:
@@ -133,7 +133,7 @@ Screens:
             Items.Value: =Title
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =220
+            Y: =If(Parent.Width < 600, 292, 220)
       - lblStart:
           Control: Label@2.5.1
           Properties:
@@ -143,7 +143,7 @@ Screens:
             Text: ="開始（例 8:00）"
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X
-            Y: =258
+            Y: =If(Parent.Width < 600, 330, 258)
       - txtStart:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -154,7 +154,7 @@ Screens:
             Height: =38
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X
-            Y: =282
+            Y: =If(Parent.Width < 600, 354, 282)
       - lblEnd:
           Control: Label@2.5.1
           Properties:
@@ -164,7 +164,7 @@ Screens:
             Text: ="終了（例 17:00）"
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X + (recFrame.Width - 30) / 4 + 5
-            Y: =258
+            Y: =If(Parent.Width < 600, 330, 258)
       - txtEnd:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -175,7 +175,7 @@ Screens:
             Height: =38
             Width: =(recFrame.Width - 30) / 4 - 5
             X: =recFrame.X + (recFrame.Width - 30) / 4 + 5
-            Y: =282
+            Y: =If(Parent.Width < 600, 354, 282)
       - lblPeople:
           Control: Label@2.5.1
           Properties:
@@ -185,7 +185,7 @@ Screens:
             Text: ="人数"
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =320
+            Y: =If(Parent.Width < 600, 392, 320)
       - txtPeople:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -197,7 +197,7 @@ Screens:
             Height: =38
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =344
+            Y: =If(Parent.Width < 600, 416, 344)
       - lblPrimeCompany:
           Control: Label@2.5.1
           Properties:
@@ -207,7 +207,7 @@ Screens:
             Text: ="元請会社"
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =382
+            Y: =If(Parent.Width < 600, 454, 382)
       - txtPrimeCompany:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -218,7 +218,7 @@ Screens:
             Height: =38
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =406
+            Y: =If(Parent.Width < 600, 478, 406)
       - lblPrimeContact:
           Control: Label@2.5.1
           Properties:
@@ -228,7 +228,7 @@ Screens:
             Text: ="元請担当者名 *"
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =444
+            Y: =If(Parent.Width < 600, 516, 444)
       - txtPrimeContact:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -239,7 +239,7 @@ Screens:
             Height: =38
             Width: =If(Parent.Width < 600, recFrame.Width, (recFrame.Width - 30) / 2)
             X: =recFrame.X
-            Y: =468
+            Y: =If(Parent.Width < 600, 540, 468)
       - lblContent:
           Control: Label@2.5.1
           Properties:
