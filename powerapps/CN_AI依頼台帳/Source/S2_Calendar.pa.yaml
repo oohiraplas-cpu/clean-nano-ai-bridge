@@ -1,226 +1,219 @@
-# ************************************************************************************************
-# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
-# Use the maker portal to create and edit your Power Apps.
-# 
-# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
-# 
-# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
-# ************************************************************************************************
 Screens:
   S2_Calendar:
     Properties:
       Fill: =RGBA(10, 10, 10, 1)
-      OnVisible: |-
-        =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, LookUp(CN_本人マイデータ, UserUPN = Lower(User().Email)).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+      OnVisible: =If(IsBlank(gblCalType), Set(gblCalType, "解体")); If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1))); If(IsBlank(gblEmpID), Clear(colAttend), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
     Children:
-      - S2_Title:
-          Control: Label@2.5.1
+      - S2_Calendar_MobileScroll:
+          Control: GroupContainer@1.5.0
+          Variant: AutoLayout
           Properties:
-            Align: =Align.Center
-            Color: =RGBA(0, 204, 102, 1)
-            FontWeight: =FontWeight.Bold
-            Height: =50
-            Size: =22
-            Text: =Text(gblMonth, "yyyy年m月")
-            Width: =Parent.Width - 140
-            X: =70
-            Y: =16
-      - S2_Prev:
-          Control: Classic/Button@2.2.0
-          Properties:
-            BorderThickness: =0
-            Color: =RGBA(0, 204, 102, 1)
-            Fill: =RGBA(26, 58, 42, 1)
-            Height: =50
-            OnSelect: |-
-              =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months));
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
-            Size: =18
-            Text: ="＜"
-            Width: =50
-            X: =16
-            Y: =16
-      - S2_Next:
-          Control: Classic/Button@2.2.0
-          Properties:
-            BorderThickness: =0
-            Color: =RGBA(0, 204, 102, 1)
-            Fill: =RGBA(26, 58, 42, 1)
-            Height: =50
-            OnSelect: |-
-              =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months));
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
-            Size: =18
-            Text: ="＞"
-            Width: =50
-            X: =Parent.Width - 66
-            Y: =16
-      - S2_Emp:
-          Control: Label@2.5.1
-          Properties:
-            Align: =Align.Center
-            Color: =RGBA(120, 120, 120, 1)
-            Height: =28
-            Size: =12
-            Text: ="作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択")
-            Width: =Parent.Width - 32
-            X: =16
-            Y: =70
-      - S2_PlanSheet:
-          Control: Classic/Button@2.2.0
-          Properties:
-            BorderColor: =RGBA(0,255,102,1)
-            BorderThickness: =1
-            Color: =RGBA(0,255,102,1)
-            Fill: =RGBA(8,34,20,1)
-            FontWeight: =FontWeight.Bold
-            Height: =28
-            OnSelect: =Navigate(S15_OCR, ScreenTransition.None)
-            Size: =10
-            Text: ="計画実施表"
-            Width: =134
-            X: =Parent.Width - 150
-            Y: =70
-      - S2_WeekHead:
-          Control: Gallery@2.15.0
-          Variant: Horizontal
-          Properties:
-            Height: =30
-            Items: =["日", "月", "火", "水", "木", "金", "土"]
-            ShowScrollbar: =false
-            TemplatePadding: =0
-            TemplateSize: =(Parent.Width - 32) / 7
-            Width: =Parent.Width - 32
-            X: =16
-            Y: =100
+            DropShadow: =DropShadow.None
+            Height: =Parent.Height - If(gblCalType = "設備", 130, 70)
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutOverflowY: =LayoutOverflow.Scroll
+            Width: =Parent.Width
           Children:
-            - S2_WeekLbl:
-                Control: Label@2.5.1
+            - S2_Calendar_MobileBody:
+                Control: GroupContainer@1.5.0
+                Variant: ManualLayout
                 Properties:
-                  Align: =Align.Center
-                  Color: =Switch(ThisItem.Value, "日", RGBA(255, 51, 51, 1), "土", RGBA(0, 102, 255, 1), RGBA(255, 255, 255, 1))
-                  FontWeight: =FontWeight.Bold
-                  Height: =Parent.TemplateHeight
-                  Size: =12
-                  Text: =ThisItem.Value
-                  Width: =Parent.TemplateWidth
-      - S2_Grid:
-          Control: Gallery@2.15.0
-          Variant: Vertical
-          Properties:
-            Height: =Min((Parent.Width - 32) / 7 * 6 + 12, Parent.Height * 0.58)
-            Items: |-
-              =ForAll(Sequence(42, 0), {d: DateAdd(gblMonth, Value - Weekday(gblMonth) + 1, TimeUnit.Days)})
-            OnSelect: =Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None)
-            ShowScrollbar: =false
-            TemplatePadding: =2
-            TemplateSize: =Min((Parent.Width - 32) / 7, (Parent.Height * 0.58 - 12) / 6)
-            Width: =Parent.Width - 32
-            WrapCount: =7
-            X: =16
-            Y: =134
-          Children:
-            - S2_Cell:
-                Control: Rectangle@2.3.0
-                Properties:
-                  Fill: |-
-                    =If(Text(ThisItem.d, "yyyymmdd") = Text(Today(), "yyyymmdd"), RGBA(0, 204, 102, 0.35),
-                        Month(ThisItem.d) <> Month(gblMonth), RGBA(20, 20, 20, 1), RGBA(26, 58, 42, 1))
-                  Height: =Parent.TemplateHeight
-                  OnSelect: '=Select(Parent)  '
-                  Width: =Parent.TemplateWidth
-            - S2_DayNum:
-                Control: Label@2.5.1
-                Properties:
-                  Color: |-
-                    =If(Month(ThisItem.d) <> Month(gblMonth), RGBA(120, 120, 120, 1),
-                        Weekday(ThisItem.d) = 1, RGBA(255, 51, 51, 1),
-                        Weekday(ThisItem.d) = 7, RGBA(0, 102, 255, 1), RGBA(255, 255, 255, 1))
-                  Height: =22
-                  OnSelect: '=Select(Parent)  '
-                  Size: =11
-                  Text: =Day(ThisItem.d)
-                  Width: =Parent.TemplateWidth - 8
-                  X: =4
-                  Y: =2
-            - S2_Status:
-                Control: Label@2.5.1
-                Properties:
-                  Align: =Align.Center
-                  Color: =RGBA(10, 10, 10, 1)
-                  Fill: =If(IsBlank(Self.Text), RGBA(0, 0, 0, 0), RGBA(0, 204, 102, 1))
-                  FontWeight: =FontWeight.Bold
-                  Height: =22
-                  OnSelect: '=Select(Parent)  '
-                  Size: =10
-                  Text: =LookUp(colAttend, Text(StartAt, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).WorkStatus.Value
-                  Width: =Parent.TemplateWidth
-                  Y: =Parent.TemplateHeight - 26
-      - S2_PayPanel:
-          Control: Rectangle@2.3.0
-          Properties:
-            BorderColor: =RGBA(0, 255, 102, 1)
-            BorderThickness: =1
-            Fill: =RGBA(8, 34, 20, 1)
-            Height: =Parent.Height * 0.24
-            Width: =Parent.Width - 32
-            X: =16
-            Y: =Parent.Height - 70 - Self.Height - 10
-      - S2_PayTitle:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(0,255,102,1)
-            FontWeight: =FontWeight.Bold
-            Height: =28
-            Size: =13
-            Text: ="本人の今月実績（今日まで）"
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =S2_PayPanel.Y + 10
-      - S2_AttendNow:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(255,255,255,1)
-            Height: =28
-            Size: =12
-            Text: ="出勤 " & CountRows(Distinct(Filter(colAttend, StartAt <= Today()), Text(StartAt, "yyyymmdd"))) & "日"
-            Width: =(Parent.Width - 64) / 2
-            X: =32
-            Y: =S2_PayPanel.Y + 42
-      - S2_ShiftNow:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(255,255,255,1)
-            Height: =44
-            Size: =11
-            Text: ="日勤 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "日勤")) & " / 夜勤 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "夜勤")) & Char(10) & "早出 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "早出")) & " / 残業 " & CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "残業"))
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =S2_PayPanel.Y + 72
-      - S2_GrossCaption:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(210,255,226,1)
-            Height: =24
-            Size: =11
-            Text: ="現在の総支給額"
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =S2_PayPanel.Y + 120
-      - S2_GrossValue:
-          Control: Label@2.5.1
-          Properties:
-            Align: =Align.Right
-            Color: =RGBA(0,255,102,1)
-            FontWeight: =FontWeight.Bold
-            Height: =42
-            Size: =22
-            Text: =If(IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID)), "単価未登録", With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当,0) + CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当,0) + CountRows(Filter(colAttend, StartAt <= Today() && WorkStatus.Value = "早出")) * Coalesce(m.早出手当,0), "¥#,##0")))
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =S2_PayPanel.Y + 144
+                  DropShadow: =DropShadow.None
+                  FillPortions: =0
+                  Height: =Max(640, Parent.Height, S2_Grid.Y + S2_Grid.Height + 128)
+                  LayoutMinHeight: =Max(640, Parent.Height, S2_Grid.Y + S2_Grid.Height + 128)
+                  LayoutMinWidth: =0
+                  Width: =Parent.Width
+                Children:
+                  - S2_Title:
+                      Control: Label@2.5.1
+                      Properties:
+                        Align: =Align.Center
+                        Color: =RGBA(0, 204, 102, 1)
+                        FontWeight: =FontWeight.Bold
+                        Height: =50
+                        Size: =20
+                        Text: =Text(gblMonth, "yyyy年m月")
+                        Width: =Parent.Width - 140
+                        X: =70
+                        Y: =16
+                  - S2_Prev:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderThickness: =0
+                        Color: =RGBA(0, 204, 102, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =50
+                        OnSelect: |-
+                          =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months));
+                          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        Size: =18
+                        Text: ="＜"
+                        Width: =50
+                        X: =16
+                        Y: =16
+                  - S2_Next:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderThickness: =0
+                        Color: =RGBA(0, 204, 102, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =50
+                        OnSelect: |-
+                          =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months));
+                          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        Size: =18
+                        Text: ="＞"
+                        Width: =50
+                        X: =Parent.Width - 66
+                        Y: =16
+                  - S2_Emp:
+                      Control: Label@2.5.1
+                      Properties:
+                        Align: =Align.Center
+                        Color: =RGBA(120, 120, 120, 1)
+                        Height: =28
+                        Size: =12
+                        Text: =If(gblCalType = "運営", "運営カレンダー：全作業員の合計（解体＋設備）", gblCalType & "カレンダー　作業員：" & Coalesce(LookUp(CN_社員台帳, 社員ID = gblEmpID).氏名, "未選択"))
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =72
+                  - S2_WeekHead:
+                      Control: Gallery@2.15.0
+                      Variant: Horizontal
+                      Properties:
+                        Height: =30
+                        Items: =["日", "月", "火", "水", "木", "金", "土"]
+                        ShowScrollbar: =false
+                        TemplatePadding: =0
+                        TemplateSize: =(Parent.Width - 32) / 7
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =164
+                      Children:
+                        - S2_WeekLbl:
+                            Control: Label@2.5.1
+                            Properties:
+                              Align: =Align.Center
+                              Color: =Switch(ThisItem.Value, "日", RGBA(255, 51, 51, 1), "土", RGBA(0, 102, 255, 1), RGBA(255, 255, 255, 1))
+                              FontWeight: =FontWeight.Bold
+                              Height: =Parent.TemplateHeight
+                              Size: =12
+                              Text: =ThisItem.Value
+                              Width: =Parent.TemplateWidth
+                  - S2_Grid:
+                      Control: Gallery@2.15.0
+                      Variant: Vertical
+                      Properties:
+                        Height: =Max(44, (Parent.Width - 32) / 7) * 6 + 12
+                        Items: |-
+                          =ForAll(Sequence(42, 0), {d: DateAdd(gblMonth, Value - Weekday(gblMonth) + 1, TimeUnit.Days)})
+                        OnSelect: |-
+                          =If(gblCalType = "運営", With({f: Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd"))}, Notify(Text(ThisItem.d, "m/d") & "　稼働 " & CountRows(f) & "名（解体 " & CountRows(Filter(f, 業種.Value = "解体")) & "・設備 " & CountRows(Filter(f, 業種.Value = "設備")) & "）　早出 " & CountRows(Filter(f, 勤務区分.Value = "早出")) & "件　残業 " & CountRows(Filter(f, 勤務区分.Value = "残業")) & "件", NotificationType.Information)), Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None))
+                        ShowScrollbar: =false
+                        TemplatePadding: =2
+                        TemplateSize: =Max(44, (Parent.Width - 32) / 7)
+                        Width: =Parent.Width - 32
+                        WrapCount: =7
+                        X: =16
+                        Y: =198
+                      Children:
+                        - S2_Cell:
+                            Control: Rectangle@2.3.0
+                            Properties:
+                              Fill: |-
+                                =If(Text(ThisItem.d, "yyyymmdd") = Text(Today(), "yyyymmdd"), RGBA(0, 204, 102, 0.35),
+                                    Month(ThisItem.d) <> Month(gblMonth), RGBA(20, 20, 20, 1), RGBA(26, 58, 42, 1))
+                              Height: =Parent.TemplateHeight
+                              OnSelect: '=Select(Parent)  '
+                              Width: =Parent.TemplateWidth
+                        - S2_DayNum:
+                            Control: Label@2.5.1
+                            Properties:
+                              Color: |-
+                                =If(Month(ThisItem.d) <> Month(gblMonth), RGBA(120, 120, 120, 1),
+                                    Weekday(ThisItem.d) = 1, RGBA(255, 51, 51, 1),
+                                    Weekday(ThisItem.d) = 7, RGBA(0, 102, 255, 1), RGBA(255, 255, 255, 1))
+                              Height: =22
+                              OnSelect: '=Select(Parent)  '
+                              Size: =11
+                              Text: =Day(ThisItem.d)
+                              Width: =Parent.TemplateWidth - 8
+                              X: =1
+                              Y: =2
+                        - S2_Status:
+                            Control: Label@2.5.1
+                            Properties:
+                              Align: =Align.Center
+                              Color: =RGBA(10, 10, 10, 1)
+                              Fill: =If(IsBlank(Self.Text), RGBA(0, 0, 0, 0), RGBA(0, 204, 102, 1))
+                              FontWeight: =FontWeight.Bold
+                              Height: =22
+                              OnSelect: '=Select(Parent)  '
+                              Size: =10
+                              Text: |-
+                                =If(gblCalType = "運営", With({n: CountRows(Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")))}, If(n > 0, "稼働 " & n & "名", "")), LookUp(colAttend, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).勤務区分.Value)
+                              Width: =Parent.TemplateWidth
+                              Y: =Parent.TemplateHeight - 26
+                  - S2_Sum:
+                      Control: Label@2.5.1
+                      Properties:
+                        Align: =Align.Center
+                        Color: =RGBA(0, 204, 102, 1)
+                        FontWeight: =FontWeight.Bold
+                        Height: =96
+                        Size: =14
+                        Text: =If(gblCalType = "運営", "今月 延べ稼働 " & CountRows(colOps) & " 人日　早出 " & CountRows(Filter(colOps, 勤務区分.Value = "早出")) & " 件　残業 " & CountRows(Filter(colOps, 勤務区分.Value = "残業")) & " 件　売上・経費：未連携", "今月の出勤（" & gblCalType & "）：" & CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & " 日")
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =S2_Grid.Y + S2_Grid.Height + 16
+                  - S2_Type0:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        BorderThickness: =1
+                        Color: =If(gblCalType = "解体", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+                        Fill: =If(gblCalType = "解体", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+                        FontWeight: =FontWeight.Bold
+                        Height: =44
+                        OnSelect: =Set(gblCalType, "解体"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        Size: =13
+                        Text: ="解体"
+                        Width: =(Parent.Width - 48) / 3
+                        X: =16 + 0 * ((Parent.Width - 48) / 3 + 8)
+                        Y: =108
+                  - S2_Type1:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        BorderThickness: =1
+                        Color: =If(gblCalType = "設備", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+                        Fill: =If(gblCalType = "設備", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+                        FontWeight: =FontWeight.Bold
+                        Height: =44
+                        OnSelect: =Set(gblCalType, "設備"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        Size: =13
+                        Text: ="設備"
+                        Width: =(Parent.Width - 48) / 3
+                        X: =16 + 1 * ((Parent.Width - 48) / 3 + 8)
+                        Y: =108
+                  - S2_Type2:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        BorderThickness: =1
+                        Color: =If(gblCalType = "運営", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+                        Fill: =If(gblCalType = "運営", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
+                        FontWeight: =FontWeight.Bold
+                        Height: =44
+                        OnSelect: =Set(gblCalType, "運営"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        Size: =13
+                        Text: ="運営"
+                        Visible: =Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+                        Width: =(Parent.Width - 48) / 3
+                        X: =16 + 2 * ((Parent.Width - 48) / 3 + 8)
+                        Y: =108
       - S2_NavBar:
           Control: Rectangle@2.3.0
           Properties:
@@ -333,3 +326,19 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
             Y: =Parent.Height - 70
+      - S2_PlanAttach:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(8,34,20,1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: =Navigate(Screen2, ScreenTransition.None)
+            Size: =14
+            Text: ="計画実施表を添付"
+            Visible: =gblCalType = "設備"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 122
