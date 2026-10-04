@@ -46,6 +46,8 @@ class PowerAppsGitStore {
     this.githubOwner = config.githubOwner || '';
     this.githubRepo = config.githubRepo || '';
     this.githubBranch = config.githubBranch || 'main';
+    // 更新・保存・公開の対象にしてよい唯一のbranch（正本branch）。fallback branchは読み取り専用。
+    this.canonicalBranch = this.githubBranch;
     this.githubRoot = (config.githubRoot || '').replace(/^\/+|\/+$/g, '');
     this.githubFallbackBranches = [...new Set([...(config.githubFallbackBranches || []), 'sync/cn-aiiraidaicho-live-review-20260926', 'main'].filter(Boolean))];
     this.githubFallbackRoots = [...new Set([...(config.githubFallbackRoots || []), 'powerapps/CN_AI依頼台帳/Source'].map((value) => String(value || '').replace(/^\/+|\/+$/g, '')).filter(Boolean))];
@@ -131,6 +133,8 @@ class PowerAppsGitStore {
             path: filePath,
             sha: data.sha,
             branch,
+            canonicalBranch: this.canonicalBranch,
+            isCanonicalBranch: branch === this.canonicalBranch,
             content: Buffer.from(data.content || '', 'base64').toString('utf8')
           };
         } catch (error) {
@@ -145,9 +149,36 @@ class PowerAppsGitStore {
     throw lastNotFound || new Error('指定したPower Appsソースファイルを取得できません');
   }
 
-  async updateSourceFile(relativePath, content, message) {
+  // 正本branch以外への更新・保存・公開を拒否するための共通ガード（HTTP 409相当）。
+  _branchConflict(message) {
+    const error = new Error(message);
+    error.status = 409;
+    error.payload = { status: 'branch_mismatch', canonicalBranch: this.canonicalBranch };
+    return error;
+  }
+
+  /**
+   * get_powerapps_sourceが返したbranch等、呼び出し側が把握しているbranchが正本branchと一致するか確認する。
+   * branch未指定なら何もしない（後方互換）。
+   */
+  assertCanonicalBranch(branch, action = '更新') {
+    if (branch === undefined || branch === null) return { checked: false };
+    if (branch !== this.canonicalBranch) {
+      throw this._branchConflict(`branch不一致のため${action}を拒否しました: 指定=${branch}, 正本branch=${this.canonicalBranch}`);
+    }
+    return { checked: true, branch };
+  }
+
+  async updateSourceFile(relativePath, content, message, expectedBranch) {
     if (typeof content !== 'string') throw new Error('contentは文字列である必要があります');
+    this.assertCanonicalBranch(expectedBranch, '更新');
     const current = await this.getSourceFile(relativePath);
+    // フォールバック先（過去branch等）でソースが見つかった場合は、そのbranchへ書き込まない。
+    if (current.branch !== this.canonicalBranch) {
+      throw this._branchConflict(
+        `正本branch不一致のため更新を拒否しました: ソースはbranch「${current.branch}」で見つかりましたが、正本branchは「${this.canonicalBranch}」です。過去branchへの書き込みを防止しています`
+      );
+    }
     const filePath = current.path;
     const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
     const operationId = crypto.randomUUID();
@@ -231,8 +262,8 @@ class PowerAppsGitStore {
     return { status: 'ok', action: 'PullChangesFromGit', solutionUniqueName, result };
   }
 
-  async applySourceFileChange(relativePath, content, message) {
-    const update = await this.updateSourceFile(relativePath, content, message);
+  async applySourceFileChange(relativePath, content, message, expectedBranch) {
+    const update = await this.updateSourceFile(relativePath, content, message, expectedBranch);
     try {
       const refresh = await this.refreshFromGit();
       const pull = await this.pullFromGit();

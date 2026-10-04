@@ -84,6 +84,24 @@ paths:
         params.payload（任意）・params.approvedByHuman（必須、true固定）で登録済みPower Automate
         フローを実行します。approvedByHumanがtrueでない場合はエラーになり、実行されません
         （更新・実行系の操作は人間の承認を必須とする方針のため）。
+
+        Power Apps変更の検証・デプロイ・権限管理として、次の9メソッドも指定できます（paramsは
+        inputSchemaのとおり厳密で、未定義のプロパティは400になります）。
+        validate_powerapps_change（変更前検査: valid・errors・warnings・summary）、
+        run_powerapps_tests（静的検査。実行不能な項目は成功扱いにせずskippedとreasonを返す）、
+        verify_save_result（保存後に正本ソースとアプリ状態を再取得して検証）、
+        deploy_to_test（構成済みの非本番テスト環境のみ。本番・環境不明・設定不足・branch不一致は拒否）、
+        verify_deployment（環境・バージョン・デプロイ結果・healthを検証）、
+        get_deployment_logs（診断ログ。秘密値はマスク）、
+        rollback_deployment（確認済みの復旧元のみ。本番はapprovedByHuman:true必須）、
+        get_permissions（読み取り専用）、
+        update_permissions（approvedByHuman:true必須。強い権限・外部共有は拒否）。
+        外部APIが未構成の場合は、ダミー成功にせず503で status:not_configured・reason・
+        missingConfiguration を返します。
+
+        update_powerapps_app・save_powerapps_app・publish_powerapps_app は任意のparams.branch
+        （get_powerapps_sourceが返したbranch）を受け取り、正本branchと一致しない場合は409で拒否します。
+        update_powerapps_appは、ソースが正本branch以外（過去branch等）でしか見つからない場合も409で拒否します。
       security: [{ McpApiKey: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/McpInput' } } } }
       responses:
@@ -94,7 +112,11 @@ paths:
               schema: { $ref: '#/components/schemas/McpResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { description: task_idが見つからない（update_task_status・get_task_result） }
+        '403': { description: 方針により拒否（本番デプロイ、未承認の本番ロールバック、強い権限・外部共有など） }
+        '404': { description: 対象が見つからない（task_id、deploymentId、復旧元、取り消す権限など） }
+        '409': { description: 競合・不一致（正本branch不一致、未確認の復旧元など） }
+        '502': { description: 上流API（GitHub、Power Apps、Dataverse等）の異常。detailsに上流のHTTP statusを含む }
+        '503': { description: 外部API・設定が未構成（status:not_configured、reason、missingConfigurationを返す） }
 components:
   securitySchemes:
     WebhookApiKey: { type: apiKey, in: header, name: X-API-Key }
@@ -152,7 +174,7 @@ components:
       properties:
         method:
           type: string
-          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, run_power_automate_flow]
+          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions]
           description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:

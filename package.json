@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test",
-    "validate:openapi": "node --test test/openapi.test.js"
+    "validate:openapi": "node --test test/openapi.test.js",
+    "test:mcp-tools": "node --test test/server.test.js test/deploymentService.test.js test/permissionsService.test.js test/powerAppsChangeValidation.test.js test/powerAppsStaticTests.test.js test/secretMasking.test.js",
+    "test:safety": "node --test test/powerAppsGitStore.test.js"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

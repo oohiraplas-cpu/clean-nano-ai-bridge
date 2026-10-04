@@ -68,7 +68,104 @@ function validateUpdateEmployeeLedgerEntryParams(params) {
   return null;
 }
 
+
+const { PERMISSION_TARGET_TYPES, PRINCIPAL_TYPES } = require('./permissionsService');
+
+// 新ツール用: inputSchemaのadditionalProperties:falseを実行時にも強制する。
+function unknownProperty(params, allowed) {
+  const unknown = Object.keys(params).filter((key) => !allowed.includes(key));
+  return unknown.length ? `未対応のプロパティです: ${unknown.join(', ')}` : null;
+}
+
+function optionalString(params, key, { max = 200 } = {}) {
+  if (params[key] === undefined) return null;
+  if (typeof params[key] !== 'string' || !params[key].trim()) return `${key}は空でない文字列である必要があります`;
+  if (params[key].length > max) return `${key}は${max}文字以内である必要があります`;
+  return null;
+}
+
+function requiredString(params, key, { max = 200 } = {}) {
+  if (typeof params[key] !== 'string' || !params[key].trim()) return `${key}が必要です（空でない文字列）`;
+  if (params[key].length > max) return `${key}は${max}文字以内である必要があります`;
+  return null;
+}
+
+const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+function validateDeployToTestParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['branch', 'environment', 'ref']);
+  if (unknown) return unknown;
+  const error = requiredString(params, 'branch') || optionalString(params, 'environment');
+  if (error) return error;
+  if (params.ref !== undefined && (typeof params.ref !== 'string' || !SHA_PATTERN.test(params.ref))) return 'refは40桁のコミットSHA（16進）である必要があります';
+  return null;
+}
+
+function validateVerifyDeploymentParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['environment', 'deploymentId', 'expectedVersion']);
+  if (unknown) return unknown;
+  return optionalString(params, 'environment') || optionalString(params, 'deploymentId') || optionalString(params, 'expectedVersion');
+}
+
+function validateGetDeploymentLogsParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['environment', 'deploymentId', 'runId', 'limit', 'includeJobLogs']);
+  if (unknown) return unknown;
+  const error = optionalString(params, 'environment') || optionalString(params, 'deploymentId');
+  if (error) return error;
+  if (params.runId !== undefined && (!Number.isInteger(params.runId) || params.runId < 1)) return 'runIdは1以上の整数である必要があります';
+  if (params.limit !== undefined && (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 20)) return 'limitは1から20の整数である必要があります';
+  if (params.includeJobLogs !== undefined && typeof params.includeJobLogs !== 'boolean') return 'includeJobLogsはbooleanである必要があります';
+  if (params.runId !== undefined && params.deploymentId !== undefined) return 'runIdとdeploymentIdは同時に指定できません';
+  return null;
+}
+
+function validateRollbackDeploymentParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['environment', 'targetDeploymentId', 'approvedByHuman']);
+  if (unknown) return unknown;
+  const error = requiredString(params, 'targetDeploymentId') || optionalString(params, 'environment');
+  if (error) return error;
+  // 本番かどうかは設定を知るServiceが判定する（本番ならapprovedByHuman:trueが必須）。
+  if (params.approvedByHuman !== undefined && typeof params.approvedByHuman !== 'boolean') return 'approvedByHumanはbooleanである必要があります';
+  return null;
+}
+
+function validateGetPermissionsParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['targetType', 'principalId']);
+  if (unknown) return unknown;
+  if (!PERMISSION_TARGET_TYPES.includes(params.targetType)) return `targetTypeは${PERMISSION_TARGET_TYPES.join(' / ')}のいずれかである必要があります`;
+  if (params.principalId !== undefined) {
+    const error = optionalString(params, 'principalId');
+    if (error) return error;
+  }
+  if (params.targetType === 'dataverse_user_roles' && params.principalId === undefined) return 'dataverse_user_rolesではprincipalId（systemuserのGUID）が必要です';
+  return null;
+}
+
+function validateUpdatePermissionsParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['targetType', 'action', 'principalId', 'principalType', 'roleName', 'approvedByHuman']);
+  if (unknown) return unknown;
+  if (!PERMISSION_TARGET_TYPES.includes(params.targetType)) return `targetTypeは${PERMISSION_TARGET_TYPES.join(' / ')}のいずれかである必要があります`;
+  if (!['grant', 'revoke'].includes(params.action)) return 'actionはgrantまたはrevokeである必要があります';
+  const error = requiredString(params, 'principalId') || requiredString(params, 'roleName');
+  if (error) return error;
+  if (!PRINCIPAL_TYPES.includes(params.principalType)) return `principalTypeは${PRINCIPAL_TYPES.join(' / ')}のいずれかである必要があります`;
+  if (params.approvedByHuman !== true) return 'approvedByHuman:trueが必要です（人間承認が必要な操作です）';
+  return null;
+}
+
 module.exports = {
+  validateDeployToTestParams,
+  validateVerifyDeploymentParams,
+  validateGetDeploymentLogsParams,
+  validateRollbackDeploymentParams,
+  validateGetPermissionsParams,
+  validateUpdatePermissionsParams,
   validateGetSharePointListParams,
   validateGetSharePointColumnsParams,
   validateEnsureSharePointColumnsParams,
