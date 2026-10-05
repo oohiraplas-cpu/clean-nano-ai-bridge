@@ -1548,3 +1548,21 @@ test('save_powerapps_source / get_powerapps_audit / rollback_powerapps_change: M
   const unapproved = (await legacy(server, 'publish_powerapps_app', { requestId: 'srv-1' })).body.result;
   assert.equal(unapproved.status, 'APPROVAL_REQUIRED');
 });
+
+test('Executive policy is available through authenticated MCP capabilities without changing health', async (t) => {
+  const server = await createTestServer([], { mcpApiKey: 'policy-test-key' });
+  t.after(() => server.close());
+  const request = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 44, method: 'tools/call', params: { name: 'get_bridge_capabilities', arguments: {} } }) };
+  const denied = await fetch(`${server.baseUrl}/mcp`, request);
+  assert.equal(denied.status, 401);
+  request.headers['X-API-Key'] = 'policy-test-key';
+  const response = await fetch(`${server.baseUrl}/mcp`, request);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  const result = JSON.parse(body.result.content[0].text);
+  assert.equal(result.data.executivePolicy.systemOfRecord, 'SharePoint Lists');
+  assert.deepEqual(result.data.executivePolicy.priorities.slice(0, 4), ['利益最大化', '未入金回収', 'キャッシュフロー改善', '資金ショート防止']);
+  assert.match(result.data.executivePolicy.instructions, /AI単独承認/);
+  assert.match(result.data.executivePolicy.instructions, /Branch不一致/);
+  assert.deepEqual(await (await fetch(`${server.baseUrl}/health`)).json(), { status: 'ok' });
+});

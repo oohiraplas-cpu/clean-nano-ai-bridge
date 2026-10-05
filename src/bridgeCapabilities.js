@@ -73,6 +73,7 @@ function getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version = '1.0.0', mcpVersion
         hasComplexity: !['health_check', 'get_tasks', 'get_next_task'].includes(tool.name)
       }))
     },
+    executivePolicy: JSON.parse(JSON.stringify(require('./executivePolicy.json'))),
     constraints: {
       maxRequestSize: '256KB',
       readOnlyTools: [
