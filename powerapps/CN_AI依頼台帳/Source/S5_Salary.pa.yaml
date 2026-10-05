@@ -79,12 +79,12 @@ Screens:
             Visible: =IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
-            Y: =584
+            Y: =720
       - S5_Card:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =390
+            Height: =520
             Visible: =!IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
@@ -288,6 +288,32 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =456
+      - S5_YearCap:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =30
+            Text: ="年間給与履歴・法定帳票準備"
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =506
+      - S5_YearSummary:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =105
+            Size: =12
+            Text: |-
+              =With({y: Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= Date(Year(gblMonth),1,1), StartAt < Date(Year(gblMonth)+1,1,1))},
+                "年間出勤記録 " & CountRows(y) & "件" & Char(10) &
+                "年間実作業 " & Text(Sum(y, Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes,0)))) / 60, "0.0") & "h" & Char(10) &
+                "年間残業 " & Text(Sum(Filter(y, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes,0)))) / 60, "0.0") & "h" & Char(10) &
+                "帳票基盤：賃金台帳・源泉徴収簿・源泉徴収票（専用台帳接続待ち）"
+              )
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =538
       - S5_Note:
           Control: Label@2.5.1
           Properties:
@@ -297,7 +323,7 @@ Screens:
             Text: ="※作業時間は確定勤務分を優先し、未確定時は開始〜終了−休憩で算出します。残業は残業単価（1時間）を使用。税・保険は社員マスタ登録値を使用する見込み計算です。"
             Width: =Parent.Width - 32
             X: =16
-            Y: =514
+            Y: =650
       - S5_NavBar:
           Control: Rectangle@2.3.0
           Properties:
