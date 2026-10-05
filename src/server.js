@@ -112,7 +112,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
+  'get_sharepoint_lists', 'create_sharepoint_list', 'get_sharepoint_list', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
@@ -240,6 +240,32 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
       additionalProperties: false
     }
+  },
+  {
+    name: 'get_sharepoint_lists',
+    description: 'SharePointサイト内のリスト一覧（ID・表示名・URL・テンプレート等）を読み取り専用で取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: { siteId: { type: 'string', description: '省略時はSHAREPOINT_SITE_IDを使用' } },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  },
+  {
+    name: 'create_sharepoint_list',
+    description: 'SharePointに新規汎用リストを作成します。同名リストが存在する場合は作成せず返します。人間承認（approvedByHuman:true）が必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: '省略時はSHAREPOINT_SITE_IDを使用' },
+        displayName: { type: 'string', description: '新規リスト表示名' },
+        description: { type: 'string', description: 'リスト説明' },
+        approvedByHuman: { type: 'boolean', description: '人間が作成を承認済みの場合true' }
+      },
+      required: ['displayName', 'approvedByHuman'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   },
   {
     name: 'get_sharepoint_list',
@@ -790,6 +816,15 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetPowerAppsOperationResultParams(params);
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(powerAppsStore.getOperationResult(params.operationId));
+  }
+  if (method === 'get_sharepoint_lists') {
+    if (params.siteId !== undefined && typeof params.siteId !== 'string') throw requestError('siteIdは文字列で指定してください');
+    return withUpstreamErrorStatus(sharePointReader.listLists(params));
+  }
+  if (method === 'create_sharepoint_list') {
+    if (typeof params.displayName !== 'string' || !params.displayName.trim()) throw requestError('displayNameは必須です');
+    if (params.approvedByHuman !== true) throw requestError('新規SharePointリスト作成にはapprovedByHuman:trueが必要です');
+    return withUpstreamErrorStatus(sharePointReader.createList(params));
   }
   if (method === 'get_sharepoint_list') {
     const paramError = validateGetSharePointListParams(params);
