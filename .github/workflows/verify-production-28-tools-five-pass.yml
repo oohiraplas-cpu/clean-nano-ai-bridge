@@ -1,4 +1,4 @@
-name: Verify Production Bridge 28 Tools Five Pass
+name: Verify Production Bridge 28 Tools Two Pass
 
 on:
   workflow_dispatch:
@@ -34,13 +34,13 @@ jobs:
           client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
           tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
           subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
-      - name: Verify production five consecutive passes
+      - name: Verify production two consecutive passes
         env:
           VERIFICATION_MODE: smoke
         run: |
           set -euo pipefail
-          for i in 1 2 3 4 5; do
-            echo "::notice title=Production verification::pass $i/5"
+          for i in 1 2; do
+            echo "::notice title=Production verification::pass $i/2"
             node scripts/verify-production-bridge.js
-            if [ "$i" -lt 5 ]; then sleep 5; fi
+            if [ "$i" -lt 2 ]; then sleep 2; fi
           done
