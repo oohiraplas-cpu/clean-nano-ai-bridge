@@ -686,7 +686,7 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  // 既存42ツール + Executive取得2ツール。旧ツールの順序を維持。
+  // 既存28ツール + 優先A機能4ツール + 優先B機能4ツール + Knowledge/対象解決6ツール = 42ツール。
   assert.equal(listedBody.result.tools.length, 44);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
@@ -1490,3 +1490,22 @@ test('既存18ツールはtools/callでも引き続き呼び出せる（新ツ�
   assert.equal(unknownLegacy.httpStatus, 400);
   for (const name of LEGACY_18_TOOL_NAMES) assert.ok(MCP_METHODS.includes(name), name);
 });
+
+test('Executive policy is available through authenticated MCP capabilities without changing health', async (t) => {
+  const server = await createTestServer([], { mcpApiKey: 'policy-test-key' });
+  t.after(() => server.close());
+  const request = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 44, method: 'tools/call', params: { name: 'get_bridge_capabilities', arguments: {} } }) };
+  const denied = await fetch(`${server.baseUrl}/mcp`, request);
+  assert.equal(denied.status, 401);
+  request.headers['X-API-Key'] = 'policy-test-key';
+  const response = await fetch(`${server.baseUrl}/mcp`, request);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  const result = JSON.parse(body.result.content[0].text);
+  assert.equal(result.data.executivePolicy.systemOfRecord, 'SharePoint Lists');
+  assert.deepEqual(result.data.executivePolicy.priorities, ['利益', '入金回収', 'キャッシュフロー', '安全', '品質', '業務効率', '売上']);
+  assert.match(result.data.executivePolicy.instructions, /AI単独承認/);
+  assert.match(result.data.executivePolicy.instructions, /branch不一致/i);
+  assert.deepEqual(await (await fetch(`${server.baseUrl}/health`)).json(), { status: 'ok' });
+});
+

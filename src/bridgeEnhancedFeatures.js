@@ -9,7 +9,7 @@
  */
 
 const { createCommonResponse } = require('./bridgeCapabilities');
-const executivePolicy = require('../config/executive-policy.json');
+const executivePolicy = require('./executivePolicy.json');
 const { maskDeep } = require('./secretMasking');
 
 // Existing enhanced-feature service; these tools never write business records.

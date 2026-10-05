@@ -4,7 +4,7 @@
 
 The single existing CNAI（M365版） (コピー) entry in clean nano remains the entry point. The existing MCP action `clean nano AI Bridge｜業務統合・Power Apps自動改修` holds the Executive description. No duplicate agent, application, screen, list, flow, connection, or permission is created.
 
-`config/executive-policy.json` contains the decision priorities, fourteen advisory roles, management and loan checklists, reuse rules, approval rules, source safety, response rules and human final decisions. `get_executive_policy` exposes that versioned policy and keyword routing candidates; it does not create fourteen autonomous agents or execute their decisions.
+`src/executivePolicy.json` contains the decision priorities, fourteen advisory roles, management and loan checklists, reuse rules, approval rules, source safety, response rules and human final decisions. `get_executive_policy` exposes that versioned policy and keyword routing candidates; it does not create fourteen autonomous agents or execute their decisions.
 
 `get_executive_brief` reads explicitly identified existing SharePoint lists and actual columns, distinguishes original values from calculated values, and lists missing data and possible sources. It never forecasts unknown values, writes records, or totals an incomplete sample. Up to eight sources and 200 items per source are supported. Period, units, currency, document reconciliation, and whole-company totals remain unverified. Empty/unconfigured sources return missing data rather than synthetic finances. Financial list/column mappings must be confirmed before requesting readings. No new access or consent is required by this implementation; the existing Reader is reused.
 
@@ -20,9 +20,9 @@ Native Azure DevOps source retrieval/synchronization and runtime verification re
 
 ## Copilot reflection and verification
 
-The instruction baseline and Executive draft are preserved in adjacent files. The draft contains 7,120 characters, within the 8,000-character limit. The action description contains 559 characters. New tools must be visible in the live `tools/list` and refreshed Copilot action before use. The existing MCP inventory of 42 tools becomes 44, preserving the first 42 tools and the original first 18 ordering. Existing duplicate MCP action remains disabled.
+The instruction baseline and Executive draft are preserved in adjacent files. The draft contains 7,191 characters, within the 8,000-character limit. The action description contains 559 characters. New tools must be visible in the live `tools/list` and refreshed Copilot action before use. The existing MCP inventory of 42 tools becomes 44, preserving the first 42 tools and the original first 18 ordering. Existing duplicate MCP action remains disabled.
 
-Local verification: 201 tests pass, covering unit, HTTP MCP authentication/dispatch, invalid inputs, missing columns/config, upstream failures, no fabricated totals, secret redaction, native repository hold, existing APIs, OpenAPI and regression tests. GitHub CI and live deployment/publication results must be recorded separately; local tests do not establish live completion.
+Local verification: 202 tests pass, covering unit, HTTP MCP authentication/dispatch, invalid inputs, missing columns/config, upstream failures, no fabricated totals, secret redaction, native repository hold, existing APIs, OpenAPI and regression tests. GitHub CI and live deployment/publication results must be recorded separately; local tests do not establish live completion.
 
 ## Authorization and rollback
 

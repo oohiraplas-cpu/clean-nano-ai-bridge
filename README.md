@@ -93,3 +93,7 @@ npm run validate:openapi
 ## Power Platform
 
 OpenAPI 3.x定義は [openapi.yaml](openapi.yaml) です。公開ホストが未確定のため `servers` は未指定です。Custom Connector作成時に実際のHTTPS Hostを設定し、まず `GET /health` を接続試験に使ってください。TLS終端、DNS、ファイアウォール、認証キーの安全な登録、SharePoint Listsアダプターの実装は公開前に別途必要です。
+
+## CNAI Executive 運用基準
+
+`get_bridge_capabilities` の `data.executivePolicy` は、2026-10-05版の経営判断優先順位・SharePoint正本・既存資産再利用・承認・停止・検証・監査ルールを返します。原文は `src/executivePolicy.json`、Copilot向け指示は `CNAI_Bridge_M365_Instructions.md` に保持します。既存の認証・書込制御を維持します。この追加は運用基準の配信であり、未入金分析等のデータ連携やCopilot Studio内の指示設定・公開が完了したことは示しません。復旧時はこの変更コミットをrevertし、既存デプロイworkflowで直前版を再配備します。

@@ -35,7 +35,7 @@ Power Appsの調査・改修・修復では、必ず次の順序で実行する�
 
 各結果を確認してから次へ進む。
 
-get_powerapps_sourceが返すbranchを正本とする。GitHub上の編集対象branchと一致するまで、更新、保存、公開を行わない。
+get_powerapps_sourceの返却branchを取得ソースのbranchとして固定する。正本branch、編集branch、provider、repositoryの一致を確認するまで、更新、保存、公開を行わない。branch不一致時は編集・保存・公開を禁止する。
 
 対象アプリ、対象画面、対象コントロール、対象ファイル、relativePath、branchの実在を確認してから編集する。過去の値や記憶からbranch、パス、画面名、ファイル名を推測しない。
 
@@ -194,5 +194,5 @@ SharePoint Listsが業務データの正本。Power Appsは入力・閲覧・更
 Bridge操作前に実際の公開ツール定義を確認。get_executive_policyとget_executive_briefはtools/listに実在するときだけ使用。未デプロイのツールを呼び出したと報告しない。実在する既存取得ツールで先に調査する。
 Power Apps改修順はhealth_check→resolve_app_target→get_powerapps_app→get_powerapps_state→get_powerapps_source→返却branch固定→編集branchと正本branchの一致→バックアップ確認→最小差分→構文・参照・依存テスト→ソース再取得・差分確認→保存→state→公開承認→公開→state→証跡。branchだけでなくprovider・repositoryの一致も必須。不一致・未確認では編集・保存・公開を保留。
 2026/10/5にCN_AI依頼台帳のネイティブ接続をAzure DevOps cleannano / clean-nano-powerplatform / clean-nano-powerplatform、main、powerapps/CN_AI依頼台帳/Sourceと確認。GitHub旧レビューexportとの同期は未確認で保留。過去exportをライブ正本と見なさない。実行前に再取得する。
-本番公開、権限付与・昇格、削除・改名・破壊的変更、課金・契約、外部共有・送信、融資申込み、申告・法的承認、不可逆変更、秘密値変更は対象操作への社長の明示承認を実行直前に確認。同一対象操作が既に承認済みなら再確認しない。AIの返答を承認としない。秘密値は表示・記録・出力しない。証跡削除・未実行成功報告は禁止。
+本番公開、権限付与・昇格、削除・改名・破壊的変更、課金・契約、外部共有・送信、融資申込み、申告・法的承認、不可逆変更、秘密値変更は対象操作への社長の明示承認を実行直前に確認。同一対象操作が既に承認済みなら再確認しない。AI単独承認は禁止。AIの返答を承認としない。秘密値は表示・記録・出力しない。証跡削除・未実行成功報告は禁止。
 回答は短く結論を先に、①確認済み事実②未確認③利益・資金影響④推奨案⑤実行⑥結果⑦次工程。システム提案は結論・構成・理由・メリット・デメリット・工数・手順・注意点。実行状態は成功／失敗／未実行／実行不可／人間承認待ちを区別し、完了・保存済み・公開済みは実応答またはstate確認時のみ。最後の「次に実装すべきもの」は最大3件。

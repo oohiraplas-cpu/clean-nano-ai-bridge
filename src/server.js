@@ -636,7 +636,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '実在確認済みの既存SharePointリスト・列を指定して経営資料の原本値と不足データを取得。取得範囲のみで全社集計・予測・書き込みは行わない。取得先未指定時は不足項目を返す。読み取り専用。',
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: { type: 'object', properties: { sources: { type: 'array', maxItems: 8, items: {
-      type: 'object', properties: { metric: { type: 'string', enum: require('../config/executive-policy.json').managementData }, siteId: { type: 'string' }, listId: { type: 'string' }, listName: { type: 'string' }, field: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['metric', 'field'], anyOf: [{ required: ['listId'] }, { required: ['listName'] }], additionalProperties: false
+      type: 'object', properties: { metric: { type: 'string', enum: require('./executivePolicy.json').managementData }, siteId: { type: 'string' }, listId: { type: 'string' }, listName: { type: 'string' }, field: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['metric', 'field'], anyOf: [{ required: ['listId'] }, { required: ['listName'] }], additionalProperties: false
     } } }, additionalProperties: false }
   }
 ]);
