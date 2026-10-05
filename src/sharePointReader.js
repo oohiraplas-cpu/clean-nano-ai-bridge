@@ -68,6 +68,45 @@ class SharePointReader {
     return match.id;
   }
 
+  // params: { siteId? } — SharePointサイト内のリスト一覧を読み取り専用で取得する。
+  async listLists(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    const data = await this._graphFetch(`/sites/${targetSiteId}/lists?$select=id,displayName,name,webUrl,list,createdDateTime,lastModifiedDateTime&$top=200`);
+    const lists = (data.value || []).map((list) => ({
+      id: list.id,
+      displayName: list.displayName,
+      name: list.name,
+      webUrl: list.webUrl,
+      template: list.list?.template || null,
+      createdDateTime: list.createdDateTime || null,
+      lastModifiedDateTime: list.lastModifiedDateTime || null
+    }));
+    return { status: 'ok', siteId: targetSiteId, count: lists.length, lists, hasMore: Boolean(data['@odata.nextLink']) };
+  }
+
+  // params: { siteId?, displayName, description?, approvedByHuman } — 新規リスト作成。既存同名は作成せず返す。
+  async createList(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    if (params.approvedByHuman !== true) throw new Error('新規SharePointリスト作成には人間承認（approvedByHuman:true）が必要です');
+    const displayName = String(params.displayName || '').trim();
+    if (!displayName) throw new Error('displayNameは必須です');
+    const existing = await this._graphFetch(`/sites/${targetSiteId}/lists?$select=id,displayName,webUrl&$filter=${encodeURIComponent(`displayName eq '${displayName.replace(/'/g, "''")}'`)}`);
+    if ((existing.value || []).length) {
+      const list = existing.value[0];
+      return { status: 'ok', siteId: targetSiteId, created: false, reason: 'already_exists', list: { id: list.id, displayName: list.displayName, webUrl: list.webUrl } };
+    }
+    const made = await this._graphFetch(`/sites/${targetSiteId}/lists`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName, description: params.description || '', list: { template: 'genericList' } })
+    });
+    return { status: 'ok', siteId: targetSiteId, created: true, list: { id: made.id, displayName: made.displayName, webUrl: made.webUrl } };
+  }
+
   async ensureColumns(params = {}) {
     this._assertConfig();
     const targetSiteId = params.siteId || this.defaultSiteId;
