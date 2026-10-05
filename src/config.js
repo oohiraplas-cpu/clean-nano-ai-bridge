@@ -61,7 +61,15 @@ function getConfig(env = process.env) {
       githubBranch: env.POWERAPPS_GITHUB_BRANCH || 'main',
       githubRoot: env.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_AI依頼台帳/Source',
       githubFallbackBranches: (env.POWERAPPS_GITHUB_FALLBACK_BRANCHES || 'sync/cn-aiiraidaicho-live-review-20260926,main').split(',').map((v) => v.trim()).filter(Boolean),
-      githubFallbackRoots: (env.POWERAPPS_GITHUB_FALLBACK_ROOTS || 'powerapps/CN_AI依頼台帳/Source').split(',').map((v) => v.trim()).filter(Boolean)
+      githubFallbackRoots: (env.POWERAPPS_GITHUB_FALLBACK_ROOTS || 'powerapps/CN_AI依頼台帳/Source').split(',').map((v) => v.trim()).filter(Boolean),
+      azureDevOps: {
+        organization: env.POWERAPPS_AZDO_ORGANIZATION || '',
+        project: env.POWERAPPS_AZDO_PROJECT || '',
+        repository: env.POWERAPPS_AZDO_REPOSITORY || '',
+        branch: env.POWERAPPS_AZDO_BRANCH || 'main',
+        root: (env.POWERAPPS_AZDO_ROOT || '').replace(/^\\/+|\\/+$/g, ''),
+        pat: env.POWERAPPS_AZDO_PAT || ''
+      }
     },
     powerAutomate: {
       flows: parsePowerAutomateFlows(env.POWER_AUTOMATE_FLOWS)
