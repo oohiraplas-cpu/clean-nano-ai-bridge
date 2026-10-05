@@ -1,0 +1,19 @@
+{
+  "_note": "ユーザーが確認済みの事実のみを記載する。推測・仮置きの値は入れない。App ID・Environment・Branchはここに書かず、実環境から取得する。",
+  "publishApprover": {
+    "name": "野口英光",
+    "title": "代表取締役",
+    "basis": "ユーザー申告（解体工カレンダー公開の承認者として確定）"
+  },
+  "apps": {
+    "CN_AI依頼台帳": {
+      "aliases": ["CNAI依頼台帳", "AI依頼台帳", "依頼台帳", "解体工カレンダー", "CN_解体工カレンダー"],
+      "gitRoot": "powerapps/CN_AI依頼台帳/Source",
+      "notes": "解体工カレンダーは本アプリへ画面を追加して実装する方針（ユーザー申告）"
+    },
+    "CN_CompanyOS_電子日報_スマホ_v1": {
+      "aliases": ["電子日報アプリ", "CN_CompanyOS"],
+      "notes": "gitRootは未確認のため記載しない"
+    }
+  }
+}

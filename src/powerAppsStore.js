@@ -146,6 +146,7 @@ class PowerAppsStore {
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new TokenCache();
     this._dataverseTokenCache = new TokenCache();
+    this._bapTokenCache = new TokenCache();
     this._cache = new ResponseCache(config.cacheTtlMs || 300000);
     this._metrics = new Metrics();
     this._retry = new RetryStrategy();
@@ -258,6 +259,21 @@ class PowerAppsStore {
     } catch (error) {
       console.error('ログ記録失敗', error.message);
     }
+  }
+
+  // Environment一覧（Power Platform管理API）。権限不足なら呼び出し側でconfig値にフォールバックする。
+  async listEnvironments() {
+    const token = await this._bapTokenCache.getToken(this._fetch, this.tokenUrl, this.clientId, this.clientSecret, 'https://api.bap.microsoft.com/.default');
+    const response = await this._fetch('https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01', {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json' }
+    });
+    if (!response.ok) throw await buildUpstreamError('Environment一覧取得(BAP API)', response);
+    const data = await response.json();
+    return (data.value || []).map((e) => ({
+      environmentId: e.name,
+      displayName: e.properties?.displayName || null,
+      type: e.properties?.environmentSku || null
+    }));
   }
 
   async getAppInfo() {
