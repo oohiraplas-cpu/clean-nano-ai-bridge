@@ -1,0 +1,32 @@
+name: CN_AI依頼台帳 integrated backup and diagnostics
+# This workflow is proposed only on a feature branch. Schedule activates only if reviewed and merged to default branch.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write # required solely to dispatch the existing manual backup workflow
+concurrency:
+  group: cn-aiiraidaicho-backup-orchestrator
+  cancel-in-progress: false
+jobs:
+  integrated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      POWERAPPS_APP_ID: f42a9b03-59b9-49d3-a33b-0a210cd3d51e
+      POWERAPPS_ENVIRONMENT_ID: 4d0aab59-43ec-ecf1-a9d1-869f2517adbb
+      POWERAPPS_SOLUTION_UNIQUE_NAME: CN_AIIraiDaicho
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Validate target and regression tests
+        run: |
+          npm test
+          node -e "if(require('./scripts/diagnose-backup').checkTarget(process.env).some(x=>x.status!=='pass')) process.exit(1)"
+      - name: Trigger existing read-only export and verify fresh backup
+        run: node scripts/automatic-backup.js
