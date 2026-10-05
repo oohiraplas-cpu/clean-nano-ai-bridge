@@ -1,0 +1,43 @@
+name: Verify Production Bridge 28 Tools Five Pass
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/server.js'
+      - 'openapi.yaml'
+      - 'scripts/verify-production-bridge.js'
+      - '.github/workflows/verify-production-28-tools-five-pass.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-five-pass:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_7CE0F63C92A94343949217403D8BFDDA }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1E821E73D9CE47A08E5EC8626CAE0AE8 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D74E66B3A434F8094BFC1E6208A2B38 }}
+      - name: Verify production five consecutive passes
+        env:
+          VERIFICATION_MODE: smoke
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            echo "::notice title=Production verification::pass $i/5"
+            node scripts/verify-production-bridge.js
+            if [ "$i" -lt 5 ]; then sleep 5; fi
+          done
