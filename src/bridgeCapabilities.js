@@ -139,6 +139,7 @@ function categorizeTool(toolName) {
  */
 function isReadOnlyTool(toolName) {
   return [
+    'get_executive_policy', 'get_executive_brief',
     'health_check',
     'get_tasks',
     'get_next_task',
@@ -511,3 +512,4 @@ module.exports = {
   comparePowerAppsWithGit,
   validatePowerAppsSource
 };
+

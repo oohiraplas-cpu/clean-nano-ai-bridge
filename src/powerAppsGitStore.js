@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const applicationRules = require('../config/application-rules.json');
 
 class OAuthTokenCache {
   constructor() {
@@ -49,6 +50,9 @@ class PowerAppsGitStore {
     // 更新・保存・公開の対象にしてよい唯一のbranch（正本branch）。fallback branchは読み取り専用。
     this.canonicalBranch = this.githubBranch;
     this.githubRoot = (config.githubRoot || '').replace(/^\/+|\/+$/g, '');
+    this.sourceControl = Object.values(applicationRules.apps || {}).find(rule =>
+      rule.sourceControl && (rule.sourceControl.solutionUniqueName === this.solutionUniqueName ||
+        (rule.gitRoot === this.githubRoot && rule.sourceControl.bridgeMirrorRepository === `${this.githubOwner}/${this.githubRepo}`)))?.sourceControl || null;
     this.githubFallbackBranches = [...new Set([...(config.githubFallbackBranches || []), 'sync/cn-aiiraidaicho-live-review-20260926', 'main'].filter(Boolean))];
     this.githubFallbackRoots = [...new Set([...(config.githubFallbackRoots || []), 'powerapps/CN_AI依頼台帳/Source'].map((value) => String(value || '').replace(/^\/+|\/+$/g, '')).filter(Boolean))];
     this._fetch = config.fetchImpl || fetch;
@@ -140,6 +144,9 @@ class PowerAppsGitStore {
             branch,
             canonicalBranch: this.canonicalBranch,
             isCanonicalBranch: branch === this.canonicalBranch,
+            sourceControl: this.sourceControl,
+            writable: branch === this.canonicalBranch && !this.sourceControl?.bridgeMirrorState,
+            sourceState: this.sourceControl?.bridgeMirrorState || (branch === this.canonicalBranch ? 'configured' : 'hold'),
             content: Buffer.from(data.content || '', 'base64').toString('utf8')
           };
         } catch (error) {
@@ -167,11 +174,18 @@ class PowerAppsGitStore {
    * branch未指定なら何もしない（後方互換）。
    */
   assertCanonicalBranch(branch, action = '更新') {
+    this.assertSourceControlCompatible(action);
     if (branch === undefined || branch === null) return { checked: false };
     if (branch !== this.canonicalBranch) {
       throw this._branchConflict(`branch不一致のため${action}を拒否しました: 指定=${branch}, 正本branch=${this.canonicalBranch}`);
     }
     return { checked: true, branch };
+  }
+
+  assertSourceControlCompatible(action = '更新') {
+    if (this.sourceControl?.bridgeMirrorState === 'hold') {
+      throw this._branchConflict(`接続先不一致のため${action}を保留: ${this.sourceControl.holdReason}`);
+    }
   }
 
   async updateSourceFile(relativePath, content, message, expectedBranch) {

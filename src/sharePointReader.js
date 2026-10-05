@@ -162,6 +162,7 @@ class SharePointReader {
       listId: targetListId,
       count: items.length,
       items,
+      hasMore: Boolean(data['@odata.nextLink']),
       columns: schema.columns
     };
   }

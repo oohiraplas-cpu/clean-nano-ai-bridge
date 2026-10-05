@@ -9,6 +9,56 @@
  */
 
 const { createCommonResponse } = require('./bridgeCapabilities');
+const executivePolicy = require('./executivePolicy.json');
+const { maskDeep } = require('./secretMasking');
+
+// Existing enhanced-feature service; these tools never write business records.
+function getExecutivePolicy({ query = '' } = {}) {
+  if (typeof query !== 'string' || query.length > 4000) throw new Error('queryは4000文字以内の文字列です');
+  const matched = executivePolicy.roles.filter(role => role.keywords.some(word => query.toLowerCase().includes(word.toLowerCase())));
+  return createCommonResponse({ status: 'ok', verified: true,
+    data: { policy: JSON.parse(JSON.stringify(executivePolicy)), routing: {
+      roles: (matched.length ? matched : executivePolicy.roles.slice(0, 1)).map(role => role.name),
+      method: 'keyword-advisory', executionState: '未実行', userEntryPoint: 'CNAI'
+    } }, summary: 'CNAI Executive vNext方針を取得（業務操作は未実行）' });
+}
+
+async function getExecutiveBrief({ sharePointReader, sources = [] } = {}) {
+  if (!Array.isArray(sources) || sources.length > 8) throw new Error('sourcesは8件以内の配列です');
+  // Validate the entire request before reading any external resource.
+  for (const source of sources) {
+    if (!source || !executivePolicy.managementData.includes(source.metric)) throw new Error('metricはmanagementDataに存在する項目を指定してください');
+    if (!(typeof source.listId === 'string' && source.listId.trim()) && !(typeof source.listName === 'string' && source.listName.trim())) throw new Error('listIdまたはlistNameが必要です');
+    if (typeof source.field !== 'string' || !source.field.trim()) throw new Error('実在する列の内部名fieldが必要です');
+    if (source.top !== undefined && (!Number.isInteger(source.top) || source.top < 1 || source.top > 200)) throw new Error('topは1～200の整数です');
+  }
+  const originalValues = [];
+  const errors = [];
+  const confirmed = new Set();
+  for (const source of sources) {
+    try {
+      if (typeof sharePointReader?.listItems !== 'function') throw new Error('SharePoint取得機能が未構成です');
+      const result = await sharePointReader.listItems({ siteId: source.siteId, listId: source.listId, listName: source.listName, top: source.top || 50 });
+      if (result.status !== 'ok' || !Array.isArray(result.columns) || !Array.isArray(result.items)) throw new Error('取得結果または列定義を確認できません');
+      if (!result.columns.some(column => column.name === source.field || column.internalName === source.field)) throw new Error('指定列の実在性を確認できません');
+      const records = result.items.map(item => ({ itemId: item.itemId, value: item.fields?.[source.field] ?? null }));
+      originalValues.push({ metric: source.metric, siteId: result.siteId, listId: result.listId, field: source.field,
+        records, scope: '取得した項目のみ。期間・全件・通貨・単位は未検証。全社集計に使用不可。',
+        complete: result.hasMore === false, retrievedAt: new Date().toISOString() });
+      if (records.some(record => record.value !== null)) confirmed.add(source.metric);
+    } catch {
+      // Do not reflect raw upstream errors, which can contain credentials.
+      errors.push({ metric: source.metric, status: '失敗', reason: '取得または列検証に失敗。対象リスト・列・接続を確認してください。' });
+    }
+  }
+  const missingData = executivePolicy.managementData.filter(metric => !confirmed.has(metric))
+    .map(metric => ({ metric, sourceCandidates: ['既存SharePoint Lists', '既存SharePoint文書ライブラリの原資料'], verified: false }));
+  return createCommonResponse({ status: errors.length ? 'partial' : 'ok', verified: missingData.length === 0 && errors.length === 0,
+    data: { executionState: errors.length ? '失敗' : sources.length ? '成功' : '未実行', priorities: [...executivePolicy.priorities],
+      originalValues: maskDeep(originalValues, [sharePointReader?.clientSecret]), calculatedValues: [], missingData, retrievalErrors: errors },
+    unconfirmed: ['全社・全期間集計', '通貨・単位', '原資料との照合'],
+    summary: `${originalValues.length}取得元を確認。不足${missingData.length}項目。未確認値の推測・正本更新はしていません。` });
+}
 
 /**
  * SharePoint List のスキーマ情報を取得
@@ -44,7 +94,10 @@ async function getSharePointListSchema(options = {}) {
     // SharePoint List スキーマ取得（カスタムメソッド）
     let columns = [];
     try {
-      columns = await sharePointReader.listColumns?.({ siteId, listId }) || [];
+      if (typeof sharePointReader.listColumns !== 'function') throw new Error('列取得機能が未構成です');
+      const result = await sharePointReader.listColumns({ siteId, listId });
+      columns = Array.isArray(result) ? result : result?.columns;
+      if (!Array.isArray(columns)) throw new Error('列取得結果を確認できません');
     } catch (error) {
       if (error.message?.includes('404')) {
         errors.push(`List not found: ${listId}`);
@@ -122,7 +175,9 @@ async function listRegisteredPowerAutomateFlows(options = {}) {
     // 登録済みフロー情報を取得（カスタムメソッド）
     let flows = [];
     try {
-      flows = await powerAutomateRunner.listRegisteredFlows?.() || [];
+      if (typeof powerAutomateRunner.listRegisteredFlows !== 'function') throw new Error('登録フロー一覧機能が未構成です');
+      flows = await powerAutomateRunner.listRegisteredFlows();
+      if (!Array.isArray(flows)) throw new Error('登録フロー一覧を確認できません');
     } catch (error) {
       errors.push(`Failed to list flows: ${error.message}`);
     }
@@ -158,6 +213,7 @@ async function listRegisteredPowerAutomateFlows(options = {}) {
       status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok',
       data: { 
         flowCount: flowList.length,
+        scope: 'Bridge登録済みフローのみ。Power Platform環境全体の一覧ではありません。',
         flows: flowList
       },
       verified: errors.length === 0,
@@ -415,6 +471,8 @@ async function inspectPowerAppsStructure(options = {}) {
 }
 
 module.exports = {
+  getExecutivePolicy,
+  getExecutiveBrief,
   getSharePointListSchema,
   listRegisteredPowerAutomateFlows,
   getPowerAutomateRunResult,
