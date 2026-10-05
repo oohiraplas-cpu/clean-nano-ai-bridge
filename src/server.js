@@ -848,8 +848,8 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (body.method === 'initialize') {
         return res.status(200).json(jsonRpcResult(id, {
           protocolVersion: params.protocolVersion || '2025-06-18',
-          capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.0.0' }
+          capabilities: { tools: { listChanged: true } },
+          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.1.0' }
         }));
       }
       if (body.method === 'tools/list') {
