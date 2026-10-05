@@ -12,8 +12,12 @@ Screens:
       Fill: =RGBA(8, 8, 9, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        IfError(
+            If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
+            ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))),
+            Clear(colAttend);
+            Notify("データ接続を確認してください。画面操作は継続できます。", NotificationType.Warning)
+        )
     Children:
       - S1_Title:
           Control: Label@2.5.1
