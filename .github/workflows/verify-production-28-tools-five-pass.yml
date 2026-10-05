@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'src/server.js'
+      - 'src/executivePolicy.json'
       - 'openapi.yaml'
       - 'scripts/verify-production-bridge.js'
       - '.github/workflows/verify-production-28-tools-five-pass.yml'
