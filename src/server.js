@@ -50,6 +50,28 @@ const {
   validateGetPermissionsParams,
   validateUpdatePermissionsParams
 } = require('./bridgeExtensionsValidation');
+const {
+  getBridgeCapabilities,
+  checkDependencies,
+  comparePowerAppsWithGit,
+  validatePowerAppsSource,
+  createCommonResponse
+} = require('./bridgeCapabilities');
+const {
+  getSharePointListSchema,
+  listRegisteredPowerAutomateFlows,
+  getPowerAutomateRunResult,
+  inspectPowerAppsStructure
+} = require('./bridgeEnhancedFeatures');
+const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+
+const resolverCache = new WeakMap();
+function getResolver(powerAppsStore, powerAppsGitStore) {
+  if (!resolverCache.has(powerAppsStore)) {
+    resolverCache.set(powerAppsStore, new AppTargetResolver({ powerAppsStore, powerAppsGitStore }));
+  }
+  return resolverCache.get(powerAppsStore);
+}
 
 function createDefaultStore(config) {
   if (config.taskStoreBackend === 'sharepoint') return new SharePointTaskStore(config.sharepoint);
@@ -91,7 +113,10 @@ const MCP_METHODS = Object.freeze([
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
-  'get_permissions', 'update_permissions'
+  'get_permissions', 'update_permissions',
+  'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
+  'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
+  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -479,6 +504,123 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['targetType', 'action', 'principalId', 'principalType', 'roleName', 'approvedByHuman'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'get_bridge_capabilities',
+    description: 'BridgeのVersion、MCP仕様対応状況、公開ツール一覧、制約情報、セキュリティ設定を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'check_dependencies',
+    description: 'Bridge接続先（Power Apps、SharePoint、Power Automate、Git、Azure）のhealth状態を確認します。Bridge全体が正常と判定するには全依存先が健全である必要があります。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'compare_powerapps_with_git',
+    description: 'Power AppsソースとGit正本ブランチのファイル内容を比較します。一致、Power Apps側が新しい、Git側が新しい、競合等の状態を判定します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetFile: { type: 'string', description: '比較するファイルの相対パス（例：Source/Home.pa.yaml）' },
+        targetApp: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'validate_powerapps_source',
+    description: 'Power Appsソースファイルの構文、Secret混入、ファイルサイズ等を検査します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceContent: { type: 'string', description: '検査するソースコンテンツ' },
+        relativePath: { type: 'string', description: 'ソースファイルの相対パス' },
+        expectedBranch: { type: 'string', description: '期待するbranch名（省略可）' }
+      },
+      required: ['sourceContent'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_sharepoint_list_schema',
+    description: 'SharePoint Listのスキーマ情報（列定義、型、必須、一意制約等）を取得します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePointサイトID' },
+        listId: { type: 'string', description: 'ListのID' }
+      },
+      required: ['siteId', 'listId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_registered_power_automate_flows',
+    description: 'Bridge登録済みのPower Automateフロー一覧を取得します。フロー名、用途、入力定義、承認要否を返します。トリガーURLとSAS値は返されません。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_power_automate_run_result',
+    description: 'Power Automateフロー実行後、実行結果（成功/失敗、各アクション状態、エラー）を取得します。「受付成功」と「業務処理成功」を区別します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'string', description: 'フロー実行ID' }
+      },
+      required: ['runId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'inspect_powerapps_structure',
+    description: 'Power Appsアプリの構造を解析します。画面一覧、コントロール、コンポーネント、データソース、コネクタ、Power Fx参照、警告を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'resolve_app_target',
+    description: 'アプリ名（例: CN_AI依頼台帳。別名・部分一致可）から、App ID・Environment・正本Branch・gitRootを実環境から解決します。取得できなかった項目は推測せずunconfirmedで返します。曖昧な場合は候補を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'アプリ名または別名（例: CN_AI依頼台帳）' } },
+      required: ['query'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_power_apps',
+    description: '環境内のPower Appsキャンバスアプリ一覧（App ID・名称・公開日時）をDataverseから取得します。取得できない場合は構成済みアプリ1件のみ返し、その旨をwarningsに示します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'list_environments',
+    description: 'Power Platform管理APIからEnvironment一覧を取得します。権限不足の場合は構成済みEnvironment IDのみ（名称・種別は未確認）を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'list_git_branches',
+    description: 'GitHub上の実在Branch一覧と、書き込み対象の正本Branch（構成値）を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_application_rules',
+    description: 'ユーザー確認済みの設定ファイルに記載されたルール（公開承認者・gitRoot・別名）を返します。記載のない項目は未確認として扱ってください。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { appName: { type: 'string', description: 'アプリケーション名（例: CN_AI依頼台帳）' } },
+      required: ['appName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'export_knowledge_snapshot',
+    description: 'アプリ・Environment・Branch・承認者の取得結果をCopilot Studio Knowledge用のMarkdownとして生成します。生成のみで、どこにも保存・更新しません。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   }
 ]);
 
@@ -712,6 +854,83 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(bridgeServices.permissions.updatePermissions(params));
   }
+  if (method === 'get_bridge_capabilities') {
+    return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18' });
+  }
+  if (method === 'check_dependencies') {
+    return checkDependencies({
+      powerAppsStore,
+      sharePointReader,
+      powerAutomateRunner,
+      powerAppsGitStore
+    });
+  }
+  if (method === 'compare_powerapps_with_git') {
+    return comparePowerAppsWithGit({
+      powerAppsStore,
+      powerAppsGitStore,
+      targetFile: params.targetFile,
+      targetApp: params.targetApp
+    });
+  }
+  if (method === 'validate_powerapps_source') {
+    return validatePowerAppsSource({
+      sourceContent: params.sourceContent,
+      relativePath: params.relativePath,
+      expectedBranch: params.expectedBranch,
+      powerAppsGitStore
+    });
+  }
+  if (method === 'get_sharepoint_list_schema') {
+    return getSharePointListSchema({
+      sharePointReader,
+      siteId: params.siteId,
+      listId: params.listId
+    });
+  }
+  if (method === 'list_registered_power_automate_flows') {
+    return listRegisteredPowerAutomateFlows({
+      powerAutomateRunner
+    });
+  }
+  if (method === 'get_power_automate_run_result') {
+    return getPowerAutomateRunResult({
+      powerAutomateRunner,
+      runId: params.runId
+    });
+  }
+  if (method === 'inspect_powerapps_structure') {
+    return inspectPowerAppsStructure({
+      powerAppsStore,
+      appId: params.appId
+    });
+  }
+  if (method === 'resolve_app_target') {
+    return getResolver(powerAppsStore, powerAppsGitStore).resolve(params.query);
+  }
+  if (method === 'list_power_apps') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const list = await r.listApps();
+    return createCommonResponse({ status: list.verified ? 'ok' : 'error', verified: list.verified, data: { source: list.source, apps: list.apps }, warnings: list.warnings, summary: `アプリ${list.apps.length}件（取得元: ${list.source}）` });
+  }
+  if (method === 'list_environments') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const envs = await r.listEnvironments();
+    return createCommonResponse({ status: envs.verified ? 'ok' : 'partial', verified: envs.verified, data: envs, warnings: envs.warnings, summary: `Environment${envs.environments.length}件（取得元: ${envs.source}）` });
+  }
+  if (method === 'list_git_branches') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const br = await r.listBranches();
+    return createCommonResponse({ status: br.verified ? 'ok' : 'error', verified: br.verified, data: br, warnings: br.warnings, summary: `Branch${br.branches.length}件（正本: ${br.canonicalBranch}）` });
+  }
+  if (method === 'get_application_rules') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    return createCommonResponse({ status: 'ok', verified: false, data: r.getRules(params.appName), warnings: r.rulesWarning ? [r.rulesWarning] : [], summary: `${params.appName} のルール（設定ファイル記載分のみ）` });
+  }
+  if (method === 'export_knowledge_snapshot') {
+    return getResolver(powerAppsStore, powerAppsGitStore).exportKnowledgeSnapshot();
+  }
+  throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }
 
 // 新ツール（検証・デプロイ・権限）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。

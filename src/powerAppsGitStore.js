@@ -107,6 +107,11 @@ class PowerAppsGitStore {
     return response.status === 204 ? null : response.json();
   }
 
+  // 読み取り専用の探索用に、GitHub API呼び出しを公開する（書き込み系は既存の正本branchガード経由のみ）。
+  async githubRequest(path) {
+    return this._githubRequest(path);
+  }
+
   async getSourceFile(relativePath) {
     const clean = String(relativePath || '').replace(/^\/+/, '');
     if (!clean) throw new Error('relativePathが必要です');
