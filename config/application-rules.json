@@ -7,7 +7,13 @@
   },
   "apps": {
     "CN_AI依頼台帳": {
-      "aliases": ["CNAI依頼台帳", "AI依頼台帳", "依頼台帳", "解体工カレンダー", "CN_解体工カレンダー"],
+      "aliases": [
+        "CNAI依頼台帳",
+        "AI依頼台帳",
+        "依頼台帳",
+        "解体工カレンダー",
+        "CN_解体工カレンダー"
+      ],
       "gitRoot": "powerapps/CN_AI依頼台帳/Source",
       "sourceControl": {
         "provider": "AzureDevOps",
@@ -22,12 +28,18 @@
         "basis": "Power AppsソリューションのGit接続設定を目視取得。実行時の再検証は未実装。",
         "bridgeMirrorRepository": "oohiraplas-cpu/clean-nano-ai-bridge",
         "bridgeMirrorState": "hold",
-        "holdReason": "Bridge GitHub adapterとネイティブAzure DevOps接続が不一致。GitHub旧レビューexportはライブ正本として使用禁止。"
+        "holdReason": "Power Appsの読取・更新・保存・公開はAzure DevOps正本のみ許可。GitHubはBridgeコード管理専用で、Power Apps旧レビューexportへの書込みは禁止。",
+        "bridgeRole": "code_only",
+        "powerAppsAuthority": "azure_devops_only",
+        "legacyPowerAppsGitHubAdapter": "disabled"
       },
-      "notes": "解体工カレンダーは本アプリへ画面を追加して実装する方針（ユーザー申告）"
+      "notes": "Power Apps正本はAzure DevOpsのみ。GitHub旧レビューexportは参照用・書込禁止。接続先不一致時はFail-Closed。"
     },
     "CN_CompanyOS_電子日報_スマホ_v1": {
-      "aliases": ["電子日報アプリ", "CN_CompanyOS"],
+      "aliases": [
+        "電子日報アプリ",
+        "CN_CompanyOS"
+      ],
       "notes": "gitRootは未確認のため記載しない"
     }
   }

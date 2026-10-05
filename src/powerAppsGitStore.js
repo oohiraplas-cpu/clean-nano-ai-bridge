@@ -145,8 +145,12 @@ class PowerAppsGitStore {
             canonicalBranch: this.canonicalBranch,
             isCanonicalBranch: branch === this.canonicalBranch,
             sourceControl: this.sourceControl,
-            writable: branch === this.canonicalBranch && !this.sourceControl?.bridgeMirrorState,
-            sourceState: this.sourceControl?.bridgeMirrorState || (branch === this.canonicalBranch ? 'configured' : 'hold'),
+            writable: branch === this.canonicalBranch &&
+              !this.sourceControl?.bridgeMirrorState &&
+              this.sourceControl?.powerAppsAuthority !== 'azure_devops_only',
+            sourceState: this.sourceControl?.powerAppsAuthority === 'azure_devops_only'
+              ? 'azure_devops_authority'
+              : (this.sourceControl?.bridgeMirrorState || (branch === this.canonicalBranch ? 'configured' : 'hold')),
             content: Buffer.from(data.content || '', 'base64').toString('utf8')
           };
         } catch (error) {
@@ -183,6 +187,11 @@ class PowerAppsGitStore {
   }
 
   assertSourceControlCompatible(action = '更新') {
+    if (this.sourceControl?.powerAppsAuthority === 'azure_devops_only') {
+      throw this._branchConflict(
+        `Power Appsの${action}をGitHubアダプター経由では実行できません。正本はAzure DevOpsのみです。`
+      );
+    }
     if (this.sourceControl?.bridgeMirrorState === 'hold') {
       throw this._branchConflict(`接続先不一致のため${action}を保留: ${this.sourceControl.holdReason}`);
     }
