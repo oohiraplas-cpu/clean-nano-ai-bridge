@@ -686,8 +686,8 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  // 既存28ツール + 優先A機能4ツール + 優先B機能4ツール + Knowledge/対象解決6ツール = 42ツール。
-  assert.equal(listedBody.result.tools.length, 42);
+  // 既存42ツール + Executive取得2ツール。旧ツールの順序を維持。
+  assert.equal(listedBody.result.tools.length, 44);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
@@ -960,7 +960,7 @@ test('MCP_METHODSとMCP_PUBLIC_TOOLSの登録が一致し、新22ツールとget
   assert.deepEqual([...publicNames].sort(), [...MCP_METHODS].sort());
   assert.equal(new Set(publicNames).size, publicNames.length, '重複登録なし');
   for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result', 'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source', 'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target']) assert.ok(publicNames.includes(name), name);
-  assert.equal(publicNames.length, 42);
+  assert.equal(publicNames.length, 44);
   assert.deepEqual(publicNames.slice(0, 18), LEGACY_18_TOOL_NAMES, '既存18ツールは名前・順序とも不変');
 });
 

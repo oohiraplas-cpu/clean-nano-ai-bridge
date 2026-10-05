@@ -9,6 +9,21 @@
     "CN_AI依頼台帳": {
       "aliases": ["CNAI依頼台帳", "AI依頼台帳", "依頼台帳", "解体工カレンダー", "CN_解体工カレンダー"],
       "gitRoot": "powerapps/CN_AI依頼台帳/Source",
+      "sourceControl": {
+        "provider": "AzureDevOps",
+        "organization": "cleannano",
+        "project": "clean-nano-powerplatform",
+        "repository": "clean-nano-powerplatform",
+        "branch": "main",
+        "folder": "powerapps/CN_AI依頼台帳/Source",
+        "environmentId": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
+        "solutionUniqueName": "CN_AIIraiDaicho",
+        "observedAt": "2026-10-05",
+        "basis": "Power AppsソリューションのGit接続設定を目視取得。実行時の再検証は未実装。",
+        "bridgeMirrorRepository": "oohiraplas-cpu/clean-nano-ai-bridge",
+        "bridgeMirrorState": "hold",
+        "holdReason": "Bridge GitHub adapterとネイティブAzure DevOps接続が不一致。GitHub旧レビューexportはライブ正本として使用禁止。"
+      },
       "notes": "解体工カレンダーは本アプリへ画面を追加して実装する方針（ユーザー申告）"
     },
     "CN_CompanyOS_電子日報_スマホ_v1": {

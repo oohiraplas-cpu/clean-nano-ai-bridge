@@ -10,6 +10,13 @@ class PowerAutomateRunner {
     this._fetch = config.fetchImpl || fetch;
   }
 
+  listRegisteredFlows() {
+    return Object.entries(this.flows).map(([flowKey, url]) => ({
+      flowKey, displayName: flowKey, enabled: typeof url === 'string' && url.length > 0,
+      triggerType: 'HTTP', requiresApproval: true
+    }));
+  }
+
   async runFlow(flowKey, payload) {
     const url = this.flows[flowKey];
     if (!url) {

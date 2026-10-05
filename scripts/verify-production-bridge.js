@@ -39,6 +39,8 @@ async function main() {
   report.tools = { httpStatus: listing.httpStatus, count: actual?.length || 0, names: actual?.map(t => t.name) || [], contractSha256: actual ? hash(actual) : null, first28MatchesCheckout: actual?.length >= 28 && hash(actual.slice(0, 28)) === hash(MCP_PUBLIC_TOOLS.slice(0, 28)), matchesCheckout: actual && hash(actual) === hash(MCP_PUBLIC_TOOLS) };
   if (report.mode !== 'baseline' && actual) {
     await call('health_check');
+    if (actual.some(t => t.name === 'get_executive_policy')) await call('get_executive_policy', { query: '利益・未入金・銀行融資' });
+    if (actual.some(t => t.name === 'get_executive_brief')) await call('get_executive_brief', { sources: [] });
     await call('get_powerapps_app');
     await call('get_powerapps_state');
     const source = await call('get_powerapps_source', { relativePath: 'App.pa.yaml' });
@@ -67,3 +69,4 @@ async function main() {
   if (!gate) process.exitCode = 1;
 }
 main().catch(() => { console.error('::error::Production verification could not read Azure metadata or complete safe requests; no setting values or response bodies emitted.'); process.exitCode = 1; });
+

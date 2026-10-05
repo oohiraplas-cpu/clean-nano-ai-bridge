@@ -58,6 +58,8 @@ const {
   createCommonResponse
 } = require('./bridgeCapabilities');
 const {
+  getExecutivePolicy,
+  getExecutiveBrief,
   getSharePointListSchema,
   listRegisteredPowerAutomateFlows,
   getPowerAutomateRunResult,
@@ -104,6 +106,7 @@ function apiKeyMiddleware(getKey) {
 }
 
 const MCP_METHODS = Object.freeze([
+  'get_executive_policy', 'get_executive_brief',
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
@@ -621,6 +624,20 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     name: 'export_knowledge_snapshot',
     description: 'アプリ・Environment・Branch・承認者の取得結果をCopilot Studio Knowledge用のMarkdownとして生成します。生成のみで、どこにも保存・更新しません。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_executive_policy',
+    description: 'CNAI Executive vNext：利益・入金回収・資金繰り優先の経営執行支援方針と14役割の振り分け候補、承認・再利用・正本・改修順序を取得。読み取り専用。業務操作は行わない。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: { type: 'object', properties: { query: { type: 'string', maxLength: 4000, description: '相談内容（秘密値は入力しない）' } }, additionalProperties: false }
+  },
+  {
+    name: 'get_executive_brief',
+    description: '実在確認済みの既存SharePointリスト・列を指定して経営資料の原本値と不足データを取得。取得範囲のみで全社集計・予測・書き込みは行わない。取得先未指定時は不足項目を返す。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: { type: 'object', properties: { sources: { type: 'array', maxItems: 8, items: {
+      type: 'object', properties: { metric: { type: 'string', enum: require('../config/executive-policy.json').managementData }, siteId: { type: 'string' }, listId: { type: 'string' }, listName: { type: 'string' }, field: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['metric', 'field'], anyOf: [{ required: ['listId'] }, { required: ['listName'] }], additionalProperties: false
+    } } }, additionalProperties: false }
   }
 ]);
 
@@ -748,6 +765,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertSourceControlCompatible?.('編集')));
     return params.updateData
       ? powerAppsStore.updateApp(params.updateData)
       : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message, params.branch));
@@ -905,6 +923,8 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       appId: params.appId
     });
   }
+  if (method === 'get_executive_policy') return withUpstreamErrorStatus(Promise.resolve().then(() => getExecutivePolicy(params)), 400);
+  if (method === 'get_executive_brief') return withUpstreamErrorStatus(getExecutiveBrief({ ...params, sharePointReader }), 400);
   if (method === 'resolve_app_target') {
     return getResolver(powerAppsStore, powerAppsGitStore).resolve(params.query);
   }
