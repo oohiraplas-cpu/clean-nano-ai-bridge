@@ -28,9 +28,9 @@ jobs:
       - name: Azure login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_7CE0F63C92A94343949217403D8BFDDA }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1E821E73D9CE47A08E5EC8626CAE0AE8 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6D74E66B3A434F8094BFC1E6208A2B38 }}
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
       - name: Verify production five consecutive passes
         env:
           VERIFICATION_MODE: smoke
