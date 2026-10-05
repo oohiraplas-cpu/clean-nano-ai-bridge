@@ -81,8 +81,8 @@ test('observed native Azure DevOps mismatch blocks source writes, saves and publ
   let calls = 0;
   const store = new PowerAppsGitStore({ solutionUniqueName: 'CN_AIIraiDaicho', githubBranch: 'main', fetchImpl() { calls++; throw new Error('unexpected write'); } });
   assert.throws(() => store.assertCanonicalBranch('main', '公開'), /正本はAzure DevOpsのみ/);
-  assert.throws(() => store.assertCanonicalBranch(undefined, '保存'), /接続先不一致/);
-  await assert.rejects(store.updateSourceFile('App.pa.yaml', 'new', 'message', 'main'), /接続先不一致/);
+  assert.throws(() => store.assertCanonicalBranch(undefined, '保存'), /正本はAzure DevOpsのみ/);
+  await assert.rejects(store.updateSourceFile('App.pa.yaml', 'new', 'message', 'main'), /正本はAzure DevOpsのみ/);
   assert.equal(calls, 0);
 });
 test('live target resolution cannot claim native repository parity from GitHub directory existence', async () => {
