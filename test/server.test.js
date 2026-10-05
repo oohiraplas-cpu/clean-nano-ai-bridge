@@ -686,8 +686,8 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   });
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
-  // 既存28ツール + 優先A機能4ツール + 優先B機能4ツール + Knowledge/対象解決6ツール = 42ツール。
-  assert.equal(listedBody.result.tools.length, 42);
+  // 既存28ツール + 優先A機能4ツール + 優先B機能4ツール + Knowledge/対象解決6ツール + 変更ワークフロー4ツール = 46ツール。
+  assert.equal(listedBody.result.tools.length, 46);
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
   assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
@@ -959,8 +959,8 @@ test('MCP_METHODSとMCP_PUBLIC_TOOLSの登録が一致し、新22ツールとget
   const publicNames = MCP_PUBLIC_TOOLS.map((tool) => tool.name);
   assert.deepEqual([...publicNames].sort(), [...MCP_METHODS].sort());
   assert.equal(new Set(publicNames).size, publicNames.length, '重複登録なし');
-  for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result', 'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source', 'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target']) assert.ok(publicNames.includes(name), name);
-  assert.equal(publicNames.length, 42);
+  for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result', 'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source', 'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'list_tools', 'save_powerapps_source', 'get_powerapps_audit', 'rollback_powerapps_change']) assert.ok(publicNames.includes(name), name);
+  assert.equal(publicNames.length, 46);
   assert.deepEqual(publicNames.slice(0, 18), LEGACY_18_TOOL_NAMES, '既存18ツールは名前・順序とも不変');
 });
 
@@ -1417,9 +1417,10 @@ test('save_powerapps_app / publish_powerapps_app: branch不一致は拒否し、
   assert.equal(saveOk.isError, false);
   const saveCompat = await rpc(server, 'save_powerapps_app', {});
   assert.equal(saveCompat.isError, false, 'branch未指定は後方互換');
-  const publishOk = await rpc(server, 'publish_powerapps_app', {});
-  assert.equal(publishOk.isError, false);
-  assert.equal(publishOk.structuredContent.status, 'ok');
+  const publishUnapproved = await rpc(server, 'publish_powerapps_app', {});
+  assert.equal(publishUnapproved.structuredContent.status, 'APPROVAL_REQUIRED', '承認なしの公開は拒否する');
+  assert.equal(publishUnapproved.structuredContent.published, false);
+  assert.equal(mock.calls.filter((c) => c.url.includes('/publish')).length, 0, '承認なしでは公開しない');
   assert.equal((await rpc(server, 'publish_powerapps_app', { branch: '' })).isError, true);
 });
 
@@ -1489,4 +1490,61 @@ test('既存18ツールはtools/callでも引き続き呼び出せる（新ツ�
   const unknownLegacy = await legacy(server, 'does_not_exist', {});
   assert.equal(unknownLegacy.httpStatus, 400);
   for (const name of LEGACY_18_TOOL_NAMES) assert.ok(MCP_METHODS.includes(name), name);
+});
+
+// ---- 変更ワークフロー（list_tools / save_powerapps_source / get_powerapps_audit / rollback_powerapps_change） ----
+
+test('list_tools: 実在する46ツールのバージョン・実行可否を返し、不足設定は名前のみ（秘密値なし）', async (t) => {
+  const server = await newServer(t, { powerAppsOverrides: gitOverrides({ githubToken: '' }) });
+  const result = await rpc(server, 'list_tools', {});
+  assert.equal(result.isError, false);
+  const body = result.structuredContent;
+  assert.equal(body.count, MCP_PUBLIC_TOOLS.length);
+  assert.deepEqual(body.tools.map((tool) => tool.name), MCP_PUBLIC_TOOLS.map((tool) => tool.name));
+  const byName = Object.fromEntries(body.tools.map((tool) => [tool.name, tool]));
+  for (const name of ['save_powerapps_source', 'get_powerapps_audit', 'rollback_powerapps_change', 'list_tools', 'resolve_app_target']) assert.ok(byName[name], name);
+  assert.equal(byName.save_powerapps_source.executable, false);
+  assert.ok(byName.save_powerapps_source.missingConfiguration.includes('POWERAPPS_GITHUB_TOKEN'));
+  assert.equal(byName.health_check.executable, true);
+  assert.equal(byName.get_powerapps_audit.readOnly, true);
+  assert.equal(byName.save_powerapps_source.readOnly, false);
+  assert.ok(body.tools.every((tool) => typeof tool.version === 'string'));
+  assert.ok(!JSON.stringify(body).includes('test-secret'));
+});
+
+test('health_check: 既定は従来どおり{status:ok}、includeDependencies:trueで依存先を秘密値なしで返す', async (t) => {
+  const mock = routedFetch([tokenRoute]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl });
+  assert.deepEqual((await rpc(server, 'health_check', {})).structuredContent, { status: 'ok' });
+  const deep = await rpc(server, 'health_check', { includeDependencies: true });
+  assert.equal(deep.isError, false);
+  assert.ok(deep.structuredContent.dependencies);
+  assert.ok(!JSON.stringify(deep.structuredContent).includes('test-secret'));
+});
+
+test('get_powerapps_sourceはsourceHash・relativePath・branchを返す', async (t) => {
+  const mock = routedFetch([githubContentsRoute({ main: { [`${GITHUB_ROOT}/A.pa.yaml`]: 'x: 1' } })]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
+  const source = (await rpc(server, 'get_powerapps_source', { relativePath: 'A.pa.yaml' })).structuredContent;
+  assert.equal(source.sourceHash, source.sha);
+  assert.equal(source.relativePath, 'A.pa.yaml');
+  assert.equal(source.branch, 'main');
+});
+
+test('save_powerapps_source / get_powerapps_audit / rollback_powerapps_change: MCP経由でも安全停止し、必須項目なしは入力エラー', async (t) => {
+  const mock = routedFetch([githubContentsRoute({ main: { [`${GITHUB_ROOT}/A.pa.yaml`]: 'Fill: =Red\n' } }), githubPutRoute]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
+  const base = { requestId: 'srv-1', target: 'A.pa.yaml', changeType: 'STYLE', expectedBranch: 'main', expectedHash: 'a'.repeat(40), content: 'Fill: =Blue\n', changes: { description: 'x', added: ['Fill: =Blue'], removed: ['Fill: =Red'] } };
+  const conflict = (await rpc(server, 'save_powerapps_source', base)).structuredContent;
+  assert.equal(conflict.status, 'CONFLICT');
+  assert.equal(conflict.errorCode, 'SOURCE_CONFLICT');
+  assert.equal(conflict.saved, false);
+  assert.equal(mock.calls.filter((c) => c.method === 'PUT').length, 0);
+  assert.equal((await rpc(server, 'save_powerapps_source', { requestId: 'srv-2' })).structuredContent.errorCode, 'VALIDATION_FAILED');
+  const audit = (await rpc(server, 'get_powerapps_audit', { requestId: 'srv-1' })).structuredContent;
+  assert.equal(audit.tool, 'get_powerapps_audit');
+  assert.equal(audit.entries[0].errorCode, 'SOURCE_CONFLICT');
+  assert.equal((await rpc(server, 'rollback_powerapps_change', { requestId: 'srv-1', expectedBranch: 'main' })).structuredContent.errorCode, 'ROLLBACK_FAILED');
+  const unapproved = (await legacy(server, 'publish_powerapps_app', { requestId: 'srv-1' })).body.result;
+  assert.equal(unapproved.status, 'APPROVAL_REQUIRED');
 });

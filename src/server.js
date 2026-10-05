@@ -15,6 +15,8 @@ const { DeploymentService } = require('./deploymentService');
 const { PermissionsService } = require('./permissionsService');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
+const { PowerAppsChangeWorkflow } = require('./powerAppsChangeWorkflow');
+const { listTools } = require('./toolCatalog');
 const {
   validateMcpInput,
   validateStatusInput,
@@ -103,6 +105,8 @@ function apiKeyMiddleware(getKey) {
   };
 }
 
+const BRIDGE_VERSION = '1.2.0';
+
 const MCP_METHODS = Object.freeze([
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
@@ -116,7 +120,8 @@ const MCP_METHODS = Object.freeze([
   'get_permissions', 'update_permissions',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target'
+  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
+  'list_tools', 'save_powerapps_source', 'get_powerapps_audit', 'rollback_powerapps_change'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -132,8 +137,8 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
 const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
-    description: 'Bridgeの稼働状態を確認します。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    description: 'Bridgeの稼働状態を確認します。includeDependencies:trueで依存先（Power Apps/SharePoint/Power Automate/Git）も秘密値なしで確認します。',
+    inputSchema: { type: 'object', properties: { includeDependencies: { type: 'boolean', description: 'trueで依存先の疎通も確認する（任意）' } }, additionalProperties: false }
   },
   {
     name: 'get_tasks',
@@ -231,10 +236,23 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'publish_powerapps_app',
-    description: '既存Power Appsアプリを公開します。',
+    description: '既存Power Appsアプリを公開します。save_powerapps_sourceで保存済みのrequestIdに対し、人間の承認（publishApproved:true・approvedBy・approvalScope{requestId,relativePath,afterHash}）が実差分と一致する場合のみ公開します。承認なしはAPPROVAL_REQUIREDで拒否し、公開後はStateとバージョンを確認します。同一requestIdの再実行で二重公開しません。',
     inputSchema: {
       type: 'object',
-      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      properties: {
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します' },
+        requestId: { type: 'string', description: '保存時と同じrequestId' },
+        publishApproved: { type: 'boolean', description: '人間による公開承認済みか' },
+        approvedBy: { type: 'string', description: '承認した人間の氏名（AI・自動化は不可）' },
+        approvalScope: {
+          type: 'object',
+          description: '承認範囲。保存結果の実差分と一致しない場合は公開しません',
+          properties: { requestId: { type: 'string' }, relativePath: { type: 'string' }, afterHash: { type: 'string', description: '保存後のsourceHash（save_powerapps_sourceの応答）' } },
+          required: ['requestId', 'relativePath', 'afterHash'],
+          additionalProperties: false
+        },
+        actor: { type: 'string', description: '実行者（監査用）' }
+      },
       additionalProperties: false
     }
   },
@@ -583,6 +601,68 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     }
   },
   {
+    name: 'list_tools',
+    description: 'Bridgeに実在するツールの一覧を、バージョンと実行可否（構成の有無。不足している環境変数の名前のみ）付きで返します。外部APIへは接続しません。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'save_powerapps_source',
+    description: 'Power Appsソース1ファイルを、検証済みの差分だけ保存します。Branch・sourceHash・requestId・予定差分と実差分が一致しない場合は保存せず、changeType=STYLEでは外観プロパティ以外の変更を拒否します。保存前に復旧点を監査へ記録し、保存後にソースとStateを再確認します。同一requestIdの再実行で二重保存しません。公開は行いません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        requestId: { type: 'string', description: '変更要求ID（冪等性・監査の単位）' },
+        appName: { type: 'string', description: '対象アプリ名（指定時はresolve_app_targetで一意に解決できない場合に停止）' },
+        target: { type: 'string', description: '対象ファイルのrelativePath（get_powerapps_sourceで取得したもの）' },
+        changeType: { type: 'string', enum: ['STYLE', 'CONTROL', 'FORMULA', 'DATA_SOURCE', 'NAVIGATION', 'VALIDATION', 'PERMISSION', 'AUTOMATION'], description: '変更種別' },
+        expectedBranch: { type: 'string', description: 'get_powerapps_sourceが返したbranch（正本branchと一致必須）' },
+        expectedHash: { type: 'string', description: 'get_powerapps_sourceが返したsourceHash（40桁16進）' },
+        content: { type: 'string', description: '保存するファイル全文' },
+        changes: {
+          type: 'object',
+          description: '予定差分。実差分（trim済み・空行除く行単位）と完全一致しない場合は保存しません',
+          properties: {
+            description: { type: 'string', description: '変更内容の説明' },
+            added: { type: 'array', items: { type: 'string' }, description: '追加される行' },
+            removed: { type: 'array', items: { type: 'string' }, description: '削除される行' }
+          },
+          required: ['description', 'added', 'removed'],
+          additionalProperties: false
+        },
+        message: { type: 'string', description: 'コミットメッセージ（任意）' },
+        actor: { type: 'string', description: '実行者（監査用）' }
+      },
+      required: ['requestId', 'target', 'changeType', 'expectedBranch', 'expectedHash', 'content', 'changes'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_powerapps_audit',
+    description: 'Power Apps変更の監査記録（検証・保存・公開・エラー・復旧）をrequestId単位で取得します。復旧点の本文は返しません。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        requestId: { type: 'string', description: '対象のrequestId（省略時は直近の記録）' },
+        limit: { type: 'integer', description: '最大件数（1-200、既定50）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'rollback_powerapps_change',
+    description: '保存時に記録した復旧点へソースを戻します。保存後に他の変更が入っている場合は戻さずCONFLICTで停止します。公開状態は変更しません（公開済みバージョンへ反映するには新たな公開承認が必要）。同一requestIdの再実行で二重復旧しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        requestId: { type: 'string', description: '復旧する変更のrequestId' },
+        expectedBranch: { type: 'string', description: '正本branch' },
+        actor: { type: 'string', description: '実行者（監査用）' }
+      },
+      required: ['requestId', 'expectedBranch'],
+      additionalProperties: false
+    }
+  },
+  {
     name: 'resolve_app_target',
     description: 'アプリ名（例: CN_AI依頼台帳。別名・部分一致可）から、App ID・Environment・正本Branch・gitRootを実環境から解決します。取得できなかった項目は推測せずunconfirmedで返します。曖昧な場合は候補を返します。読み取り専用。',
     inputSchema: {
@@ -708,7 +788,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
 
-  if (method === 'health_check') return { status: 'ok' };
+  if (method === 'health_check') {
+    if (params.includeDependencies === true) {
+      const dependencies = await checkDependencies({ powerAppsStore, sharePointReader, powerAutomateRunner, powerAppsGitStore });
+      return { status: 'ok', dependencies: dependencies.data, dependencyStatus: dependencies.status, warnings: dependencies.warnings, errors: dependencies.errors };
+    }
+    return { status: 'ok' };
+  }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
@@ -733,7 +819,8 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_powerapps_source') {
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
-    return withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(params.relativePath));
+    const source = await withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(params.relativePath));
+    return { ...source, sourceHash: source.sha, relativePath: params.relativePath };
   }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
@@ -766,7 +853,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
-    return withUpstreamErrorStatus(powerAppsStore.publishApp());
+    return bridgeServices.changeWorkflow.publish(params);
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
@@ -905,6 +992,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       appId: params.appId
     });
   }
+  if (method === 'list_tools') return listTools(MCP_PUBLIC_TOOLS, bridgeServices.config, BRIDGE_VERSION);
+  if (method === 'save_powerapps_source') return bridgeServices.changeWorkflow.save(params);
+  if (method === 'get_powerapps_audit') return bridgeServices.changeWorkflow.getAudit(params);
+  if (method === 'rollback_powerapps_change') return bridgeServices.changeWorkflow.rollback(params);
   if (method === 'resolve_app_target') {
     return getResolver(powerAppsStore, powerAppsGitStore).resolve(params.query);
   }
@@ -977,7 +1068,19 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     });
   }
 
+  const changeWorkflow = injected.changeWorkflow || new PowerAppsChangeWorkflow({
+    gitStore: powerAppsGitStore,
+    appStore: powerAppsStore,
+    logPath: powerAppsStore.logPath || (config.powerApps || {}).logPath,
+    environmentId: powerAppsStore.environmentId || (config.powerApps || {}).environmentId || null,
+    appId: powerAppsStore.appId || (config.powerApps || {}).appId || null,
+    resolveTarget: (query) => getResolver(powerAppsStore, powerAppsGitStore).resolve(query),
+    secrets: [(config.powerApps || {}).clientSecret, (config.powerApps || {}).githubToken, config.mcpApiKey, config.webhookApiKey]
+  });
+
   return {
+    config,
+    changeWorkflow,
     deployment,
     permissions,
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
@@ -1068,7 +1171,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         return res.status(200).json(jsonRpcResult(id, {
           protocolVersion: params.protocolVersion || '2025-06-18',
           capabilities: { tools: { listChanged: true } },
-          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.1.0' }
+          serverInfo: { name: 'clean-nano-ai-bridge', version: BRIDGE_VERSION }
         }));
       }
       if (body.method === 'tools/list') {

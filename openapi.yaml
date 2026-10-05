@@ -102,6 +102,13 @@ paths:
         update_powerapps_app・save_powerapps_app・publish_powerapps_app は任意のparams.branch
         （get_powerapps_sourceが返したbranch）を受け取り、正本branchと一致しない場合は409で拒否します。
         update_powerapps_appは、ソースが正本branch以外（過去branch等）でしか見つからない場合も409で拒否します。
+
+        変更ワークフロー: list_tools（ツール・バージョン・実行可否）、save_powerapps_source
+        （branch・sourceHash・requestId・予定差分/実差分が一致する検証済み差分のみ保存。STYLEは外観プロパティのみ）、
+        get_powerapps_audit（RequestId単位の監査）、rollback_powerapps_change（記録済み復旧点へ戻す。公開状態は変更しない）。
+        publish_powerapps_appはrequestId・publishApproved:true・approvedBy・approvalScope（実差分と一致）が必須で、
+        承認なしは公開せず status:APPROVAL_REQUIRED を返します。応答は status/requestId/tool/target/environment/branch/
+        sourceHash/changed/validated/saved/published/version/errorCode/message/timestamp/auditId/rollbackAvailable を持ちます。
       security: [{ McpApiKey: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/McpInput' } } } }
       responses:
@@ -174,7 +181,7 @@ components:
       properties:
         method:
           type: string
-          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions]
+          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions, list_tools, save_powerapps_source, get_powerapps_audit, rollback_powerapps_change]
           description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:
