@@ -67,7 +67,7 @@ function getConfig(env = process.env) {
         project: env.POWERAPPS_AZDO_PROJECT || '',
         repository: env.POWERAPPS_AZDO_REPOSITORY || '',
         branch: env.POWERAPPS_AZDO_BRANCH || 'main',
-        root: (env.POWERAPPS_AZDO_ROOT || '').replace(/^\\/+|\\/+$/g, ''),
+        root: (env.POWERAPPS_AZDO_ROOT || '').replace(/^\/+|\/+$/g, ''),
         pat: env.POWERAPPS_AZDO_PAT || ''
       }
     },
