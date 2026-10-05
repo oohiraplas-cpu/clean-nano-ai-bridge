@@ -148,6 +148,22 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =510
+      - S1_EquipmentDocs:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =56
+            HoverFill: =RGBA(0, 230, 115, 1)
+            OnSelect: =Navigate(S12_EquipmentOCR, ScreenTransition.None)
+            PressedFill: =RGBA(0, 160, 80, 1)
+            Size: =15
+            Text: ="設備書類自動記載"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =578
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
