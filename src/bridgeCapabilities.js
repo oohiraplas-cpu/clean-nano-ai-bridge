@@ -85,6 +85,7 @@ function getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version = '1.0.0', mcpVersion
         'get_powerapps_state',
         'get_powerapps_source',
         'get_powerapps_operation_result',
+        'get_sharepoint_lists',
         'get_sharepoint_list',
         'get_sharepoint_columns',
         'get_permissions',
@@ -127,7 +128,7 @@ function categorizeTool(toolName) {
   if (toolName.startsWith('health_') || toolName === 'check_dependencies') return 'monitoring';
   if (toolName.startsWith('get_') && !toolName.includes('powerapps') && !toolName.includes('sharepoint')) return 'management';
   if (toolName.startsWith('get_powerapps_') || toolName.startsWith('update_powerapps_') || toolName.startsWith('publish_')) return 'power-apps';
-  if (toolName.startsWith('get_sharepoint_') || toolName.startsWith('ensure_sharepoint_') || toolName.startsWith('create_employee')) return 'sharepoint';
+  if (toolName.startsWith('get_sharepoint_') || toolName.startsWith('ensure_sharepoint_') || toolName === 'create_sharepoint_list' || toolName.startsWith('create_employee')) return 'sharepoint';
   if (toolName.includes('power_automate')) return 'power-automate';
   if (toolName.includes('deployment') || toolName.includes('git')) return 'deployment';
   if (toolName.includes('permissions')) return 'security';
@@ -148,6 +149,7 @@ function isReadOnlyTool(toolName) {
     'get_powerapps_state',
     'get_powerapps_source',
     'get_powerapps_operation_result',
+    'get_sharepoint_lists',
     'get_sharepoint_list',
     'get_sharepoint_columns',
     'get_permissions',
@@ -162,6 +164,8 @@ function isReadOnlyTool(toolName) {
 function requiresApprovalTool(toolName) {
   return [
     'publish_powerapps_app',
+    'create_sharepoint_list',
+    'ensure_sharepoint_columns',
     'run_power_automate_flow',
     'update_employee_ledger_entry',
     'create_employee_ledger_entry',
