@@ -1,0 +1,88 @@
+Screens:
+  S19_OcrFinalPreview:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+    Children:
+      - S19_OcrFinalPreview_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            Height: =52
+            Size: =20
+            Text: ="完成帳票プレビュー"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - S19_OcrFinalPreview_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            OnSelect: =Back()
+            Text: ="戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - S19_OcrFinalPreview_Note:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =125
+            Size: =15
+            Text: ="自動記載後の帳票、宛先、金額、添付を確認します。完成版を確認できるまでPDF出力とFAX送信はできません。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =136
+      - S19_OcrFinalPreview_Action1:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="PDF出力（接続待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =278
+      - S19_OcrFinalPreview_Action2:
+          Control: Classic/Button@2.2.0
+          Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            Height: =44
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="FAX送信（接続待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =332
+      - S19_OcrFinalPreview_Field1:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="送付先：未設定"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =402
+      - S19_OcrFinalPreview_Field2:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="完成帳票：未生成"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =446
+      - S19_OcrFinalPreview_Field3:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =40
+            Size: =14
+            Text: ="確認者：未確認"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =490
