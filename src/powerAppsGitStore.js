@@ -55,6 +55,7 @@ class PowerAppsGitStore {
         (rule.gitRoot === this.githubRoot && rule.sourceControl.bridgeMirrorRepository === `${this.githubOwner}/${this.githubRepo}`)))?.sourceControl || null;
     this.githubFallbackBranches = [...new Set([...(config.githubFallbackBranches || []), 'sync/cn-aiiraidaicho-live-review-20260926', 'main'].filter(Boolean))];
     this.githubFallbackRoots = [...new Set([...(config.githubFallbackRoots || []), 'powerapps/CN_AI依頼台帳/Source'].map((value) => String(value || '').replace(/^\/+|\/+$/g, '')).filter(Boolean))];
+    this.azureDevOps = config.azureDevOps || {};
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new OAuthTokenCache();
   }
@@ -116,7 +117,40 @@ class PowerAppsGitStore {
     return this._githubRequest(path);
   }
 
+  _useAzureDevOps() {
+    return this.sourceControl?.powerAppsAuthority === 'azure_devops_only';
+  }
+
+  _assertAzureDevOpsConfig() {
+    const a = this.azureDevOps || {};
+    const required = [['POWERAPPS_AZDO_ORGANIZATION', a.organization], ['POWERAPPS_AZDO_PROJECT', a.project], ['POWERAPPS_AZDO_REPOSITORY', a.repository], ['POWERAPPS_AZDO_PAT', a.pat]];
+    const missing = required.filter(([,v]) => !v).map(([n]) => n);
+    if (missing.length) throw new Error(`Azure DevOps設定が不足しています: ${missing.join(', ')}`);
+  }
+
+  async _azureDevOpsRequest(path, options = {}) {
+    this._assertAzureDevOpsConfig();
+    const a = this.azureDevOps;
+    const base = `https://dev.azure.com/${encodeURIComponent(a.organization)}/${encodeURIComponent(a.project)}/_apis/git/repositories/${encodeURIComponent(a.repository)}`;
+    const auth = Buffer.from(`:${a.pat}`).toString('base64');
+    const response = await this._fetch(`${base}${path}`, { ...options, headers: { authorization: `Basic ${auth}`, accept: 'application/json', 'content-type': 'application/json', ...(options.headers || {}) } });
+    if (!response.ok) { const detail = await response.text().catch(()=>''); throw new Error(`Azure DevOps API エラー (${response.status}): ${detail.slice(0,300)}`); }
+    return response.status === 204 ? null : response.json();
+  }
+
+  async _getAzureDevOpsSourceFile(relativePath) {
+    const a = this.azureDevOps;
+    const branch = a.branch || this.sourceControl?.branch || 'main';
+    const root = (a.root || this.sourceControl?.folder || this.githubRoot || '').replace(/^\/+|\/+$/g,'');
+    const clean = String(relativePath || '').replace(/^\/+/, '');
+    if (!clean || clean.includes('..')) throw new Error('relativePathが不正です');
+    const filePath = `/${root ? `${root}/` : ''}${clean}`;
+    const data = await this._azureDevOpsRequest(`/items?path=${encodeURIComponent(filePath)}&versionDescriptor.versionType=branch&versionDescriptor.version=${encodeURIComponent(branch)}&includeContent=true&api-version=7.1`);
+    return { status:'ok', path:filePath.replace(/^\//,''), sha:data?.objectId || null, branch, canonicalBranch:branch, isCanonicalBranch:true, sourceControl:this.sourceControl, writable:true, sourceState:'azure_devops_authority', content:data?.content || '' };
+  }
+
   async getSourceFile(relativePath) {
+    if (this._useAzureDevOps()) return this._getAzureDevOpsSourceFile(relativePath);
     const clean = String(relativePath || '').replace(/^\/+/, '');
     if (!clean) throw new Error('relativePathが必要です');
     if (clean.includes('..')) throw new Error('relativePathに..は使用できません');
@@ -188,9 +222,8 @@ class PowerAppsGitStore {
 
   assertSourceControlCompatible(action = '更新') {
     if (this.sourceControl?.powerAppsAuthority === 'azure_devops_only') {
-      throw this._branchConflict(
-        `Power Appsの${action}をGitHubアダプター経由では実行できません。正本はAzure DevOpsのみです。`
-      );
+      if (this.azureDevOps?.organization && this.azureDevOps?.project && this.azureDevOps?.repository && this.azureDevOps?.pat) return;
+      throw this._branchConflict(`Power Appsの${action}にはAzure DevOps正本接続設定が必要です。`);
     }
     if (this.sourceControl?.bridgeMirrorState === 'hold') {
       throw this._branchConflict(`接続先不一致のため${action}を保留: ${this.sourceControl.holdReason}`);
@@ -199,6 +232,16 @@ class PowerAppsGitStore {
 
   async updateSourceFile(relativePath, content, message, expectedBranch) {
     if (typeof content !== 'string') throw new Error('contentは文字列である必要があります');
+    if (this._useAzureDevOps()) {
+      const current = await this._getAzureDevOpsSourceFile(relativePath);
+      const branch = current.branch;
+      if (expectedBranch && expectedBranch !== branch) throw this._branchConflict(`branch不一致のため更新を拒否しました: 指定=${expectedBranch}, 正本branch=${branch}`);
+      const a=this.azureDevOps; const root=(a.root || this.sourceControl?.folder || this.githubRoot || '').replace(/^\/+|\/+$/g,''); const clean=String(relativePath).replace(/^\/+/, ''); const itemPath=`/${root ? `${root}/` : ''}${clean}`;
+      const refs=await this._azureDevOpsRequest(`/refs?filter=${encodeURIComponent(`heads/${branch}`)}&api-version=7.1`); const oldObjectId=refs?.value?.[0]?.objectId; if(!oldObjectId) throw new Error(`Azure DevOps branchを解決できません: ${branch}`);
+      const body={refUpdates:[{name:`refs/heads/${branch}`,oldObjectId}],commits:[{comment:message || `Update Power Apps source: ${itemPath}`,changes:[{changeType:'edit',item:{path:itemPath},newContent:{content,contentType:'rawtext'}}]}]};
+      const result=await this._azureDevOpsRequest(`/pushes?api-version=7.1`,{method:'POST',body:JSON.stringify(body)});
+      return {status:'ok',operationId:crypto.randomUUID(),path:itemPath.replace(/^\//,''),branch,commitSha:result?.commits?.[0]?.commitId || null,contentSha:null,provider:'AzureDevOps'};
+    }
     this.assertCanonicalBranch(expectedBranch, '更新');
     const current = await this.getSourceFile(relativePath);
     // フォールバック先（過去branch等）でソースが見つかった場合は、そのbranchへ書き込まない。
