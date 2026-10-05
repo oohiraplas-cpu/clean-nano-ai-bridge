@@ -10,7 +10,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =54
             Size: =22
-            Text: ="設備 OCR自動記載"
+            Text: ="設備書類自動記載"
             Width: =Parent.Width - 32
             X: =16
             Y: =16
@@ -29,7 +29,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Height: =120
             Size: =14
-            Text: ="OCR連携準備中。顧客番号・住所・帳票を照合後、人間が確認して転記します。現時点では保存できません。"
+            Text: ="画像・PDF・帳票を読み取り、検満リストを検索して計画実施表へ自動記載します。番号分割・住所改行・照合停止ルールを維持し、不一致時は確定せず人間確認へ進みます。"
             Width: =Parent.Width - 32
             X: =16
             Y: =140
