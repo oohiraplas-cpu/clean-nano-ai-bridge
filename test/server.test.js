@@ -266,7 +266,7 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
   const saved = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
-    body: JSON.stringify({ method: 'save_powerapps_app', params: {} })
+    body: JSON.stringify({ method: 'save_powerapps_app', params: { branch: 'main' } })
   });
   assert.equal(saved.status, 200);
   const savedBody = await saved.json();
@@ -294,7 +294,7 @@ test('save_powerapps_appはPower Apps APIが2xx成功かつ空bodyでもJSON解�
     powerAppsOverrides: { orgUrl: 'https://example.crm.dynamics.com', solutionUniqueName: 'CN_CompanyOS', githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo' }
   });
   t.after(() => server.close());
-  const saved = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'save_powerapps_app', params: {} }) });
+  const saved = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'save_powerapps_app', params: { branch: 'main' } }) });
   assert.equal(saved.status, 200);
   assert.equal((await saved.json()).result.status, 'ok');
   assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
