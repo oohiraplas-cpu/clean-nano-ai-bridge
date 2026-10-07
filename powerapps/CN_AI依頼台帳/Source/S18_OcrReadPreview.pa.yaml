@@ -17,7 +17,7 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             Height: =44
             OnSelect: =Back()
             Text: ="戻る"
@@ -38,7 +38,7 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             Height: =44
             DisplayMode: =DisplayMode.Disabled
             Text: ="読取結果を確定（接続待ち）"
@@ -49,7 +49,7 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             Height: =44
             OnSelect: =Navigate(S19_OcrFinalPreview, ScreenTransition.None)
             Text: ="完成帳票プレビュー"
