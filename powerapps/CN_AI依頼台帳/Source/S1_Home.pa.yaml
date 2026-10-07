@@ -13,7 +13,8 @@ Screens:
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
         If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
+        If(IsBlank(gblIsAdmin), Set(gblIsAdmin, Or(User().Email = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")))
     Children:
       - S1_Title:
           Control: Label@2.5.1
@@ -176,7 +177,7 @@ Screens:
             Height: =48
             HoverColor: =RGBA(10, 10, 10, 1)
             HoverFill: =RGBA(245, 245, 245, 1)
-            OnSelect: =Notify("運営管理は管理者専用です。接続先確認後に有効化します。", NotificationType.Information)
+            OnSelect: =If(gblIsAdmin, Navigate(S6_Members, ScreenTransition.None), Notify("運営管理は管理者専用です", NotificationType.Warning))
             PressedFill: =RGBA(224, 224, 224, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
@@ -184,6 +185,7 @@ Screens:
             RadiusTopRight: =0
             Size: =12
             Text: ="運営管理"
+            Visible: =gblIsAdmin
             Width: =120
             X: =Parent.Width - 136
             Y: =Parent.Height - 64
