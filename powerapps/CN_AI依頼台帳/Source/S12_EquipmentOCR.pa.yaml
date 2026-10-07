@@ -17,6 +17,12 @@ Screens:
       - OCR_Back:
           Control: Classic/Button@2.2.0
           Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
+            PressedColor: =RGBA(10, 10, 10, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             Height: =44
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
             Text: ="カレンダーへ戻る"
@@ -36,6 +42,12 @@ Screens:
       - OCR_ReadPreview:
           Control: Classic/Button@2.2.0
           Properties:
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
+            PressedColor: =RGBA(10, 10, 10, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             Height: =44
             OnSelect: =Navigate(S18_OcrReadPreview, ScreenTransition.None)
             Text: ="読取プレビューを見る"
