@@ -96,7 +96,12 @@ function getConfig(env = process.env) {
     permissions: {
       allowedPrincipalDomains: parseCsv(env.PERMISSIONS_ALLOWED_PRINCIPAL_DOMAINS).map((value) => value.toLowerCase()),
       allowedDataverseRoles: parseCsv(env.PERMISSIONS_ALLOWED_DATAVERSE_ROLES)
-    }
+    },
+    // Phase 6: State Manager Enforcement (Fail-Closed)
+    // When enabled (set BRIDGE_STATE_MANAGER_ENFORCE=true), all write operations require
+    // complete state context (appId, environment, branch, sha, correlationId).
+    // Default: false (for backward compatibility during testing/migration)
+    enforceStateManager: env.BRIDGE_STATE_MANAGER_ENFORCE === 'true'
   };
 }
 

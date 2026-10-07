@@ -74,6 +74,13 @@ const {
   inspectPowerAppsStructure
 } = require('./bridgeEnhancedFeatures');
 const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+const {
+  FAIL_CLOSED_TOOLS,
+  validateStateContext,
+  createStateValidationError,
+  extractStateContext,
+  enrichResponseWithState
+} = require('./stateManager');
 
 const resolverCache = new WeakMap();
 function getResolver(powerAppsStore, powerAppsGitStore) {
@@ -1247,10 +1254,33 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
         try {
+          // Phase 6: State Manager Enforcement (Fail-Closed)
+          // Before executing write operations, validate that required state context is provided
+          // Controlled by BRIDGE_STATE_MANAGER_ENFORCE env var (set in production)
+          const enforceStateManager = config.enforceStateManager === true;
+          let stateContext = extractStateContext(toolParams);
+
+          if (enforceStateManager) {
+            const stateValidation = validateStateContext(name, toolParams, stateContext);
+            if (!stateValidation.isValid) {
+              const error = createStateValidationError(stateValidation, name);
+              return res.status(200).json(jsonRpcResult(id, {
+                content: [{ type: 'text', text: error.message }],
+                structuredContent: { error: error.message, ...error.details },
+                isError: true
+              }));
+            }
+          }
+
           const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+
+          // Enrich response with state metadata for audit trail (Phase 9: Evidence Capture)
+          // Only add metadata when State Manager enforcement is enabled
+          const enrichedResult = enforceStateManager ? enrichResponseWithState(result, stateContext) : result;
+
           return res.status(200).json(jsonRpcResult(id, {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
+            content: [{ type: 'text', text: JSON.stringify(enrichedResult) }],
+            structuredContent: enrichedResult,
             isError: false
           }));
         } catch (error) {
@@ -1270,8 +1300,26 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const { method } = body;
     const params = body.params || {};
     try {
+      // Phase 6: State Manager Enforcement (Fail-Closed)
+      // Legacy handler: also validate state context before write operations
+      const enforceStateManager = config.enforceStateManager === true;
+      let stateContext = extractStateContext(params);
+
+      if (enforceStateManager) {
+        const stateValidation = validateStateContext(method, params, stateContext);
+        if (!stateValidation.isValid) {
+          const error = createStateValidationError(stateValidation, method);
+          return res.status(error.status).json({ error: error.message, ...error.details });
+        }
+      }
+
       const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
-      return res.status(200).json({ accepted: true, method, result });
+
+      // Enrich response with state metadata for audit trail
+      // Only add metadata when State Manager enforcement is enabled
+      const enrichedResult = enforceStateManager ? enrichResponseWithState(result, stateContext) : result;
+
+      return res.status(200).json({ accepted: true, method, result: enrichedResult });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) });
       return next(error);
