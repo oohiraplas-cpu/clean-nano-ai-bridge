@@ -31,13 +31,13 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(0, 204, 102, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =50
-            HoverFill: =RGBA(0, 230, 115, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
-            PressedFill: =RGBA(0, 160, 80, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             Size: =18
             Text: ="＜"
             Width: =50
@@ -47,13 +47,13 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(0, 204, 102, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =50
-            HoverFill: =RGBA(0, 230, 115, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
-            PressedFill: =RGBA(0, 160, 80, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             Size: =18
             Text: ="＞"
             Width: =50
@@ -335,14 +335,14 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(255, 255, 255, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(255, 255, 255, 1)
-            HoverFill: =RGBA(0, 204, 102, 0.3)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: =Navigate(S1_Home, ScreenTransition.None)
-            PressedFill: =RGBA(0, 204, 102, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -356,14 +356,14 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(255, 255, 255, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(255, 255, 255, 1)
-            HoverFill: =RGBA(0, 204, 102, 0.3)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
-            PressedFill: =RGBA(0, 204, 102, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -377,14 +377,14 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(255, 255, 255, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(255, 255, 255, 1)
-            HoverFill: =RGBA(0, 204, 102, 0.3)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
-            PressedFill: =RGBA(0, 204, 102, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -398,14 +398,14 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(0, 204, 102, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(255, 255, 255, 1)
-            HoverFill: =RGBA(0, 204, 102, 0.3)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: =Navigate(S4_Summary, ScreenTransition.None)
-            PressedFill: =RGBA(0, 204, 102, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -419,14 +419,14 @@ Screens:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(255, 255, 255, 1)
-            Fill: =RGBA(26, 58, 42, 1)
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(255, 255, 255, 1)
-            HoverFill: =RGBA(0, 204, 102, 0.3)
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
             OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
-            PressedFill: =RGBA(0, 204, 102, 1)
+            PressedFill: =RGBA(224, 224, 224, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
