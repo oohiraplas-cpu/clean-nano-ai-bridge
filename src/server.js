@@ -1335,8 +1335,16 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 }
 
 if (require.main === module) {
-  const config = getConfig();
-  createApp(config).listen(config.port, config.host, () => console.log(`Bridge API listening on ${config.host}:${config.port}`));
+  try {
+    const config = getConfig();
+    createApp(config).listen(config.port, config.host, () => {
+      console.log(`Bridge API listening on ${config.host}:${config.port}`);
+    });
+  } catch (error) {
+    console.error('Bridge API startup failed:', error.message);
+    console.error(error.stack);
+    process.exit(1);
+  }
 }
 
 module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS };
