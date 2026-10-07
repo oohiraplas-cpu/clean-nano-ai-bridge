@@ -189,7 +189,6 @@ Screens:
             Width: =120
             X: =Parent.Width - 136
             Y: =Parent.Height - 64
-            Visible: =false
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
