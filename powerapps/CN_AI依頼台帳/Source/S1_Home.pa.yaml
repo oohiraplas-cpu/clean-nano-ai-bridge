@@ -286,6 +286,7 @@ Screens:
       - Button9:
           Control: Classic/Button@2.2.0
           Properties:
+            Visible: =false
             BorderColor: =RGBA(0, 0, 0, 0)
             BorderStyle: =BorderStyle.None
             Color: =RGBA(255, 255, 255, 1)
