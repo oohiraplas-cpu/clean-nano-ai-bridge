@@ -1224,7 +1224,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
   app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
-  app.post('/mcp', mcpAuth, (req, res, next) => handleMcpRequest(req, res, next));
+  app.post('/mcp', mcpAuth, (req, res, next) => {
+    handleMcpRequest(req, res, next).catch(next);
+  });
 
   async function handleMcpRequest(req, res, next) {
     const body = req.body || {};
