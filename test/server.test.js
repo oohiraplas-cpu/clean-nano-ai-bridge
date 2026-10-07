@@ -1389,7 +1389,7 @@ test('update_powerapps_app: get_powerapps_sourceが返したbranchを渡し、�
   assert.equal(mock.calls.find((c) => c.method === 'PUT').body.branch, 'main');
 });
 
-test('save_powerapps_app / publish_powerapps_app: branch不一致は拒否し、同期・公開を実行しない。branch未指定・一致は従来どおり', async (t) => {
+test('save_powerapps_app / publish_powerapps_app: State Lock未成立・branch不一致を拒否し、正本一致のみ実行する', async (t) => {
   const mock = routedFetch([
     tokenRoute,
     [(c) => c.url.includes('/solutions?'), () => jsonResponse({ value: [{ solutionid: '1', uniquename: 'ActualSolution', friendlyname: 'A', version: '1', ismanaged: false }] })],
@@ -1415,9 +1415,10 @@ test('save_powerapps_app / publish_powerapps_app: branch不一致は拒否し、
 
   const saveOk = await rpc(server, 'save_powerapps_app', { branch: 'main' });
   assert.equal(saveOk.isError, false);
-  const saveCompat = await rpc(server, 'save_powerapps_app', {});
-  assert.equal(saveCompat.isError, false, 'branch未指定は後方互換');
-  const publishOk = await rpc(server, 'publish_powerapps_app', {});
+  const saveUnlocked = await rpc(server, 'save_powerapps_app', {});
+  assert.equal(saveUnlocked.isError, true, 'branch未指定はState Lock未成立として拒否');
+  assert.equal(saveUnlocked.structuredContent.status, 'branch_mismatch');
+  const publishOk = await rpc(server, 'publish_powerapps_app', { branch: 'main' });
   assert.equal(publishOk.isError, false);
   assert.equal(publishOk.structuredContent.status, 'ok');
   assert.equal((await rpc(server, 'publish_powerapps_app', { branch: '' })).isError, true);
