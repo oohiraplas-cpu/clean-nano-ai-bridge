@@ -5,9 +5,10 @@
  * - SharePoint List スキーマ取得
  * - 登録済み Power Automate フロー一覧
  * - Power Automate 実行結果取得
- * - Power Apps 構造解析
+ * - Power Apps 構造解析（github_canonical YAML対応）
  */
 
+const YAML = require('yaml');
 const { createCommonResponse } = require('./bridgeCapabilities');
 const executivePolicy = require('./executivePolicy.json');
 const { maskDeep } = require('./secretMasking');
@@ -337,13 +338,131 @@ async function getPowerAutomateRunResult(options = {}) {
 }
 
 /**
- * Power Apps 構造を解析
+ * Parse YAML/JSON source content and extract Power Apps structure
+ * @param {string} sourceContent - YAML or JSON source from github_canonical or Power Apps
+ * @param {string} sourceOrigin - 'github_canonical' or 'powerapps_environment'
+ * @returns {Object} Extracted structure { screens, controls, powerFx, dataSources, variables, navigations }
+ */
+function parseAndAnalyzePowerAppsSource(sourceContent, sourceOrigin = 'github_canonical') {
+  const result = {
+    screens: [],
+    controls: [],
+    powerFx: { total: 0, formulas: [] },
+    dataSources: [],
+    variables: [],
+    navigations: [],
+    sourceOrigin
+  };
+
+  if (!sourceContent || typeof sourceContent !== 'string') {
+    return result;
+  }
+
+  try {
+    // Try YAML first (github_canonical)
+    let parsed;
+    try {
+      parsed = YAML.parse(sourceContent);
+    } catch {
+      // Fallback to JSON
+      try {
+        parsed = JSON.parse(sourceContent);
+      } catch {
+        return result; // Return empty if both fail
+      }
+    }
+
+    if (!parsed || typeof parsed !== 'object') return result;
+
+    // Extract screens
+    if (parsed.Screens && typeof parsed.Screens === 'object') {
+      for (const [screenName, screenDef] of Object.entries(parsed.Screens)) {
+        const screen = {
+          name: screenName,
+          controls: [],
+          formulas: []
+        };
+
+        if (screenDef.Controls && Array.isArray(screenDef.Controls)) {
+          for (const control of screenDef.Controls) {
+            if (control.Name) {
+              screen.controls.push({ name: control.Name, type: control.Type || 'unknown' });
+              result.controls.push({
+                screenName,
+                controlName: control.Name,
+                controlType: control.Type || 'unknown'
+              });
+            }
+          }
+        }
+
+        // Extract formulas from Properties
+        if (screenDef.Properties && typeof screenDef.Properties === 'object') {
+          for (const [propName, propValue] of Object.entries(screenDef.Properties)) {
+            if (typeof propValue === 'string' && propValue.startsWith('=')) {
+              screen.formulas.push({ property: propName, formula: propValue });
+              result.powerFx.formulas.push({
+                screenName,
+                property: propName,
+                formula: propValue
+              });
+              result.powerFx.total++;
+            }
+            // Extract navigation targets
+            if ((propName === 'OnSelect' || propName === 'OnVisible') && typeof propValue === 'string' && propValue.includes('Navigate')) {
+              const navMatch = propValue.match(/Navigate\(\s*(\w+)\s*[,\)]/);
+              if (navMatch) {
+                result.navigations.push({
+                  from: screenName,
+                  property: propName,
+                  target: navMatch[1]
+                });
+              }
+            }
+          }
+        }
+
+        result.screens.push(screen);
+      }
+    }
+
+    // Extract data sources
+    if (parsed.DataSources && typeof parsed.DataSources === 'object') {
+      for (const [dsName, dsDef] of Object.entries(parsed.DataSources)) {
+        if (dsDef.Type) {
+          result.dataSources.push({
+            name: dsName,
+            type: dsDef.Type,
+            isDataTable: dsDef.IsDataTable === true
+          });
+        }
+      }
+    }
+
+    // Extract variables
+    if (parsed.Variables && typeof parsed.Variables === 'object') {
+      for (const [varName, varDef] of Object.entries(parsed.Variables)) {
+        result.variables.push({
+          name: varName,
+          type: varDef.Type || 'unknown'
+        });
+      }
+    }
+  } catch (error) {
+    // Silently return partial results on parse error
+  }
+
+  return result;
+}
+
+/**
+ * Power Apps 構造を解析（github_canonical YAML 対応）
  * 画面一覧、コントロール一覧、コンポーネント、データソース等を取得
- * @param {Object} options - { powerAppsStore, appId }
+ * @param {Object} options - { powerAppsStore, sourceContent, sourceOrigin, stateContext }
  * @returns {Object} 共通レスポンス形式
  */
 async function inspectPowerAppsStructure(options = {}) {
-  const { powerAppsStore, appId } = options;
+  const { powerAppsStore, sourceContent, sourceOrigin = 'powerapps_environment', stateContext } = options;
   const errors = [];
   const warnings = [];
   const unconfirmed = [];
@@ -359,105 +478,166 @@ async function inspectPowerAppsStructure(options = {}) {
       });
     }
 
-    // App情報を取得
-    let appInfo = null;
-    try {
-      appInfo = await powerAppsStore.getAppInfo?.();
-    } catch (error) {
-      errors.push(`Failed to get app info: ${error.message}`);
-    }
+    // sourceContentが提供されている場合は github_canonical パス
+    let structure = null;
+    let sourceOriginUsed = sourceOrigin;
 
-    if (!appInfo) {
-      return createCommonResponse({
-        status: 'error',
-        data: { structure: null },
-        verified: false,
-        errors: errors.length > 0 ? errors : ['App info not available'],
-        summary: 'Failed to retrieve app structure'
-      });
-    }
+    if (sourceContent) {
+      // Parse github_canonical YAML directly
+      const analysis = parseAndAnalyzePowerAppsSource(sourceContent, sourceOrigin);
+      sourceOriginUsed = analysis.sourceOrigin;
 
-    // Power Fx参照の抽出（簡易）
-    const extractPowerFxReferences = (content) => {
-      const patterns = {
-        SharePointReferences: (content.match(/SharePoint\./g) || []).length,
-        FilterUsage: (content.match(/Filter\(/gi) || []).length,
-        LookupUsage: (content.match(/LookUp\(/gi) || []).length,
-        PatchUsage: (content.match(/Patch\(/gi) || []).length,
-        SubmitFormUsage: (content.match(/SubmitForm\(/gi) || []).length
+      // Build structure from parsed content
+      structure = {
+        sourceOrigin: sourceOriginUsed,
+        analysisMethod: 'yaml_parse',
+        screens: {
+          count: analysis.screens.length,
+          list: analysis.screens.map(s => ({
+            name: s.name,
+            controlCount: s.controls.length,
+            controls: s.controls.map(c => ({ name: c.name, type: c.type }))
+          }))
+        },
+        controls: {
+          count: analysis.controls.length,
+          list: analysis.controls
+        },
+        powerFxMetrics: {
+          total: analysis.powerFx.total,
+          formulasCount: analysis.powerFx.formulas.length,
+          formulas: analysis.powerFx.formulas.slice(0, 50) // Limit to first 50
+        },
+        dataSources: {
+          count: analysis.dataSources.length,
+          list: analysis.dataSources
+        },
+        variables: {
+          count: analysis.variables.length,
+          list: analysis.variables
+        },
+        navigations: {
+          count: analysis.navigations.length,
+          list: analysis.navigations.slice(0, 50) // Limit to first 50
+        }
       };
-      return patterns;
-    };
 
-    // 構造情報を構築
-    const structure = {
-      appId: appInfo.id,
-      appName: appInfo.name,
-      environmentId: appInfo.environmentId,
-      screens: {
-        count: appInfo.screenCount || 0,
-        list: (appInfo.screens || []).map(screen => ({
-          name: screen.name,
-          displayName: screen.displayName,
-          controlCount: screen.controlCount || 0
-        }))
-      },
-      components: {
-        count: appInfo.componentCount || 0,
-        list: (appInfo.components || []).map(comp => ({
-          name: comp.name,
-          description: comp.description
-        }))
-      },
-      dataSources: {
-        count: appInfo.dataSourceCount || 0,
-        list: (appInfo.dataSources || []).map(ds => ({
-          name: ds.name,
-          type: ds.type, // SharePoint, Excel, Dataverse等
-          tableName: ds.tableName,
-          readOnly: ds.readOnly || false
-        }))
-      },
-      connectors: {
-        count: appInfo.connectorCount || 0,
-        list: (appInfo.connectors || []).map(conn => ({
-          name: conn.name,
-          type: conn.type,
-          status: conn.status // Connected, NeedsAuthentication等
-        }))
-      },
-      powerFxMetrics: appInfo.sourceContent 
-        ? extractPowerFxReferences(appInfo.sourceContent)
-        : null,
-      lastModified: appInfo.lastModifiedTime,
-      publishedVersion: appInfo.publishedVersion,
-      unpublishedChanges: appInfo.unpublishedChanges || false
-    };
+      // Preserve State Context if provided
+      if (stateContext) {
+        structure.stateContext = {
+          appId: stateContext.appId,
+          environment: stateContext.environment,
+          branch: stateContext.branch,
+          canonicalBranch: stateContext.canonicalBranch,
+          sha: stateContext.sha,
+          correlationId: stateContext.correlationId
+        };
+      }
+    } else {
+      // Fallback to Power Apps API (legacy path)
+      let appInfo = null;
+      try {
+        appInfo = await powerAppsStore.getAppInfo?.();
+      } catch (error) {
+        errors.push(`Failed to get app info: ${error.message}`);
+      }
 
-    // 警告を抽出
-    if (structure.unpublishedChanges) {
-      warnings.push('Unpublished changes exist');
-    }
-    if (structure.dataSources.list.some(ds => ds.status === 'NeedsAuthentication')) {
-      warnings.push('Some data sources require authentication');
-    }
-    if (structure.screenCount === 0) {
-      warnings.push('No screens found');
+      if (!appInfo) {
+        return createCommonResponse({
+          status: 'error',
+          data: { structure: null },
+          verified: false,
+          errors: errors.length > 0 ? errors : ['App info not available'],
+          summary: 'Failed to retrieve app structure'
+        });
+      }
+
+      // Power Fx参照の抽出（簡易）
+      const extractPowerFxReferences = (content) => {
+        const patterns = {
+          SharePointReferences: (content.match(/SharePoint\./g) || []).length,
+          FilterUsage: (content.match(/Filter\(/gi) || []).length,
+          LookupUsage: (content.match(/LookUp\(/gi) || []).length,
+          PatchUsage: (content.match(/Patch\(/gi) || []).length,
+          SubmitFormUsage: (content.match(/SubmitForm\(/gi) || []).length
+        };
+        return patterns;
+      };
+
+      // 構造情報を構築
+      structure = {
+        appId: appInfo.id,
+        appName: appInfo.name,
+        environmentId: appInfo.environmentId,
+        sourceOrigin: 'powerapps_environment',
+        analysisMethod: 'api',
+        screens: {
+          count: appInfo.screenCount || 0,
+          list: (appInfo.screens || []).map(screen => ({
+            name: screen.name,
+            displayName: screen.displayName,
+            controlCount: screen.controlCount || 0
+          }))
+        },
+        components: {
+          count: appInfo.componentCount || 0,
+          list: (appInfo.components || []).map(comp => ({
+            name: comp.name,
+            description: comp.description
+          }))
+        },
+        dataSources: {
+          count: appInfo.dataSourceCount || 0,
+          list: (appInfo.dataSources || []).map(ds => ({
+            name: ds.name,
+            type: ds.type, // SharePoint, Excel, Dataverse等
+            tableName: ds.tableName,
+            readOnly: ds.readOnly || false
+          }))
+        },
+        connectors: {
+          count: appInfo.connectorCount || 0,
+          list: (appInfo.connectors || []).map(conn => ({
+            name: conn.name,
+            type: conn.type,
+            status: conn.status // Connected, NeedsAuthentication等
+          }))
+        },
+        powerFxMetrics: appInfo.sourceContent 
+          ? extractPowerFxReferences(appInfo.sourceContent)
+          : null,
+        lastModified: appInfo.lastModifiedTime,
+        publishedVersion: appInfo.publishedVersion,
+        unpublishedChanges: appInfo.unpublishedChanges || false
+      };
+
+      // 警告を抽出
+      if (structure.unpublishedChanges) {
+        warnings.push('Unpublished changes exist');
+      }
+      if (structure.dataSources?.list?.some(ds => ds.status === 'NeedsAuthentication')) {
+        warnings.push('Some data sources require authentication');
+      }
+      if (structure.screens.count === 0) {
+        warnings.push('No screens found');
+      }
     }
 
-    // 未確認事項
-    if (!appInfo.sourceContent) {
-      unconfirmed.push('Source content not available - detailed Power Fx analysis skipped');
+    // sourceContent が利用可能な場合は "Source content not available" を返さない
+    if (!sourceContent && sourceOrigin !== 'github_canonical') {
+      unconfirmed.push('Source content not available - github_canonical YAML not provided');
     }
 
     return createCommonResponse({
       status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok',
       data: { structure },
-      verified: errors.length === 0 && structure.screenCount > 0,
+      verified: errors.length === 0 && (structure.screens?.count || 0) > 0,
       warnings,
       errors,
       unconfirmed: unconfirmed.length > 0 ? unconfirmed : undefined,
-      summary: `App structure: ${structure.screens.count} screens, ${structure.components.count} components`
+      summary: sourceContent 
+        ? `App structure: ${structure.screens.count} screens, ${structure.controls.count} controls from ${sourceOriginUsed}`
+        : `App structure: ${structure.screens.count} screens, ${structure.components?.count || 0} components`
     });
   } catch (error) {
     return createCommonResponse({
@@ -476,5 +656,6 @@ module.exports = {
   getSharePointListSchema,
   listRegisteredPowerAutomateFlows,
   getPowerAutomateRunResult,
-  inspectPowerAppsStructure
+  inspectPowerAppsStructure,
+  parseAndAnalyzePowerAppsSource
 };
