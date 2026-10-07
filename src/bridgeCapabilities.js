@@ -5,6 +5,7 @@
  */
 
 const crypto = require('node:crypto');
+const yaml = require('js-yaml');
 
 /**
  * 共通レスポンス構造を構築
@@ -283,12 +284,25 @@ async function comparePowerAppsWithGit(options = {}) {
     powerApps: {},
     git: {},
     status: 'unknown',
-    details: {}
+    details: {},
+    hasDifferences: null,
+    targetSha: options.gitSource?.sha || null,
+    comparisonSources: { powerApps: 'power-apps-runtime', git: 'github-canonical' }
   };
   const errors = [];
   const warnings = [];
 
   try {
+    if (options.gitSource && typeof powerAppsStore?.getSourceFile !== 'function') {
+      // A Git snapshot compared to itself cannot establish runtime parity.
+      comparison.status = 'unconfirmed';
+      comparison.powerApps = { exists: null, source: 'power-apps-runtime', reason: 'source_reader_unavailable' };
+      comparison.git = { exists: true, file: options.gitSource.path, branch: options.gitSource.branch,
+        sha: options.gitSource.sha, source: 'git' };
+      return createCommonResponse({ status: 'warning', data: comparison, verified: false,
+        warnings: ['Power Apps runtime source reader is unavailable'],
+        unconfirmed: ['Power Apps runtime source content'], summary: 'Comparison unconfirmed' });
+    }
     // Power Apps side
     let powerAppsContent = null;
     let powerAppsHash = null;
@@ -325,7 +339,7 @@ async function comparePowerAppsWithGit(options = {}) {
 
     if (powerAppsGitStore && targetFile) {
       try {
-        gitSource = await powerAppsGitStore.getSourceFile(targetFile);
+        gitSource = options.gitSource || await powerAppsGitStore.getSourceFile(targetFile);
         gitContent = gitSource.content;
         gitHash = crypto.createHash('sha256').update(gitContent).digest('hex');
         gitBranch = gitSource.branch;
@@ -333,6 +347,7 @@ async function comparePowerAppsWithGit(options = {}) {
           exists: true,
           file: targetFile,
           branch: gitBranch,
+          sha: gitSource.sha,
           hash: gitHash,
           lastCommit: gitSource.commit,
           source: 'git'
@@ -358,9 +373,11 @@ async function comparePowerAppsWithGit(options = {}) {
       warnings.push('File exists in Power Apps but not in Git - sync may be incomplete');
     } else if (powerAppsHash === gitHash) {
       comparison.status = 'in_sync';
+      comparison.hasDifferences = false;
       comparison.details.match = true;
     } else {
       comparison.status = 'diverged';
+      comparison.hasDifferences = true;
       comparison.details = {
         powerAppsHashPrefix: powerAppsHash?.slice(0, 8),
         gitHashPrefix: gitHash?.slice(0, 8),
@@ -412,10 +429,11 @@ async function validatePowerAppsSource(options = {}) {
     // 1. JSON/YAML 構文チェック
     try {
       if (relativePath?.endsWith('.yaml') || relativePath?.endsWith('.yml')) {
-        // YAML の簡易チェック（フル YAMLパーサーなし）
+        if (typeof sourceContent !== 'string' || !sourceContent.trim()) throw new Error('Empty YAML source');
+        yaml.load(sourceContent, { schema: yaml.JSON_SCHEMA });
         validation.checks.yamlSyntax = {
-          status: 'checked',
-          valid: sourceContent && sourceContent.trim().length > 0
+          status: 'ok',
+          valid: true
         };
       } else if (relativePath?.endsWith('.json')) {
         JSON.parse(sourceContent);
@@ -512,4 +530,3 @@ module.exports = {
   comparePowerAppsWithGit,
   validatePowerAppsSource
 };
-

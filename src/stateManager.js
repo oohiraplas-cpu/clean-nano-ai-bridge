@@ -10,6 +10,7 @@
  */
 
 const crypto = require('node:crypto');
+const { STATE_CONTEXT_SCHEMA, REQUIRED_STATE_FIELDS } = require('./stateContext');
 
 /**
  * Tools that require State Manager validation before execution (Fail-Closed writes)
@@ -38,14 +39,6 @@ const FAIL_CLOSED_TOOLS = [
  * Required State Manager fields for write operations.
  * These must be explicitly provided by the caller and validated.
  */
-const REQUIRED_STATE_FIELDS = [
-  'appId',           // Power Apps application identifier
-  'environment',     // Power Apps environment (e.g., "Default-xxxx")
-  'branch',          // Git branch (must equal canonicalBranch)
-  'canonicalBranch', // Authoritative branch (from GitHub)
-  'sha',             // Git commit SHA (current HEAD)
-  'correlationId'    // Unique request correlation ID for audit trail
-];
 
 /**
  * Validation result for state context
@@ -201,7 +194,7 @@ function extractStateContext(params = {}) {
  * @returns {string} UUID v4-like correlation ID
  */
 function generateCorrelationId() {
-  return `aid-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+  return crypto.randomUUID();
 }
 
 /**
@@ -230,6 +223,7 @@ function enrichResponseWithState(response = {}, stateContext = {}) {
 }
 
 module.exports = {
+  STATE_CONTEXT_SCHEMA,
   FAIL_CLOSED_TOOLS,
   REQUIRED_STATE_FIELDS,
   StateValidationResult,

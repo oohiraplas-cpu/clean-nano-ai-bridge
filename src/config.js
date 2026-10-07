@@ -37,6 +37,10 @@ function getConfig(env = process.env) {
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     mcpApiKey: env.MCP_API_KEY || '',
+    stateContextRegistry: {
+      ttlMs: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_TTL_MS, 300000)),
+      maxEntries: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_MAX_ENTRIES, 1000))
+    },
     taskStoreBackend: env.TASK_STORE_BACKEND || 'file',
     sharepoint: {
       tenantId: env.SHAREPOINT_TENANT_ID || env.AZURE_TENANT_ID || '',
