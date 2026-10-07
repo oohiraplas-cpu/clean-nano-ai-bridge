@@ -159,6 +159,78 @@ function validateUpdatePermissionsParams(params) {
   return null;
 }
 
+function validateLockUserInfoParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['user', 'passkey']);
+  if (unknown) return unknown;
+  if (!isPlainObject(params.user)) return 'userはJSONオブジェクトである必要があります';
+  if (typeof params.user.email !== 'string' || !params.user.email.trim()) return 'user.emailが必要です';
+  const error = requiredString(params, 'passkey');
+  if (error) return error;
+  if (params.passkey.length < 32) return 'passkeyは32文字以上である必要があります';
+  return null;
+}
+
+function validateValidatePasskeyParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['passkey', 'user']);
+  if (unknown) return unknown;
+  const error = requiredString(params, 'passkey');
+  if (error) return error;
+  if (!isPlainObject(params.user)) return 'userはJSONオブジェクトである必要があります';
+  if (typeof params.user.passkeyHash !== 'string') return 'user.passkeyHashが必要です';
+  return null;
+}
+
+function validateGetUserLockStatusParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['user']);
+  if (unknown) return unknown;
+  if (!isPlainObject(params.user)) return 'userはJSONオブジェクトである必要があります';
+  return null;
+}
+
+function validateCanViewUserInfoParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['targetUser', 'currentUserEmail']);
+  if (unknown) return unknown;
+  if (!isPlainObject(params.targetUser)) return 'targetUserはJSONオブジェクトである必要があります';
+  const error = requiredString(params, 'currentUserEmail');
+  if (error) return error;
+  return null;
+}
+
+function validateCanEditUserInfoParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['targetUser', 'currentUserEmail', 'passkey']);
+  if (unknown) return unknown;
+  if (!isPlainObject(params.targetUser)) return 'targetUserはJSONオブジェクトである必要があります';
+  const error = requiredString(params, 'currentUserEmail');
+  if (error) return error;
+  if (params.passkey !== undefined && typeof params.passkey !== 'string') return 'passkeyは文字列である必要があります';
+  return null;
+}
+
+function validateCanDeleteUserInfoParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['targetUser', 'currentUserEmail']);
+  if (unknown) return unknown;
+  if (!isPlainObject(params.targetUser)) return 'targetUserはJSONオブジェクトである必要があります';
+  const error = requiredString(params, 'currentUserEmail');
+  if (error) return error;
+  return null;
+}
+
+function validateGenerateUIControlStateParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['user', 'currentUserEmail']);
+  if (unknown) return unknown;
+  if (!isPlainObject(params.user)) return 'userはJSONオブジェクトである必要があります';
+  const error = requiredString(params, 'currentUserEmail');
+  if (error) return error;
+  return null;
+}
+
 module.exports = {
   validateDeployToTestParams,
   validateVerifyDeploymentParams,
@@ -171,5 +243,12 @@ module.exports = {
   validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
-  validateUpdateEmployeeLedgerEntryParams
+  validateUpdateEmployeeLedgerEntryParams,
+  validateLockUserInfoParams,
+  validateValidatePasskeyParams,
+  validateGetUserLockStatusParams,
+  validateCanViewUserInfoParams,
+  validateCanEditUserInfoParams,
+  validateCanDeleteUserInfoParams,
+  validateGenerateUIControlStateParams
 };

@@ -48,8 +48,16 @@ const {
   validateGetDeploymentLogsParams,
   validateRollbackDeploymentParams,
   validateGetPermissionsParams,
-  validateUpdatePermissionsParams
+  validateUpdatePermissionsParams,
+  validateLockUserInfoParams,
+  validateValidatePasskeyParams,
+  validateGetUserLockStatusParams,
+  validateCanViewUserInfoParams,
+  validateCanEditUserInfoParams,
+  validateCanDeleteUserInfoParams,
+  validateGenerateUIControlStateParams
 } = require('./bridgeExtensionsValidation');
+const { UserProtectionService } = require('./userProtectionService');
 const {
   getBridgeCapabilities,
   checkDependencies,
@@ -117,6 +125,7 @@ const MCP_METHODS = Object.freeze([
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
   'get_permissions', 'update_permissions',
+  'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target'
@@ -509,6 +518,97 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     }
   },
   {
+    name: 'lock_user_info',
+    description: 'ユーザー情報をロック状態にします。ロック後、非管理者による閲覧・編集を禁止します。パスキーの初期化と同時に実行します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user: { type: 'object', description: 'ロック対象のユーザーオブジェクト（name, email, department, employeeId等を含む）' },
+        passkey: { type: 'string', description: 'パスキー（編集時に要求される64文字以上のランダム文字列）' }
+      },
+      required: ['user', 'passkey'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'validate_passkey',
+    description: 'ロック済みユーザーの編集時、パスキーの妥当性を検証します。認証成功・失敗を返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        passkey: { type: 'string', description: '入力されたパスキー' },
+        user: { type: 'object', description: 'ロック済みのユーザーオブジェクト（passkeyHashを含む）' }
+      },
+      required: ['passkey', 'user'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_user_lock_status',
+    description: 'ユーザーのロック状態（ロック済み・未ロック・ロック日時）を取得します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user: { type: 'object', description: 'ユーザーオブジェクト' }
+      },
+      required: ['user'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'can_view_user_info',
+    description: '指定ユーザーが対象ユーザー情報を閲覧可能かを判定します。自分自身・管理者は常に閲覧可。ロック済みユーザーは管理者のみ閲覧可。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetUser: { type: 'object', description: '対象ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '確認対象のユーザーメールアドレス' }
+      },
+      required: ['targetUser', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'can_edit_user_info',
+    description: '指定ユーザーが対象ユーザー情報を編集可能かを判定します。権限・パスキー要否を返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetUser: { type: 'object', description: '対象ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '確認対象のユーザーメールアドレス' },
+        passkey: { type: 'string', description: 'ロック済みユーザー編集時のパスキー（省略可）' }
+      },
+      required: ['targetUser', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'can_delete_user_info',
+    description: '指定ユーザーが対象ユーザー情報を削除可能かを判定します。管理者かつ未ロック状態でのみ削除可。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetUser: { type: 'object', description: '対象ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '確認対象のユーザーメールアドレス' }
+      },
+      required: ['targetUser', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'generate_ui_control_state',
+    description: '指定ユーザーに対するPower Apps UI制御情報を生成します。ボタン非表示・フィールド読み取り専用・パスキープロンプト表示等の制御フラグを返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user: { type: 'object', description: 'ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '現在ログイン中のユーザーメールアドレス' }
+      },
+      required: ['user', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
     name: 'get_bridge_capabilities',
     description: 'BridgeのVersion、MCP仕様対応状況、公開ツール一覧、制約情報、セキュリティ設定を返します。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
@@ -872,6 +972,50 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(bridgeServices.permissions.updatePermissions(params));
   }
+  if (method === 'lock_user_info') {
+    const paramError = validateLockUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return bridgeServices.userProtection.lockUserInfo(params.user, params.passkey);
+  }
+  if (method === 'validate_passkey') {
+    const paramError = validateValidatePasskeyParams(params);
+    if (paramError) throw requestError(paramError);
+    const isValid = bridgeServices.userProtection.validatePasskey(params.passkey, params.user);
+    return { valid: isValid };
+  }
+  if (method === 'get_user_lock_status') {
+    const paramError = validateGetUserLockStatusParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      isLocked: bridgeServices.userProtection.isUserLocked(params.user),
+      lockedAt: params.user.lockedAt || null
+    };
+  }
+  if (method === 'can_view_user_info') {
+    const paramError = validateCanViewUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      canView: bridgeServices.userProtection.canViewUserInfo(params.targetUser, params.currentUserEmail)
+    };
+  }
+  if (method === 'can_edit_user_info') {
+    const paramError = validateCanEditUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    const result = bridgeServices.userProtection.canEditUserInfo(params.targetUser, params.currentUserEmail, params.passkey);
+    return result;
+  }
+  if (method === 'can_delete_user_info') {
+    const paramError = validateCanDeleteUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      canDelete: bridgeServices.userProtection.canDeleteUserInfo(params.targetUser, params.currentUserEmail)
+    };
+  }
+  if (method === 'generate_ui_control_state') {
+    const paramError = validateGenerateUIControlStateParams(params);
+    if (paramError) throw requestError(paramError);
+    return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
+  }
   if (method === 'get_bridge_capabilities') {
     return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18' });
   }
@@ -953,10 +1097,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }
 
-// 新ツール（検証・デプロイ・権限）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
+// 新ツール（検証・デプロイ・権限・ユーザー保護）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
 function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injected = {}) {
   const deployment = injected.deployment || new DeploymentService(config.deployment || {});
   const permissions = injected.permissions || new PermissionsService({ powerAppsStore, config: config.permissions || {} });
+  const userProtection = injected.userProtection || new UserProtectionService({ adminEmail: config.adminEmail });
 
   async function validatePowerAppsChange(params) {
     const canonicalBranch = powerAppsGitStore.canonicalBranch;
@@ -1000,6 +1145,7 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
   return {
     deployment,
     permissions,
+    userProtection,
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
     verifySaveResult: injected.verifySaveResult || verifySave
   };
