@@ -959,13 +959,8 @@ test('MCP_METHODSとMCP_PUBLIC_TOOLSの登録が一致し、新29ツール（拡
   const publicNames = MCP_PUBLIC_TOOLS.map((tool) => tool.name);
   assert.deepEqual([...publicNames].sort(), [...MCP_METHODS].sort());
   assert.equal(new Set(publicNames).size, publicNames.length, '重複登録なし');
-<<<<<<< HEAD
-  for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result', 'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source', 'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target']) assert.ok(publicNames.includes(name), name);
-  assert.equal(publicNames.length, MCP_PUBLIC_TOOLS.length);
-=======
   for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result', 'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source', 'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state']) assert.ok(publicNames.includes(name), name);
-  assert.equal(publicNames.length, 51);
->>>>>>> 4375e22 (Update test expectations for 51 MCP tools including user protection (7 new) and executive (2) features)
+  assert.equal(publicNames.length, MCP_PUBLIC_TOOLS.length);
   assert.deepEqual(publicNames.slice(0, 18), LEGACY_18_TOOL_NAMES, '既存18ツールは名前・順序とも不変');
 });
 
