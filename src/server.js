@@ -1249,6 +1249,21 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (body.method === 'tools/list') {
         return res.status(200).json(jsonRpcResult(id, { tools: MCP_PUBLIC_TOOLS }));
       }
+      // Standard MCP tool methods (health_check, get_tasks, etc.) via tools/call
+      // Map legacy method names to tools/call format for JSON-RPC 2.0 compatibility
+      const standardMethods = new Set(MCP_METHODS);
+      if (standardMethods.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
+        // Convert standard method call to tools/call format
+        return res.status(200).json(await (async () => {
+          try {
+            const result = await executeMcpMethod(body.method, params || {}, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+            return jsonRpcResult(id, result);
+          } catch (error) {
+            return jsonRpcError(id, -32603, error.message);
+          }
+        })());
+      }
+
       if (body.method === 'tools/call') {
         const name = params.name;
         const toolParams = params.arguments || {};
