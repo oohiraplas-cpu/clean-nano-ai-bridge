@@ -151,7 +151,7 @@ test('legacy/direct JSON-RPC cannot bypass registered context even with enforcem
 });
 
 test('compare detects differences, but never invents runtime parity without a source reader', async t => {
-  const f = await fixture(t, { runtimeContent: CONTENT + '# changed\n' });
+  const f = await fixture(t, { runtimeContent: CONTENT.replace('Color.White', 'Color.Black') });
   assert.equal((await f.rpc('compare_powerapps_with_git', await f.chain())).data.data.hasDifferences, true);
   const unavailable = await fixture(t, { runtimeReader: false });
   const result = await unavailable.rpc('compare_powerapps_with_git', await unavailable.chain());

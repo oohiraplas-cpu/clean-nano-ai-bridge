@@ -22,6 +22,8 @@ async function main() {
   const tools = (await request('tools/list', {})).tools;
   assert.equal(tools.length, 51);
   for (const name of ['validate_powerapps_source', 'compare_powerapps_with_git']) assert.deepEqual(tools.find(t => t.name === name).inputSchema.properties.stateContext, STATE_CONTEXT_SCHEMA);
+  const health = await call('health_check');
+  assert.ok(health);
   const state = await call('get_powerapps_state');
   assert.ok(state.correlationId);
   assert.notEqual(state.correlationId, state.operationId);
@@ -42,9 +44,11 @@ async function main() {
   assert.equal(compared.correlationId, state.correlationId);
   console.log(JSON.stringify({ schema: 'PASS', validation: valid.validationStatus,
     branch: source.branch, sha: source.sha, path: source.path,
-    comparisonStatus: compared.data.status, hasDifferences: compared.data.hasDifferences,
-    comparisonVerified: compared.verified, comparisonSources: compared.comparisonSources }, null, 2));
-  if (!compared.verified) process.exitCode = 2;
+    comparisonStatus: compared.comparisonStatus, hasDifferences: compared.data.hasDifferences,
+    comparisonVerified: compared.comparisonVerified, comparisonSources: compared.comparisonSources,
+    changedProperties: compared.data.changedProperties, changedLines: compared.data.changedLines }, null, 2));
+  assert.ok(['identical', 'changed'].includes(compared.comparisonStatus));
+  assert.equal(compared.comparisonVerified, true);
 }
 
 main().catch(() => { console.error('Integration verification failed; check authentication, deployed schema and registered context. No sensitive response logged.'); process.exitCode = 1; });

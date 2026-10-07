@@ -1250,6 +1250,24 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
 
   async function executeWithState(method, params, req) {
+    try { return await executeWithStateInternal(method, params, req); }
+    catch (error) {
+      if (method === 'compare_powerapps_with_git') {
+        if (error.payload?.status === 'state_context_invalid') {
+          error.payload = { ...error.payload, comparisonStatus: 'validation_blocked' };
+        } else if (!error.payload?.comparisonStatus) {
+          // Do not expose provider diagnostics or connection information.
+          const safe = new Error('Power Apps/Git source could not be read');
+          safe.status = 503;
+          safe.payload = { status: 'source_unavailable', comparisonStatus: 'source_unavailable' };
+          throw safe;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async function executeWithStateInternal(method, params, req) {
     // Scope to authenticated transport + MCP session when present. The explicit,
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
@@ -1307,7 +1325,18 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         result.validationStatus = result.data.valid && result.verified ? 'VALID' : 'INVALID';
       } else {
         result = await comparePowerAppsWithGit({ powerAppsStore, powerAppsGitStore,
-          targetFile: record.source.path, targetApp: record.context.appId, gitSource: source });
+          targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
+          stateContext: record.context,
+          assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
+        // Export may take time: reject provider or Git drift during the read.
+        const afterState = await powerAppsStore.getAppState();
+        const afterSource = await powerAppsGitStore.getSourceFile(record.source.path);
+        const afterFailures = [];
+        if (afterState.appId !== record.context.appId) afterFailures.push('appId: observed app changed during export');
+        if (afterState.environmentId !== record.context.environment) afterFailures.push('environment: observed environment changed during export');
+        for (const field of ['branch', 'canonicalBranch', 'sha']) if (afterSource[field] !== record.context[field]) afterFailures.push(`${field}: observed source changed during export`);
+        if (afterSource.path !== record.source.path || afterSource.content !== record.source.content) afterFailures.push('sourceContent/path: observed source changed during export');
+        if (afterFailures.length) throw contextError(afterFailures);
       }
       stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       return { ...result, correlationId: record.context.correlationId,
@@ -1372,7 +1401,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
               const error = createStateValidationError(stateValidation, name);
               return res.status(200).json(jsonRpcResult(id, {
                 content: [{ type: 'text', text: error.message }],
-                structuredContent: { error: error.message, ...error.details },
+                structuredContent: { error: error.message, ...error.details, ...(name === 'compare_powerapps_with_git' ? { comparisonStatus: 'validation_blocked' } : {}) },
                 isError: true
               }));
             }
@@ -1387,7 +1416,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(enrichedResult) }],
             structuredContent: enrichedResult,
-            isError: false
+            isError: enrichedResult.comparisonStatus === 'source_unavailable' || enrichedResult.comparisonStatus === 'validation_blocked'
           }));
         } catch (error) {
           if (!error.status) return next(error);
