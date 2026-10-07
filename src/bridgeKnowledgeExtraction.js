@@ -222,11 +222,16 @@ class AppTargetResolver {
     if (!branch) unconfirmed.push('正本Branch');
     if (!gitRoot) unconfirmed.push('gitRoot（このアプリのGit上の場所は設定に未記載）');
 
-    const sourceControl = ruleEntry?.sourceControl?.environmentId === app.environmentId ? ruleEntry.sourceControl : null;
+    const configuredSourceControl = ruleEntry?.sourceControl || null;
+    const sourceControl = configuredSourceControl?.powerAppsAuthority === 'github_only'
+      ? configuredSourceControl
+      : configuredSourceControl?.environmentId === app.environmentId
+        ? configuredSourceControl
+        : null;
     const sourceHeld = sourceControl?.bridgeMirrorState === 'hold';
     if (sourceHeld) {
       warnings.push(sourceControl.holdReason);
-      unconfirmed.push('ネイティブAzure DevOpsとBridge読取ソースの一致（旧レビューexportは保留）');
+      unconfirmed.push('正本ソースとBridge読取ソースの一致（保留状態）');
     }
     const complete = Boolean(app.appId && app.environmentId && branch && gitRoot && sourceOnCanonicalBranch === true && !sourceHeld);
     return createCommonResponse({
