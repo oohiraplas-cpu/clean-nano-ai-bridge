@@ -148,6 +148,16 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   remarks: { type: 'string', description: '備考' }
 });
 
+const STATE_CONTEXT_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    appId: { type: 'string' }, environment: { type: 'string' }, branch: { type: 'string' },
+    canonicalBranch: { type: 'string' }, sha: { type: 'string' }, correlationId: { type: 'string' }
+  },
+  required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'],
+  additionalProperties: false
+});
+
 const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
@@ -234,7 +244,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
         content: { type: 'string', description: '更新後のファイル内容' },
         message: { type: 'string', description: '更新のコミットメッセージ' },
-        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' }
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA
       },
       additionalProperties: false
     }
@@ -244,7 +255,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: 'GitHubの既存Power AppsソースをPower Platformへ同期し、保存状態を確認します。',
     inputSchema: {
       type: 'object',
-      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' }, stateContext: STATE_CONTEXT_SCHEMA },
       additionalProperties: false
     }
   },
@@ -253,7 +264,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '既存Power Appsアプリを公開します。',
     inputSchema: {
       type: 'object',
-      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' }, stateContext: STATE_CONTEXT_SCHEMA },
       additionalProperties: false
     }
   },
