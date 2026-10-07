@@ -22,7 +22,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             Size: =22
-            Text: ="解体工カレンダー"
+            Text: ="clean nano"
             Width: =Parent.Width - 32
             X: =16
             Y: =16
@@ -36,6 +36,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =76
+            Visible: =false
       - S1_EmpDrop:
           Control: Classic/DropDown@2.3.1
           Properties:
@@ -56,6 +57,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =106
+            Visible: =false
       - S1_MonthLabel:
           Control: Label@2.5.1
           Properties:
@@ -167,6 +169,7 @@ Screens:
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
+            Visible: =false
             Fill: =RGBA(26, 58, 42, 1)
             Height: =70
             Width: =Parent.Width
@@ -174,6 +177,7 @@ Screens:
       - S1_Nav1:
           Control: Classic/Button@2.2.0
           Properties:
+            Visible: =false
             BorderThickness: =0
             Color: =RGBA(0, 204, 102, 1)
             Fill: =RGBA(26, 58, 42, 1)
@@ -195,6 +199,7 @@ Screens:
       - S1_Nav2:
           Control: Classic/Button@2.2.0
           Properties:
+            Visible: =false
             BorderThickness: =0
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
@@ -216,6 +221,7 @@ Screens:
       - S1_Nav3:
           Control: Classic/Button@2.2.0
           Properties:
+            Visible: =false
             BorderThickness: =0
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
@@ -237,6 +243,7 @@ Screens:
       - S1_Nav4:
           Control: Classic/Button@2.2.0
           Properties:
+            Visible: =false
             BorderThickness: =0
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
@@ -262,7 +269,7 @@ Screens:
             Color: =RGBA(255, 255, 255, 1)
             Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
-            Height: =70
+            Height: =40
             HoverColor: =RGBA(255, 255, 255, 1)
             HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
@@ -271,11 +278,11 @@ Screens:
             RadiusBottomRight: =0
             RadiusTopLeft: =0
             RadiusTopRight: =0
-            Size: =11
+            Size: =12
             Text: ="設定"
-            Width: =Parent.Width / 5
-            X: =Parent.Width / 5 * 4
-            Y: =Parent.Height - 70
+            Width: =80
+            X: =Parent.Width - 96
+            Y: =16
       - Button9:
           Control: Classic/Button@2.2.0
           Properties:
