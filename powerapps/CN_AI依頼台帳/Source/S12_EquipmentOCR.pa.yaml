@@ -14,7 +14,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =16
-      - OCR_Back:
+      - btn_nav_calendar:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)
@@ -39,7 +39,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =140
-      - OCR_ReadPreview:
+      - btn_nav_preview:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)

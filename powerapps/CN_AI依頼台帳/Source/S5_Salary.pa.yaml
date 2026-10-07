@@ -27,7 +27,7 @@ Screens:
             Width: =Parent.Width - 140
             X: =70
             Y: =16
-      - S5_Prev:
+      - btn_month_prev:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -43,7 +43,7 @@ Screens:
             Width: =50
             X: =16
             Y: =16
-      - S5_Next:
+      - btn_month_next:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -331,7 +331,7 @@ Screens:
             Height: =70
             Width: =Parent.Width
             Y: =Parent.Height - 70
-      - S5_Nav1:
+      - btn_nav_home:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -352,7 +352,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
             Y: =Parent.Height - 70
-      - S5_Nav2:
+      - btn_nav_calendar:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -373,7 +373,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
             Y: =Parent.Height - 70
-      - S5_Nav3:
+      - btn_nav_register:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -394,7 +394,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
             Y: =Parent.Height - 70
-      - S5_Nav4:
+      - btn_nav_summary:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -415,7 +415,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
             Y: =Parent.Height - 70
-      - S5_Nav5:
+      - btn_nav_settings:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0

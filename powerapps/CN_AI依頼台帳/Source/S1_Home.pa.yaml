@@ -134,7 +134,7 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =404
-      - S1_GoCal:
+      - btn_nav_calendar:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -150,7 +150,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =510
-      - S1_EquipmentDocs:
+      - btn_nav_equipment:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -174,7 +174,7 @@ Screens:
             Height: =70
             Width: =Parent.Width
             Y: =Parent.Height - 70
-      - S1_Nav1:
+      - btn_nav_home:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -196,7 +196,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
             Y: =Parent.Height - 70
-      - S1_Nav2:
+      - btn_nav_calendar_2:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -218,7 +218,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
             Y: =Parent.Height - 70
-      - S1_Nav3:
+      - btn_nav_register:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -240,7 +240,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
             Y: =Parent.Height - 70
-      - S1_Nav4:
+      - btn_nav_summary:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -262,7 +262,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
             Y: =Parent.Height - 70
-      - S1_Nav5:
+      - btn_nav_settings:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -283,7 +283,7 @@ Screens:
             Width: =80
             X: =Parent.Width - 96
             Y: =16
-      - Button9:
+      - btn_unknown:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false

@@ -13,7 +13,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =16
-      - S19_OcrFinalPreview_Back:
+      - btn_action_back:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)
@@ -34,7 +34,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =136
-      - S19_OcrFinalPreview_Action1:
+      - btn_action_pdf:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)
@@ -45,7 +45,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =278
-      - S19_OcrFinalPreview_Action2:
+      - btn_action_fax:
           Control: Classic/Button@2.2.0
           Properties:
             Color: =RGBA(10, 10, 10, 1)

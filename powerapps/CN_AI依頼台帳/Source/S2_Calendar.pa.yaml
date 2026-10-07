@@ -237,7 +237,7 @@ Screens:
             Height: =70
             Width: =Parent.Width
             Y: =Parent.Height - 70
-      - S2_Nav1:
+      - btn_nav_home:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -258,7 +258,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
             Y: =Parent.Height - 70
-      - S2_Nav2:
+      - btn_nav_calendar:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -279,7 +279,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
             Y: =Parent.Height - 70
-      - S2_Nav3:
+      - btn_nav_register:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -300,7 +300,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
             Y: =Parent.Height - 70
-      - S2_Nav4:
+      - btn_nav_summary:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -321,7 +321,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
             Y: =Parent.Height - 70
-      - S2_Nav5:
+      - btn_nav_settings:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -342,7 +342,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
             Y: =Parent.Height - 70
-      - S2_PlanAttach:
+      - btn_nav_plan:
           Control: Classic/Button@2.2.0
           Properties:
             BorderColor: =RGBA(0,255,102,1)
