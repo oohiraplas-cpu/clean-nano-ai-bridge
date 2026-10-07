@@ -84,7 +84,7 @@ test('GitHub main is canonical and fallback branch writes remain fail-closed', a
   assert.throws(() => store.assertCanonicalBranch('sync/old-review', '更新'), /branch不一致/);
 });
 test('live target resolution treats GitHub main existing source as canonical repository parity', async () => {
-  const resolver = new AppTargetResolver({ powerAppsStore: { environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb', async dataverseRequest() { return { value: [{ canvasappid: 'app', displayname: 'CN_AI依頼台帳' }] }; } }, powerAppsGitStore: { canonicalBranch: 'main', githubOwner: 'oohiraplas-cpu', githubRepo: 'clean-nano-ai-bridge', async githubRequest() { return []; } } });
+  const resolver = new AppTargetResolver({ powerAppsStore: { environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb', async dataverseRequest() { return { value: [{ canvasappid: 'app', displayname: 'CN_AI依頼台帳' }] }; } }, powerAppsGitStore: { canonicalBranch: 'main', githubOwner: 'oohiraplas-cpu', githubRepo: 'clean-nano-ai-bridge', sourceControl: { provider: 'GitHub', repository: 'clean-nano-ai-bridge', branch: 'main', folder: 'powerapps/CN_AI依頼台帳/Source', powerAppsAuthority: 'github_only' }, async githubRequest() { return []; } } });
   const result = await resolver.resolve('CN_AI依頼台帳');
   assert.equal(result.verified, true);
   assert.equal(result.data.writesAllowed, true);
