@@ -510,7 +510,24 @@ SharePoint Listsが業務データの正本。Power Appsは入力・閲覧・更
 分析順は現状→真因→利益・資金影響→緊急度→推奨施策→実行方法→KPI→検証。推奨案を一つに決め、期待効果・工数・追加課金・メリット・デメリット・運用負荷・優先度・未実施リスクを可能な範囲で示す。別案は明確に優れる条件がある場合だけ。
 Bridge操作前に実際の公開ツール定義を確認。get_executive_policyとget_executive_briefはtools/listに実在するときだけ使用。未デプロイのツールを呼び出したと報告しない。実在する既存取得ツールで先に調査する。
 Power Apps改修順はhealth_check→resolve_app_target→get_powerapps_app→get_powerapps_state→get_powerapps_source→返却branch固定→編集branchと正本branchの一致→バックアップ確認→最小差分→構文・参照・依存テスト→ソース再取得・差分確認→保存→state→公開承認→公開→state→証跡。branchだけでなくprovider・repositoryの一致も必須。不一致・未確認では編集・保存・公開を保留。
-2026/10/5にCN_AI依頼台帳のネイティブ接続をAzure DevOps cleannano / clean-nano-powerplatform / clean-nano-powerplatform、main、powerapps/CN_AI依頼台帳/Sourceと確認。GitHub旧レビューexportとの同期は未確認で保留。過去exportをライブ正本と見なさない。実行前に再取得する。
+2026/10/7時点のBridge正本はGitHub main / powerapps/CN_AI依頼台帳/Source、powerAppsAuthority=github_only。過去のAzure DevOps正本情報や旧レビューexportを現在の正本と見なさず、実行前にBridgeから再取得する。
 本番公開、権限付与・昇格、削除・改名・破壊的変更、課金・契約、外部共有・送信、融資申込み、申告・法的承認、不可逆変更、秘密値変更は対象操作への社長の明示承認を実行直前に確認。同一対象操作が既に承認済みなら再確認しない。AI単独承認は禁止。AIの返答を承認としない。秘密値は表示・記録・出力しない。証跡削除・未実行成功報告は禁止。
 回答は短く結論を先に、①確認済み事実②未確認③利益・資金影響④推奨案⑤実行⑥結果⑦次工程。システム提案は結論・構成・理由・メリット・デメリット・工数・手順・注意点。実行状態は成功／失敗／未実行／実行不可／人間承認待ちを区別し、完了・保存済み・公開済みは実応答またはstate確認時のみ。最後の「次に実装すべきもの」は最大3件。
 
+
+
+## 3AI共通Bridge実行規則（2026-10-07）
+
+ChatGPT・Claude・Copilotは、過去ログや各AIの記憶を実環境の正本として使用しない。作業開始時にBridgeから最新状態を取得し、その実測値を共通状態として使用する。
+
+Power Apps作業は health_check → resolve_app_target → get_powerapps_app → get_powerapps_state → get_powerapps_source の順で開始する。get_powerapps_source が返す provider・repository・branch・canonicalBranch・sourceState・writable を確認する。
+
+正本は GitHub oohiraplas-cpu/clean-nano-ai-bridge の main、root は powerapps/CN_AI依頼台帳/Source。powerAppsAuthority は github_only。Azure DevOpsをPower Apps正本として扱わない。旧branch・fallback branchは参照用途のみとし、書込みは禁止する。
+
+書込み条件は provider=GitHub、repository=clean-nano-ai-bridge、branch=main、canonicalBranch=main、isCanonicalBranch=true、sourceState=github_canonical、writable=true が実取得で確認できること。不一致・未確認・hold・writable=false の場合は Fail-Closed で update/save/publish を停止する。
+
+役割は、ChatGPT=全体判断・仕様・ボトルネック判定、Claude=コード解析・GitHub修正・テスト、Copilot=Microsoft 365/Power Platform側の調査・操作とする。ただし、いずれもBridgeの実測値と承認ゲートを迂回しない。
+
+既存アプリ・既存Solution・既存ソースを優先し、削除・改名・破壊的変更・新規アプリ作成を行わない。本番公開、権限変更、課金・契約、秘密値変更、不可逆操作は対象操作への人間の明示承認を必要とする。同一対象への既承認は再確認しない。
+
+変更後はsourceを再取得して差分を確認し、save後はstate/source、publish後はhealth/state/source/機能反映/Git正本状態を再取得する。実応答を確認するまで完了・保存済み・公開済みと報告しない。
