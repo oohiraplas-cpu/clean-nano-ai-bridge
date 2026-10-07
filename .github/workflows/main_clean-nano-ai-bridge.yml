@@ -63,6 +63,14 @@ jobs:
           slot-name: 'Production'
           package: .
 
+      - name: Configure Bridge State Manager Enforcement
+        run: |
+          RG="$(az webapp list --query "[?name=='clean-nano-ai-bridge'].resourceGroup | [0]" -o tsv)"
+          az webapp config appsettings set \
+            --name clean-nano-ai-bridge \
+            --resource-group "$RG" \
+            --settings BRIDGE_STATE_MANAGER_ENFORCE=true
+
       - name: Restart Azure Web App to load deployed code
         run: |
           RG="$(az webapp list --query "[?name=='clean-nano-ai-bridge'].resourceGroup | [0]" -o tsv)"
