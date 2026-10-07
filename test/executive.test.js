@@ -77,18 +77,16 @@ test('registered flows reflect actual config without URLs; unsupported adapter i
   assert.equal(JSON.stringify(result).includes('sig='), false);
   assert.equal((await listRegisteredPowerAutomateFlows({ powerAutomateRunner: {} })).verified, false);
 });
-test('observed native Azure DevOps mismatch blocks source writes, saves and publications before side effects', async () => {
-  let calls = 0;
-  const store = new PowerAppsGitStore({ solutionUniqueName: 'CN_AIIraiDaicho', githubBranch: 'main', fetchImpl() { calls++; throw new Error('unexpected write'); } });
-  assert.throws(() => store.assertCanonicalBranch('main', '公開'), /Azure DevOps(?:正本接続設定が必要|のみ)/);
-  assert.throws(() => store.assertCanonicalBranch(undefined, '保存'), /正本はAzure DevOpsのみ/);
-  await assert.rejects(store.updateSourceFile('App.pa.yaml', 'new', 'message', 'main'), /正本はAzure DevOpsのみ/);
-  assert.equal(calls, 0);
+test('GitHub main is canonical and fallback branch writes remain fail-closed', async () => {
+  const store = new PowerAppsGitStore({ githubBranch: 'main' });
+  assert.deepEqual(store.assertCanonicalBranch('main', '公開'), { checked: true, branch: 'main' });
+  assert.deepEqual(store.assertCanonicalBranch(undefined, '保存'), { checked: false });
+  assert.throws(() => store.assertCanonicalBranch('sync/old-review', '更新'), /branch不一致/);
 });
-test('live target resolution cannot claim native repository parity from GitHub directory existence', async () => {
-  const resolver = new AppTargetResolver({ powerAppsStore: { environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb', async dataverseRequest() { return { value: [{ canvasappid: 'app', displayname: 'CN_AI依頼台帳' }] }; } }, powerAppsGitStore: { canonicalBranch: 'main', githubOwner: 'owner', githubRepo: 'repo', async githubRequest() { return []; } } });
+test('live target resolution treats GitHub main existing source as canonical repository parity', async () => {
+  const resolver = new AppTargetResolver({ powerAppsStore: { environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb', async dataverseRequest() { return { value: [{ canvasappid: 'app', displayname: 'CN_AI依頼台帳' }] }; } }, powerAppsGitStore: { canonicalBranch: 'main', githubOwner: 'oohiraplas-cpu', githubRepo: 'clean-nano-ai-bridge', async githubRequest() { return []; } } });
   const result = await resolver.resolve('CN_AI依頼台帳');
-  assert.equal(result.verified, false);
-  assert.equal(result.data.writesAllowed, false);
-  assert.equal(result.data.sourceControl.provider, 'AzureDevOps');
+  assert.equal(result.verified, true);
+  assert.equal(result.data.writesAllowed, true);
+  assert.equal(result.data.sourceControl.provider, 'GitHub');
 });
