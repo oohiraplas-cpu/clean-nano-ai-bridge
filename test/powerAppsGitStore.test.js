@@ -83,6 +83,35 @@ test('Git統合されていないSolutionでもGitHubソース更新を失わな
   assert.equal(result.sync.reason, 'solution_not_git_integrated');
 });
 
+
+test('GitHub正本ルートをSolutionルートとして取得できない場合も安全に同期をスキップする', async () => {
+  const fetchImpl = async (url, options = {}) => {
+    if (url.includes('api.github.com') && (options.method || 'GET') === 'GET') {
+      return new Response(JSON.stringify({ type: 'file', sha: 'old-sha', content: Buffer.from('old').toString('base64') }), { status: 200 });
+    }
+    if (url.includes('api.github.com') && options.method === 'PUT') {
+      return new Response(JSON.stringify({ commit: { sha: 'commit-sha' }, content: { sha: 'content-sha' } }), { status: 200 });
+    }
+    if (url.includes('/oauth2/v2.0/token')) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+    if (url.includes('/solutions?')) return new Response(JSON.stringify({ value: [{ uniquename: 'ActualSolution' }] }), { status: 200 });
+    if (url.endsWith('/RefreshChangesFromGit')) {
+      return new Response(JSON.stringify({ error: { code: '0x80040216', message: 'Unable to retrieve solution components from root folder path powerapps/CN_AI依頼台帳/Source in the Git.' } }), { status: 400 });
+    }
+    return new Response('not found', { status: 404 });
+  };
+  const store = new PowerAppsGitStore({
+    tenantId: 'tenant', clientId: 'client', clientSecret: 'secret',
+    orgUrl: 'https://example.crm.dynamics.com', solutionUniqueName: 'ActualSolution',
+    githubToken: 'github-token', githubOwner: 'owner', githubRepo: 'repo',
+    githubBranch: 'main', githubRoot: 'powerapps/CN_AI依頼台帳/Source', fetchImpl
+  });
+  const result = await store.applySourceFileChange('S1_Home.pa.yaml', 'new', 'sync source', 'main');
+  assert.equal(result.status, 'ok');
+  assert.equal(result.update.commitSha, 'commit-sha');
+  assert.equal(result.sync.status, 'skipped');
+  assert.equal(result.sync.reason, 'solution_not_git_integrated');
+});
+
 // ---- 正本branch保護（過去branchへの誤書き込み防止） ----
 
 const FALLBACK = 'sync/cn-aiiraidaicho-live-review-20260926';
