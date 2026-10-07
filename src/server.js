@@ -138,6 +138,21 @@ const MCP_METHODS = Object.freeze([
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target'
 ]);
 
+const STATE_CONTEXT_SCHEMA = Object.freeze({
+  type: 'object',
+  description: 'Fail-Closed書込み検証用の状態コンテキスト。書込み系ツールでは6項目すべて必須です。',
+  properties: {
+    appId: { type: 'string', description: '対象Power AppsのApp ID' },
+    environment: { type: 'string', description: '対象Power Platform Environment ID' },
+    branch: { type: 'string', description: '書込み対象Git branch' },
+    canonicalBranch: { type: 'string', description: '正本として固定したGit branch。branchと一致必須' },
+    sha: { type: 'string', pattern: '^[a-f0-9]{40}$', description: 'State Lock時点の40桁Git commit SHA' },
+    correlationId: { type: 'string', minLength: 8, description: '監査・追跡用Correlation ID' }
+  },
+  required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'],
+  additionalProperties: false
+});
+
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
   employeeId: { type: 'string', description: '社員ID' },
@@ -234,8 +249,10 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
         content: { type: 'string', description: '更新後のファイル内容' },
         message: { type: 'string', description: '更新のコミットメッセージ' },
-        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' }
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA
       },
+      required: ['stateContext'],
       additionalProperties: false
     }
   },
@@ -244,7 +261,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: 'GitHubの既存Power AppsソースをPower Platformへ同期し、保存状態を確認します。',
     inputSchema: {
       type: 'object',
-      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      properties: {
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA
+      },
+      required: ['stateContext'],
       additionalProperties: false
     }
   },
@@ -253,7 +274,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '既存Power Appsアプリを公開します。',
     inputSchema: {
       type: 'object',
-      properties: { branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' } },
+      properties: {
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA
+      },
+      required: ['stateContext'],
       additionalProperties: false
     }
   },

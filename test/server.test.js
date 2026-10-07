@@ -1510,3 +1510,20 @@ test('Executive policy is available through authenticated MCP capabilities witho
   assert.deepEqual(await (await fetch(`${server.baseUrl}/health`)).json(), { status: 'ok' });
 });
 
+
+
+test('MCP public Power Apps write tools expose complete required stateContext schema', () => {
+  const writeTools = ['update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'];
+  const expectedFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'];
+
+  for (const name of writeTools) {
+    const tool = MCP_PUBLIC_TOOLS.find((entry) => entry.name === name);
+    assert.ok(tool, `${name} must be publicly exposed`);
+    assert.ok(tool.inputSchema.required.includes('stateContext'), `${name} must require stateContext`);
+
+    const stateSchema = tool.inputSchema.properties.stateContext;
+    assert.equal(stateSchema.additionalProperties, false);
+    assert.deepEqual(stateSchema.required, expectedFields);
+    assert.deepEqual(Object.keys(stateSchema.properties), expectedFields);
+  }
+});
