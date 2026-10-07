@@ -1,7 +1,7 @@
 const path = require('node:path');
 
 const DEFAULT_ORIGINS = ['http://localhost:3000'];
-const DEFAULT_POWERAPPS_ORG_URL = 'https://orgcf455a58.crm7.dynamics.com';
+const DEFAULT_POWERAPPS_ORG_URL = 'https://org0bbb24c5.crm7.dynamics.com';
 const DEFAULT_POWERAPPS_SOLUTION = 'CN_CompanyOS';
 
 // POWER_AUTOMATE_FLOWSはJSON文字列（{"flowKey": "トリガーURL"}）としてのみ環境変数で渡す。
