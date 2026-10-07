@@ -17,6 +17,7 @@ function unknownProperty(params, allowed) {
 // get_powerapps_sourceが返したbranchを渡して、正本branchとの一致確認に使う（任意・後方互換）。
 function optionalBranch(params) {
   if (params.branch !== undefined && (typeof params.branch !== 'string' || !params.branch.trim())) return 'branchは空でない文字列である必要があります';
+  if (params.stateContext !== undefined && !isPlainObject(params.stateContext)) return 'stateContextはJSONオブジェクトである必要があります';
   return null;
 }
 function validatePowerAppsMcpInput(body) {
