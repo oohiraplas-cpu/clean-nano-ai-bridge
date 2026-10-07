@@ -266,7 +266,7 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
   const saved = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
-    body: JSON.stringify({ method: 'save_powerapps_app', params: {} })
+    body: JSON.stringify({ method: 'save_powerapps_app', params: { branch: 'main' } })
   });
   assert.equal(saved.status, 200);
   const savedBody = await saved.json();
@@ -294,7 +294,7 @@ test('save_powerapps_appはPower Apps APIが2xx成功かつ空bodyでもJSON解�
     powerAppsOverrides: { orgUrl: 'https://example.crm.dynamics.com', solutionUniqueName: 'CN_CompanyOS', githubToken: 'read-only-is-enough', githubOwner: 'owner', githubRepo: 'repo' }
   });
   t.after(() => server.close());
-  const saved = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'save_powerapps_app', params: {} }) });
+  const saved = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'save_powerapps_app', params: { branch: 'main' } }) });
   assert.equal(saved.status, 200);
   assert.equal((await saved.json()).result.status, 'ok');
   assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
@@ -1358,7 +1358,7 @@ test('update_permissions: Dataverseの強い権限（System Administrator）は�
 test('update_powerapps_app: フォールバック（過去）branchでしか見つからないソースは更新を拒否し、PUTしない', async (t) => {
   const mock = routedFetch([githubContentsRoute({ [FALLBACK_BRANCH]: { [`${GITHUB_ROOT}/Screen3.pa.yaml`]: 'old' } }), githubPutRoute]);
   const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
-  const args = { relativePath: 'Screen3.pa.yaml', content: 'new', message: 'm' };
+  const args = { relativePath: 'Screen3.pa.yaml', content: 'new', message: 'm', branch: 'main' };
 
   const viaRpc = await rpc(server, 'update_powerapps_app', args);
   assert.equal(viaRpc.httpStatus, 200);
@@ -1389,7 +1389,7 @@ test('update_powerapps_app: get_powerapps_sourceが返したbranchを渡し、�
   assert.equal(mock.calls.find((c) => c.method === 'PUT').body.branch, 'main');
 });
 
-test('save_powerapps_app / publish_powerapps_app: branch不一致は拒否し、同期・公開を実行しない。branch未指定・一致は従来どおり', async (t) => {
+test('save_powerapps_app / publish_powerapps_app: State Lock未成立・branch不一致を拒否し、正本一致のみ実行する', async (t) => {
   const mock = routedFetch([
     tokenRoute,
     [(c) => c.url.includes('/solutions?'), () => jsonResponse({ value: [{ solutionid: '1', uniquename: 'ActualSolution', friendlyname: 'A', version: '1', ismanaged: false }] })],
@@ -1415,9 +1415,10 @@ test('save_powerapps_app / publish_powerapps_app: branch不一致は拒否し、
 
   const saveOk = await rpc(server, 'save_powerapps_app', { branch: 'main' });
   assert.equal(saveOk.isError, false);
-  const saveCompat = await rpc(server, 'save_powerapps_app', {});
-  assert.equal(saveCompat.isError, false, 'branch未指定は後方互換');
-  const publishOk = await rpc(server, 'publish_powerapps_app', {});
+  const saveUnlocked = await rpc(server, 'save_powerapps_app', {});
+  assert.equal(saveUnlocked.isError, true, 'branch未指定はState Lock未成立として拒否');
+  assert.equal(saveUnlocked.structuredContent.status, 'branch_mismatch');
+  const publishOk = await rpc(server, 'publish_powerapps_app', { branch: 'main' });
   assert.equal(publishOk.isError, false);
   assert.equal(publishOk.structuredContent.status, 'ok');
   assert.equal((await rpc(server, 'publish_powerapps_app', { branch: '' })).isError, true);

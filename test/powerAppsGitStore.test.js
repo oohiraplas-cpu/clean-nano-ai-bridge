@@ -38,7 +38,7 @@ test('Power Appsソース更新後にPower Platformへ同期する', async () =>
     githubBranch: 'main', githubRoot: 'powerapps/app/Source', fetchImpl
   });
 
-  const result = await store.applySourceFileChange('App.pa.yaml', 'new', 'sync source');
+  const result = await store.applySourceFileChange('App.pa.yaml', 'new', 'sync source', 'main');
 
   assert.equal(result.status, 'ok');
   assert.equal(result.update.commitSha, 'commit-sha');
@@ -76,7 +76,7 @@ test('Git統合されていないSolutionでもGitHubソース更新を失わな
     githubToken: 'github-token', githubOwner: 'owner', githubRepo: 'repo',
     githubBranch: 'main', githubRoot: 'powerapps/app/Source', fetchImpl
   });
-  const result = await store.applySourceFileChange('App.pa.yaml', 'new', 'sync source');
+  const result = await store.applySourceFileChange('App.pa.yaml', 'new', 'sync source', 'main');
   assert.equal(result.status, 'ok');
   assert.equal(result.update.commitSha, 'commit-sha');
   assert.equal(result.sync.status, 'skipped');
@@ -152,7 +152,7 @@ test('フォールバック先（過去branch）でのみ見つかったソー�
   const store = createStore(github.fetchImpl);
 
   await assert.rejects(
-    store.updateSourceFile('Screen3.pa.yaml', 'new content', 'msg'),
+    store.updateSourceFile('Screen3.pa.yaml', 'new content', 'msg', 'main'),
     (error) => error.status === 409
       && error.payload.status === 'branch_mismatch'
       && error.payload.canonicalBranch === 'main'
@@ -176,7 +176,7 @@ test('applySourceFileChangeも過去branchでは更新・Power Platform同期の
 test('正本branchでソースが見つかれば、そのbranchへ更新する', async () => {
   const github = createGitHubMock({ main: { 'powerapps/app/Source/Screen3.pa.yaml': 'old' }, [FALLBACK]: { 'powerapps/app/Source/Screen3.pa.yaml': 'older' } });
   const store = createStore(github.fetchImpl);
-  const result = await store.updateSourceFile('Screen3.pa.yaml', 'new', 'msg');
+  const result = await store.updateSourceFile('Screen3.pa.yaml', 'new', 'msg', 'main');
   assert.equal(result.branch, 'main');
   const put = github.calls.find((call) => call.method === 'PUT');
   assert.equal(put.body.branch, 'main');
@@ -202,9 +202,9 @@ test('呼び出し側が把握しているbranchが正本と異なる場合は�
   assert.equal(github.calls.length, 0);
 });
 
-test('assertCanonicalBranch: 未指定は後方互換でスキップ、一致は通過、不一致は保存・公開も拒否する', () => {
+test('assertCanonicalBranch: 未指定はState Lockで拒否、一致は通過、不一致は保存・公開も拒否する', () => {
   const store = createStore(async () => new Response('{}'));
-  assert.deepEqual(store.assertCanonicalBranch(undefined, '保存'), { checked: false });
+  assert.throws(() => store.assertCanonicalBranch(undefined, '保存'), (error) => error.status === 409 && error.message.includes('State Lock未成立'));
   assert.deepEqual(store.assertCanonicalBranch('main', '公開'), { checked: true, branch: 'main' });
   assert.throws(() => store.assertCanonicalBranch(FALLBACK, '保存'), (error) => error.status === 409 && error.message.includes('保存を拒否'));
   assert.throws(() => store.assertCanonicalBranch('feature/x', '公開'), (error) => error.status === 409 && error.message.includes('公開を拒否'));
