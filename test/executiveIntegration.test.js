@@ -17,7 +17,7 @@ test('Executive MCP tools are authenticated, discoverable and executable through
   };
   assert.equal((await call('tools/list', {}, false)).status, 401);
   const listed = await call('tools/list', {});
-  assert.equal(listed.body.result.tools.length, 44);
+  assert.equal(listed.body.result.tools.length, MCP_PUBLIC_TOOLS.length);
   for (const name of ['get_executive_policy', 'get_executive_brief']) {
     assert.equal(MCP_PUBLIC_TOOLS.find(x => x.name === name).annotations.readOnlyHint, true);
     const result = (await call('tools/call', { name, arguments: {} })).body.result;
