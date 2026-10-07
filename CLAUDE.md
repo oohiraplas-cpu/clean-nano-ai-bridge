@@ -51,3 +51,20 @@ There is no lint/build step and no test-name filtering script configured — use
 - Secrets (`WEBHOOK_API_KEY`, `MCP_API_KEY`, external AI API keys) belong in deployment environment variables only — never in code, `.env` committed to git, or `data/tasks.json`.
 - `HOST` defaults to `0.0.0.0` (cloud-container friendly); `PORT` should come from the deployment environment.
 - CORS is allow-listed via `CORS_ORIGINS` (comma-separated), not wide open.
+
+
+## 3AI共通Bridge実行規則（2026-10-07）
+
+ChatGPT・Claude・Copilotは、過去ログや各AIの記憶を実環境の正本として使用しない。作業開始時にBridgeから最新状態を取得し、その実測値を共通状態として使用する。
+
+Power Apps作業は health_check → resolve_app_target → get_powerapps_app → get_powerapps_state → get_powerapps_source の順で開始する。get_powerapps_source が返す provider・repository・branch・canonicalBranch・sourceState・writable を確認する。
+
+正本は GitHub oohiraplas-cpu/clean-nano-ai-bridge の main、root は powerapps/CN_AI依頼台帳/Source。powerAppsAuthority は github_only。Azure DevOpsをPower Apps正本として扱わない。旧branch・fallback branchは参照用途のみとし、書込みは禁止する。
+
+書込み条件は provider=GitHub、repository=clean-nano-ai-bridge、branch=main、canonicalBranch=main、isCanonicalBranch=true、sourceState=github_canonical、writable=true が実取得で確認できること。不一致・未確認・hold・writable=false の場合は Fail-Closed で update/save/publish を停止する。
+
+役割は、ChatGPT=全体判断・仕様・ボトルネック判定、Claude=コード解析・GitHub修正・テスト、Copilot=Microsoft 365/Power Platform側の調査・操作とする。ただし、いずれもBridgeの実測値と承認ゲートを迂回しない。
+
+既存アプリ・既存Solution・既存ソースを優先し、削除・改名・破壊的変更・新規アプリ作成を行わない。本番公開、権限変更、課金・契約、秘密値変更、不可逆操作は対象操作への人間の明示承認を必要とする。同一対象への既承認は再確認しない。
+
+変更後はsourceを再取得して差分を確認し、save後はstate/source、publish後はhealth/state/source/機能反映/Git正本状態を再取得する。実応答を確認するまで完了・保存済み・公開済みと報告しない。
