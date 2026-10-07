@@ -1,5 +1,5 @@
 {
-  "_note": "ユーザーが確認済みの事実のみを記載する。推測・仮置きの値は入れない。App ID・Environment・Branchはここに書かず、実環境から取得する。",
+  "_note": "ユーザー確認済みの事実のみを記載する。Power AppsソースはGitHub/mainの既存ソースを正本として保持し、Git履歴を残す。App ID・Environmentは実環境から取得する。",
   "publishApprover": {
     "name": "野口英光",
     "title": "代表取締役",
@@ -16,24 +16,22 @@
       ],
       "gitRoot": "powerapps/CN_AI依頼台帳/Source",
       "sourceControl": {
-        "provider": "AzureDevOps",
-        "organization": "cleannano",
-        "project": "clean-nano-powerplatform",
-        "repository": "clean-nano-powerplatform",
+        "provider": "GitHub",
+        "organization": "oohiraplas-cpu",
+        "project": null,
+        "repository": "clean-nano-ai-bridge",
         "branch": "main",
         "folder": "powerapps/CN_AI依頼台帳/Source",
-        "environmentId": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
-        "solutionUniqueName": "CN_AIIraiDaicho",
-        "observedAt": "2026-10-05",
-        "basis": "Power AppsソリューションのGit接続設定を目視取得。実行時の再検証は未実装。",
+        "observedAt": "2026-10-07",
+        "basis": "ユーザー指示によりAzure DevOps経路を廃止し、GitHubの既存Power Appsソースを正本として保持する。",
         "bridgeMirrorRepository": "oohiraplas-cpu/clean-nano-ai-bridge",
-        "bridgeMirrorState": "hold",
-        "holdReason": "Power Appsの読取・更新・保存・公開はAzure DevOps正本のみ許可。GitHubはBridgeコード管理専用で、Power Apps旧レビューexportへの書込みは禁止。",
-        "bridgeRole": "code_only",
-        "powerAppsAuthority": "azure_devops_only",
-        "legacyPowerAppsGitHubAdapter": "disabled"
+        "bridgeMirrorState": "active",
+        "holdReason": null,
+        "bridgeRole": "source_and_code",
+        "powerAppsAuthority": "github_only",
+        "legacyPowerAppsGitHubAdapter": "enabled"
       },
-      "notes": "Power Apps正本はAzure DevOpsのみ。GitHub旧レビューexportは参照用・書込禁止。接続先不一致時はFail-Closed。"
+      "notes": "GitHub/main の既存 powerapps/CN_AI依頼台帳/Source を正本として保持。変更履歴はGit commitで保存。fallback/過去branchへの書込みは禁止し、branch不一致時はFail-Closed。"
     },
     "CN_CompanyOS_電子日報_スマホ_v1": {
       "aliases": [
