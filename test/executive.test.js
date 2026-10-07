@@ -80,7 +80,8 @@ test('registered flows reflect actual config without URLs; unsupported adapter i
 test('GitHub main is canonical and fallback branch writes remain fail-closed', async () => {
   const store = new PowerAppsGitStore({ githubBranch: 'main' });
   assert.deepEqual(store.assertCanonicalBranch('main', '公開'), { checked: true, branch: 'main' });
-  assert.deepEqual(store.assertCanonicalBranch(undefined, '保存'), { checked: false });
+  assert.throws(() => store.assertCanonicalBranch(undefined, '保存'), /State Lock未成立/);
+  assert.throws(() => store.assertCanonicalBranch('', '保存'), /State Lock未成立/);
   assert.throws(() => store.assertCanonicalBranch('sync/old-review', '更新'), /branch不一致/);
 });
 test('live target resolution treats GitHub main existing source as canonical repository parity', async () => {
