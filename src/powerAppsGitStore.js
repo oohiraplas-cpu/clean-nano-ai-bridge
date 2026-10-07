@@ -171,12 +171,14 @@ class PowerAppsGitStore {
   }
 
   /**
-   * get_powerapps_sourceが返したbranch等、呼び出し側が把握しているbranchが正本branchと一致するか確認する。
-   * branch未指定なら何もしない（後方互換）。
+   * State Lock: write系操作は呼び出し側が実取得したbranchを必須とし、
+   * 正本branchとの一致が証明できない場合はFail-Closedで拒否する。
    */
   assertCanonicalBranch(branch, action = '更新') {
     this.assertSourceControlCompatible(action);
-    if (branch === undefined || branch === null) return { checked: false };
+    if (branch === undefined || branch === null || branch === '') {
+      throw this._branchConflict(`State Lock未成立のため${action}を拒否しました: branchが未指定です。get_powerapps_sourceで実取得したbranchを指定してください`);
+    }
     if (branch !== this.canonicalBranch) {
       throw this._branchConflict(`branch不一致のため${action}を拒否しました: 指定=${branch}, 正本branch=${this.canonicalBranch}`);
     }
