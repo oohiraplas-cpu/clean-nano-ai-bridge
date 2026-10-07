@@ -146,7 +146,7 @@ class PowerAppsGitStore {
             isCanonicalBranch: branch === this.canonicalBranch,
             sourceControl: this.sourceControl,
             writable: branch === this.canonicalBranch &&
-              !this.sourceControl?.bridgeMirrorState,
+              this.sourceControl?.bridgeMirrorState !== 'hold',
             sourceState: branch === this.canonicalBranch ? 'github_canonical' : 'hold',
             content: Buffer.from(data.content || '', 'base64').toString('utf8')
           };
