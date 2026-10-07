@@ -1358,7 +1358,7 @@ test('update_permissions: Dataverseの強い権限（System Administrator）は�
 test('update_powerapps_app: フォールバック（過去）branchでしか見つからないソースは更新を拒否し、PUTしない', async (t) => {
   const mock = routedFetch([githubContentsRoute({ [FALLBACK_BRANCH]: { [`${GITHUB_ROOT}/Screen3.pa.yaml`]: 'old' } }), githubPutRoute]);
   const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
-  const args = { relativePath: 'Screen3.pa.yaml', content: 'new', message: 'm' };
+  const args = { relativePath: 'Screen3.pa.yaml', content: 'new', message: 'm', branch: 'main' };
 
   const viaRpc = await rpc(server, 'update_powerapps_app', args);
   assert.equal(viaRpc.httpStatus, 200);
