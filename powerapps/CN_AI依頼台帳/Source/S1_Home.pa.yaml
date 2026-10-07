@@ -166,6 +166,28 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =578
+      - btnHome_OperationsManagement:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            HoverColor: =RGBA(10, 10, 10, 1)
+            HoverFill: =RGBA(245, 245, 245, 1)
+            OnSelect: =Notify("運営管理は管理者専用です。接続先確認後に有効化します。", NotificationType.Information)
+            PressedFill: =RGBA(224, 224, 224, 1)
+            RadiusBottomLeft: =0
+            RadiusBottomRight: =0
+            RadiusTopLeft: =0
+            RadiusTopRight: =0
+            Size: =12
+            Text: ="運営管理"
+            Width: =120
+            X: =Parent.Width - 136
+            Y: =Parent.Height - 64
+            Visible: =false
       - S1_NavBar:
           Control: Rectangle@2.3.0
           Properties:
