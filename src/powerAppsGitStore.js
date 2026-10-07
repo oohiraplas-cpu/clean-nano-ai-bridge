@@ -290,14 +290,14 @@ class PowerAppsGitStore {
       return { status: 'ok', update, sync: { status: 'ok', refresh, pull } };
     } catch (error) {
       const detail = String(error?.message || error);
-      if (/Not a valid solution/i.test(detail)) {
+      if (/Not a valid solution|Unable to retrieve solution components from root folder path/i.test(detail)) {
         return {
           status: 'ok',
           update,
           sync: {
             status: 'skipped',
             reason: 'solution_not_git_integrated',
-            message: 'GitHubソース更新は完了しました。対象SolutionがGit統合SolutionではないためPower Platform自動同期は実行していません。'
+            message: 'GitHub正本ソース更新は完了しました。対象SolutionのネイティブGit同期ルートが現在のGitHub正本ルートとして成立していないため、Power Platform自動同期は安全にスキップしました。'
           }
         };
       }
