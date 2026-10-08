@@ -16,11 +16,32 @@ function validationBlocked(fields) {
   return error;
 }
 
+// PAC must not inherit the Bridge service principal or developer credentials.
+// Fail closed until an explicit dedicated Managed Identity is configured.
+function pacWorkerEnvironment(config, parent = process.env) {
+  if (config.authMode !== 'managedIdentity') throw sourceUnavailable('pac_identity_not_configured');
+  const clientId = config.managedIdentityClientId;
+  if (clientId != null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId))
+    throw sourceUnavailable('invalid_managed_identity_client_id');
+  const env = {};
+  for (const key of ['PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'SYSTEMROOT', 'WINDIR', 'DOTNET_ROOT']) {
+    if (typeof parent[key] === 'string') env[key] = parent[key];
+  }
+  // Require a dedicated PAC profile directory; never reuse Bridge's profile.
+  if (typeof config.pacProfileHome !== 'string' || !path.isAbsolute(config.pacProfileHome))
+    throw sourceUnavailable('pac_profile_not_configured');
+  env.HOME = config.pacProfileHome;
+  env.USERPROFILE = config.pacProfileHome;
+  env.AZURE_TOKEN_CREDENTIALS = 'ManagedIdentityCredential';
+  if (clientId) env.AZURE_CLIENT_ID = clientId;
+  return env;
+}
+
 function runWorker(config, request) {
-  return new Promise((resolve, reject) => {
+  const env = pacWorkerEnvironment(config);\n  return new Promise((resolve, reject) => {
     const child = execFile(config.pythonExecutable || 'python3',
       [path.join(__dirname, '../scripts/read_powerapps_source.py')],
-      { timeout: config.timeoutMs || 100000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, encoding: 'utf8' },
+      { timeout: config.timeoutMs || 100000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, encoding: 'utf8', env },
       (error, stdout) => {
         if (error) return reject(sourceUnavailable('worker_unavailable_or_failed'));
         try { resolve(JSON.parse(stdout)); } catch { reject(sourceUnavailable('invalid_worker_response')); }
@@ -74,4 +95,4 @@ class PowerAppsRuntimeSourceAdapter {
   }
 }
 
-module.exports = { PowerAppsRuntimeSourceAdapter, sourceUnavailable, validationBlocked };
+module.exports = { PowerAppsRuntimeSourceAdapter, sourceUnavailable, validationBlocked, pacWorkerEnvironment };
