@@ -28,7 +28,12 @@ Azure.Identityが1.15.0以降であることを確認した場合に使用して
 既存Bridgeは `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` を利用する可能性が
 あります。これらの本番アプリ設定をManaged Identity用の値で上書きしないで
 ください。PAC専用の子プロセス/実行ラッパーで認証環境を分離する必要があります。
-現在のPRのアダプターは親環境を継承するため、認証分離の実装と検証が済む前に
+現在のPRには子プロセス環境を許可リストから構成し、専用HOME/USERPROFILEと
+Managed Identity指定を渡す処理があります。Bridgeのクライアント秘密値を
+そのまま継承する実装ではありません。ただし、実ホストでの認証分離は未確認です。
+APPDATA/LOCALAPPDATAは許可リストに含まれるため、HOME指定だけで全OSの
+プロファイル分離が完了したとは扱いません。PAC同梱Azure.Identityの対応、
+Managed Identity到達性、実プロファイル参照先と選択済みIDを隔離環境で検証するまで、
 `POWERAPPS_RUNTIME_SOURCE_ADAPTER=pac` を本番で有効化しません。
 
 ## 設定前の読み取り確認
@@ -44,6 +49,23 @@ Managed IdentityのClient ID/Principal IDは実取得し、推測しません。
 5. 対象EnvironmentにManaged Identityのapplication userが存在するか。
    作成/ロール付与が必要ならここで停止し、対象・必要権限を具体化します。
    AzureのReader/Website ContributorはPower Apps取得権限ではありません。
+
+## 最新コードが要求する設定
+
+以下は承認済みの隔離テストホストで使用する設定です。設定例の空欄は意図的な
+停止状態であり、実ホストの設定値や認証済み状態を示しません。
+
+| 設定名 | 必要条件 |
+|---|---|
+| `POWERAPPS_RUNTIME_SOURCE_ADAPTER` | 前提確認後に `pac` |
+| `POWERAPPS_RUNTIME_AUTH_MODE` | `managedIdentity`。他の値・空欄では停止 |
+| `POWERAPPS_RUNTIME_MI_CLIENT_ID` | ユーザー割り当てIDを使う場合のみ実取得したClient ID。任意 |
+| `POWERAPPS_RUNTIME_PAC_PROFILE_HOME` | 保護された専用PACプロファイル領域の絶対パス。空欄・相対パスでは停止 |
+| `POWERAPPS_RUNTIME_SOURCE_MAP` | Gitパスと実取得したZIP内entryの正確な対応 |
+
+設定を追加するだけではPAC認証やexport権限は作成されません。既存プロファイルの
+実参照先、選択済みID、対象Environment/App ID、canvas download成功を別々に確認します。
+隔離ホストのURL・リソースID・稼働commit SHAを実取得し、本番と区別できない場合は停止します。
 
 ## PAC認証の初期設定
 

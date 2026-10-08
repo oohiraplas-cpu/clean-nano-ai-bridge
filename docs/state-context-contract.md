@@ -105,6 +105,13 @@ source is unavailable; do not resave the app to manufacture source.
    interchangeable. Do not guess the package entry or fallback to JSON/fx.yaml.
 4. Set non-secret test-host configuration:
    - `POWERAPPS_RUNTIME_SOURCE_ADAPTER=pac`
+   - `POWERAPPS_RUNTIME_AUTH_MODE=managedIdentity`: required by the worker environment guard.
+   - `POWERAPPS_RUNTIME_MI_CLIENT_ID`: optional, observed user-assigned Managed Identity client ID.
+   - `POWERAPPS_RUNTIME_PAC_PROFILE_HOME`: required absolute path to the protected,
+     dedicated, already authenticated PAC profile home. This setting does not create authentication.
+     Verify the actual profile location and selected identity on the host; inherited
+     APPDATA/LOCALAPPDATA can affect profile lookup on some platforms. Also verify PAC's
+     Azure.Identity support and Managed Identity reachability before enabling real reads.
    - `POWERAPPS_RUNTIME_PYTHON`: Python executable (`python3` on Linux, your
      installed Python executable on Windows).
    - `POWERAPPS_RUNTIME_PAC`: native PAC executable or absolute executable path.
