@@ -38,7 +38,8 @@ function pacWorkerEnvironment(config, parent = process.env) {
 }
 
 function runWorker(config, request) {
-  const env = pacWorkerEnvironment(config);\n  return new Promise((resolve, reject) => {
+  const env = pacWorkerEnvironment(config);
+  return new Promise((resolve, reject) => {
     const child = execFile(config.pythonExecutable || 'python3',
       [path.join(__dirname, '../scripts/read_powerapps_source.py')],
       { timeout: config.timeoutMs || 100000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, encoding: 'utf8', env },
