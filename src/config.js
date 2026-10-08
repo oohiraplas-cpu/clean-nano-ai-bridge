@@ -58,6 +58,9 @@ function getConfig(env = process.env) {
       appId: env.POWERAPPS_APP_ID || '',
       runtimeSource: {
         mode: env.POWERAPPS_RUNTIME_SOURCE_ADAPTER || '',
+        authMode: env.POWERAPPS_RUNTIME_AUTH_MODE || '',
+        managedIdentityClientId: env.POWERAPPS_RUNTIME_MI_CLIENT_ID || null,
+        pacProfileHome: env.POWERAPPS_RUNTIME_PAC_PROFILE_HOME || '',
         pythonExecutable: env.POWERAPPS_RUNTIME_PYTHON || 'python3',
         pacExecutable: env.POWERAPPS_RUNTIME_PAC || 'pac',
         sourceMap: parsePowerAutomateFlows(env.POWERAPPS_RUNTIME_SOURCE_MAP)
