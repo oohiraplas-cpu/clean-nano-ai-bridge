@@ -8,7 +8,7 @@
  * - Power Apps 構造解析（github_canonical YAML対応）
  */
 
-const YAML = require('yaml');
+const YAML = require('js-yaml');
 const { createCommonResponse } = require('./bridgeCapabilities');
 const executivePolicy = require('./executivePolicy.json');
 const { maskDeep } = require('./secretMasking');
@@ -359,71 +359,43 @@ function parseAndAnalyzePowerAppsSource(sourceContent, sourceOrigin = 'github_ca
   }
 
   try {
-    // Try YAML first (github_canonical)
-    let parsed;
-    try {
-      parsed = YAML.parse(sourceContent);
-    } catch {
-      // Fallback to JSON
-      try {
-        parsed = JSON.parse(sourceContent);
-      } catch {
-        return result; // Return empty if both fail
+    const parsed = YAML.load(sourceContent);
+    if (!parsed || typeof parsed !== 'object') throw new Error('Invalid source');
+    const visited = new WeakSet();
+    function visit(def, screen, controlName, depth = 0) {
+      if (!def || typeof def !== 'object' || depth > 100 || visited.has(def)) throw new Error('Invalid structure');
+      visited.add(def);
+      for (const [property, value] of Object.entries(def.Properties || {})) {
+        if (typeof value !== 'string' || !value.startsWith('=')) continue;
+        const formula = { screenName: screen.name, ...(controlName ? { controlName } : {}), property, formula: value };
+        screen.formulas.push(formula);
+        result.powerFx.formulas.push(formula);
+        result.powerFx.total++;
+        if (property === 'OnSelect' || property === 'OnVisible') {
+          for (const match of value.matchAll(/Navigate\(\s*(\w+)\s*[,\)]/g)) {
+            result.navigations.push({ from: screen.name, ...(controlName ? { controlName } : {}), property, target: match[1] });
+          }
+        }
+      }
+      const children = def.Children || def.Controls || [];
+      if (!Array.isArray(children)) throw new Error('Invalid children');
+      for (const child of children) {
+        if (!child || typeof child !== 'object') throw new Error('Invalid child');
+        const entries = child.Name ? [[child.Name, child]] : Object.entries(child);
+        for (const [name, body] of entries) {
+          if (result.controls.length >= 10000) throw new Error('Structure limit');
+          const type = body?.Control || body?.Type || 'unknown';
+          screen.controls.push({ name, type });
+          result.controls.push({ screenName: screen.name, controlName: name, controlType: type });
+          visit(body, screen, name, depth + 1);
+        }
       }
     }
-
-    if (!parsed || typeof parsed !== 'object') return result;
-
-    // Extract screens
-    if (parsed.Screens && typeof parsed.Screens === 'object') {
-      for (const [screenName, screenDef] of Object.entries(parsed.Screens)) {
-        const screen = {
-          name: screenName,
-          controls: [],
-          formulas: []
-        };
-
-        if (screenDef.Controls && Array.isArray(screenDef.Controls)) {
-          for (const control of screenDef.Controls) {
-            if (control.Name) {
-              screen.controls.push({ name: control.Name, type: control.Type || 'unknown' });
-              result.controls.push({
-                screenName,
-                controlName: control.Name,
-                controlType: control.Type || 'unknown'
-              });
-            }
-          }
-        }
-
-        // Extract formulas from Properties
-        if (screenDef.Properties && typeof screenDef.Properties === 'object') {
-          for (const [propName, propValue] of Object.entries(screenDef.Properties)) {
-            if (typeof propValue === 'string' && propValue.startsWith('=')) {
-              screen.formulas.push({ property: propName, formula: propValue });
-              result.powerFx.formulas.push({
-                screenName,
-                property: propName,
-                formula: propValue
-              });
-              result.powerFx.total++;
-            }
-            // Extract navigation targets
-            if ((propName === 'OnSelect' || propName === 'OnVisible') && typeof propValue === 'string' && propValue.includes('Navigate')) {
-              const navMatch = propValue.match(/Navigate\(\s*(\w+)\s*[,\)]/);
-              if (navMatch) {
-                result.navigations.push({
-                  from: screenName,
-                  property: propName,
-                  target: navMatch[1]
-                });
-              }
-            }
-          }
-        }
-
-        result.screens.push(screen);
-      }
+    if (!parsed.Screens || typeof parsed.Screens !== 'object') throw new Error('Screens unavailable');
+    for (const [name, def] of Object.entries(parsed.Screens)) {
+      const screen = { name, controls: [], formulas: [] };
+      visit(def, screen);
+      result.screens.push(screen);
     }
 
     // Extract data sources
@@ -449,7 +421,8 @@ function parseAndAnalyzePowerAppsSource(sourceContent, sourceOrigin = 'github_ca
       }
     }
   } catch (error) {
-    // Silently return partial results on parse error
+    // Reject malformed/ambiguous source rather than return partial success.
+    throw new Error('Power Apps source structure could not be parsed');
   }
 
   return result;
@@ -462,7 +435,7 @@ function parseAndAnalyzePowerAppsSource(sourceContent, sourceOrigin = 'github_ca
  * @returns {Object} 共通レスポンス形式
  */
 async function inspectPowerAppsStructure(options = {}) {
-  const { powerAppsStore, sourceContent, sourceOrigin = 'powerapps_environment', stateContext } = options;
+  const { powerAppsStore, appId, sourceContent, sourceOrigin = 'powerapps_environment', stateContext } = options;
   const errors = [];
   const warnings = [];
   const unconfirmed = [];
@@ -550,6 +523,11 @@ async function inspectPowerAppsStructure(options = {}) {
           errors: errors.length > 0 ? errors : ['App info not available'],
           summary: 'Failed to retrieve app structure'
         });
+      }
+
+      if (appId !== undefined && appId !== appInfo.id) {
+        return createCommonResponse({ status: 'error', verified: false,
+          data: { structure: null }, errors: ['appId: observed app mismatch'], summary: 'Target app mismatch' });
       }
 
       // Power Fx参照の抽出（簡易）

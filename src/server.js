@@ -707,7 +707,10 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: {
       type: 'object',
       properties: {
-        appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' }
+        appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: '登録済みGitソース解析時の実行session capability' },
+        relativePath: { type: 'string', description: '登録済み対象Gitファイル' }
       },
       additionalProperties: false
     }
@@ -1304,7 +1307,8 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, params.relativePath);
       return { ...source, ...bound };
     }
-    if (method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git') {
+    if (method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
+        (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined || params.relativePath !== undefined))) {
       const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       // Detect changed Git state and changed app/environment, not just a client
       // tuple matching an old registry entry. Do not guess paths or branches.
@@ -1319,7 +1323,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       if (failures.length) throw contextError(failures);
       let result;
-      if (method === 'validate_powerapps_source') {
+      if (method === 'inspect_powerapps_structure') {
+        if (params.appId !== undefined && params.appId !== record.context.appId) throw contextError(['appId: mismatch']);
+        result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
+          sourceOrigin: 'github_canonical', stateContext: record.context });
+      } else if (method === 'validate_powerapps_source') {
         result = await validatePowerAppsSource({ sourceContent: params.sourceContent ?? record.source.content,
           relativePath: record.source.path, expectedBranch: params.expectedBranch ?? record.context.branch, powerAppsGitStore });
         result.validationStatus = result.data.valid && result.verified ? 'VALID' : 'INVALID';

@@ -169,3 +169,23 @@ test('registry binds one file/SHA and checks observed blob integrity', () => {
   assert.throws(() => registry.bind(a.correlationId, a.stateSessionId, 'scope', { ...source, sha: '0'.repeat(40) }, PATH), /blob SHA/);
   assert.throws(() => new StateContextRegistry().lookup(a.correlationId, a.stateSessionId, 'scope'), /not registered/);
 });
+
+
+test('registered structure inspection rejects stale, mismatched and cross-session targets', async t => {
+  const f = await fixture(t);
+  const args = await f.chain();
+  const result = await f.rpc('inspect_powerapps_structure', { ...args, appId: APP, relativePath: PATH });
+  assert.equal(result.error, false);
+  assert.equal(result.data.data.structure.sourceOrigin, 'github_canonical');
+  assert.equal(result.data.data.structure.screens.count, 1);
+  assert.equal(result.data.targetSha, args.stateContext.sha);
+  assert.equal((await f.rpc('inspect_powerapps_structure', { ...args, appId: 'other' })).error, true);
+  assert.equal((await f.rpc('inspect_powerapps_structure', { ...args, relativePath: 'other' })).error, true);
+  assert.equal((await f.rpc('inspect_powerapps_structure', args, 'session-b')).error, true);
+  assert.equal((await f.rpc('inspect_powerapps_structure', { stateSessionId: args.stateSessionId })).error, true);
+  f.source.sha = '0'.repeat(40);
+  assert.equal((await f.rpc('inspect_powerapps_structure', args)).error, true);
+  f.source.sha = args.stateContext.sha;
+  f.expire();
+  assert.equal((await f.rpc('inspect_powerapps_structure', args)).error, true);
+});

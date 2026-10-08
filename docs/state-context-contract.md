@@ -205,3 +205,17 @@ The probe is read-only and prints metadata/verification results, never source
 content, keys or execution-session capabilities. Copilot Studio must refresh
 its MCP tool discovery after deployment; a local probe does not verify the
 Copilot Studio UI or cached schema.
+
+## Registered Git structure inspection
+
+`inspect_powerapps_structure` preserves its existing configured-app metadata
+mode. An explicitly supplied `appId` must match the observed app. For canonical
+Git analysis, pass the complete server-returned `stateContext` and
+`stateSessionId`, optionally the registered `relativePath` and matching `appId`.
+The server reads the registered Git snapshot itself; this endpoint does not
+accept caller-authored source content or source-origin labels. Registration,
+TTL, session, live app/environment and Git identity checks apply before analysis.
+Returned `sourceOrigin=github_canonical` describes Git analysis only, not a
+saved-source export or runtime comparison. Modern `Children` entries and nested
+controls are traversed; malformed YAML, duplicate keys and cyclic structures
+fail rather than produce verified partial analysis.
