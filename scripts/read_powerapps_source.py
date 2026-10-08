@@ -2,7 +2,7 @@
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -30,7 +30,18 @@ def run_pac(executable, arguments, timeout):
     return result.stdout
 
 
+def valid_source_entry(entry):
+    if not isinstance(entry, str) or "\0" in entry:
+        return False
+    parts = re.split(r"[\\/]", entry)
+    return (len(parts) >= 2 and parts[0] == "Src" and
+            all(part not in ("", ".", "..") for part in parts) and
+            entry.endswith(".pa.yaml"))
+
+
 def extract_source(archive, entry):
+    if not valid_source_entry(entry):
+        raise RuntimeError("invalid_source_entry")
     if archive.stat().st_size > MAX_ARCHIVE:
         raise RuntimeError("archive_limit")
     with zipfile.ZipFile(archive) as package:
@@ -63,10 +74,9 @@ def read_source(request):
     app = request.get("appId", "")
     environment = request.get("environment", "")
     entry = request.get("entry", "")
-    parts = PurePosixPath(entry).parts
     if not GUID.fullmatch(app) or not GUID.fullmatch(environment):
         return fail("invalid_target")
-    if not parts or parts[0] != "Src" or len(parts) < 2 or ".." in parts or "\\" in entry or entry.startswith("/") or not entry.endswith(".pa.yaml"):
+    if not valid_source_entry(entry):
         return fail("invalid_source_entry")
     executable = request.get("pacExecutable", "pac")
     timeout = request.get("timeoutSeconds", 45)

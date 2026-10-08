@@ -52,7 +52,8 @@ class PowerAppsRuntimeSourceAdapter {
     if (failures.length) throw validationBlocked(failures);
     if (config.mode !== 'pac') throw sourceUnavailable('adapter_not_configured');
     const entry = config.sourceMap?.[relativePath];
-    if (typeof entry !== 'string' || !/^Src\/.+\.pa\.yaml$/.test(entry) || entry.includes('..') || entry.includes('\\')) throw sourceUnavailable('source_mapping_not_configured');
+    if (typeof entry !== 'string' || !/^Src[\\/].+\.pa\.yaml$/.test(entry) ||
+        entry.split(/[\\/]/).some(part => !part || part === '.' || part === '..') || entry.includes('\0')) throw sourceUnavailable('source_mapping_not_configured');
     let observed;
     try {
       observed = await this.worker(config, { appId: config.appId, environment: config.environmentId,

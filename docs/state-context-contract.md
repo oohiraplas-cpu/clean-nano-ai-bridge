@@ -111,7 +111,7 @@ source is unavailable; do not resave the app to manufacture source.
      No shell command, `.cmd` wrapper or arguments in this setting.
    - `POWERAPPS_RUNTIME_SOURCE_MAP`: JSON object mapping
      `powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml` to the **observed** exact
-     `Src/...pa.yaml` archive entry. The entry used in tests is a fixture only.
+     `Src/...pa.yaml` or `Src\\...pa.yaml` archive entry. The entry used in tests is a fixture only.
    - Existing `POWERAPPS_APP_ID`, `POWERAPPS_ENVIRONMENT_ID` and
      `POWERAPPS_GITHUB_BRANCH=main` must identify the selected target.
 5. Start the isolated test instance with the normal `npm start`. Do not change
@@ -219,3 +219,15 @@ Returned `sourceOrigin=github_canonical` describes Git analysis only, not a
 saved-source export or runtime comparison. Modern `Children` entries and nested
 controls are traversed; malformed YAML, duplicate keys and cyclic structures
 fail rather than produce verified partial analysis.
+
+
+### Backup evidence reuse
+
+The existing manual CN_AI依頼台帳 backup workflow now records exact observed
+archive entry names for both slash conventions, rejecting ambiguous/traversing
+entries. This manifest can support mapping review, but explicitly records
+appIdParityVerified=false and savedSourceComparisonVerified=false. Solution
+export success or its display-name check must not be substituted for PAC canvas
+list/download authorization, current app ID parity, registered-context comparison
+or Copilot Studio verification. Authentication/configuration and production
+release are not changed by this compatibility patch.

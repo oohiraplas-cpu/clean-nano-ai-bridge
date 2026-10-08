@@ -39,6 +39,19 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertFalse(archives[0].exists())
 
+    def test_exact_windows_entry_not_normalized_or_guessed(self):
+        entry = r'Src\S1_Home.pa.yaml'
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'app.msapp'
+            with zipfile.ZipFile(archive, 'w') as package:
+                package.writestr(entry, 'Screens: {}')
+            self.assertTrue(worker.valid_source_entry(entry))
+            self.assertEqual(worker.extract_source(archive, entry)[0], 'Screens: {}')
+            with self.assertRaises(RuntimeError):
+                worker.extract_source(archive, 'Src/S1_Home.pa.yaml')
+        for entry in [r'Src\..\Home.pa.yaml', r'Src\\Home.pa.yaml', '/Src/Home.pa.yaml', 'Src/./Home.pa.yaml', 'Src/Home.pa.yaml\0']:
+            self.assertFalse(worker.valid_source_entry(entry))
+
     def test_environment_membership_rejection_no_download(self):
         with patch.object(worker, 'run_pac', return_value=b'other-app') as pac:
             self.assertEqual(worker.read_source(REQUEST)['reason'], 'app_not_found_in_environment')

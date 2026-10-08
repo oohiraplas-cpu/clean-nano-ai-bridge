@@ -199,3 +199,20 @@ test('PAC worker archive and subprocess tests pass', () => {
   const output = execFileSync(process.env.POWERAPPS_RUNTIME_PYTHON || 'python3', [path.join(__dirname, 'runtime_source_worker_test.py')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   assert.match(output, /worker tests passed/);
 });
+
+
+test('adapter forwards observed Windows archive entry exactly and rejects unsafe paths', async () => {
+  const { PowerAppsRuntimeSourceAdapter } = require('../src/powerAppsRuntimeSource');
+  const context = { appId: APP, environment: ENV, branch: 'main', canonicalBranch: 'main', sha: 'a'.repeat(40), correlationId: 'observed-id' };
+  const entry = 'Src\\S1_Home.pa.yaml';
+  const adapter = new PowerAppsRuntimeSourceAdapter({ ...CONFIG, sourceMap: { [FILE]: entry } }, async (_, request) => {
+    assert.equal(request.entry, entry);
+    return { status: 'ok', appId: APP, environment: ENV, entry, content: 'Screens: {}' };
+  });
+  const result = await adapter.getSourceFile(FILE, { stateContext: context, assertStateContext() {} });
+  assert.equal(result.content, 'Screens: {}');
+  for (const unsafe of ['Src/../Home.pa.yaml', 'Src/./Home.pa.yaml', 'Src//Home.pa.yaml', 'Src\\..\\Home.pa.yaml']) {
+    const blocked = new PowerAppsRuntimeSourceAdapter({ ...CONFIG, sourceMap: { [FILE]: unsafe } }, () => { throw new Error('must not run'); });
+    await assert.rejects(blocked.getSourceFile(FILE, { stateContext: context, assertStateContext() {} }), error => error.payload.reason === 'source_mapping_not_configured');
+  }
+});
