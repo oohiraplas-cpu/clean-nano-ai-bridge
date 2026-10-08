@@ -216,3 +216,25 @@ test('adapter forwards observed Windows archive entry exactly and rejects unsafe
     await assert.rejects(blocked.getSourceFile(FILE, { stateContext: context, assertStateContext() {} }), error => error.payload.reason === 'source_mapping_not_configured');
   }
 });
+
+
+test('PAC worker identity is isolated from inherited service principal credentials', () => {
+  const { pacWorkerEnvironment } = require('../src/powerAppsRuntimeSource');
+  const parent = { PATH: '/usr/bin', AZURE_CLIENT_ID: 'old-spn', AZURE_CLIENT_SECRET: 'secret',
+    AZURE_TENANT_ID: 'old-tenant', AZURE_FEDERATED_TOKEN_FILE: '/private/token',
+    AZURE_USERNAME: 'developer', HOME: '/shared' };
+  const env = pacWorkerEnvironment({ authMode: 'managedIdentity', pacProfileHome: '/dedicated/pac' }, parent);
+  assert.equal(env.HOME, '/dedicated/pac');
+  assert.equal(env.AZURE_TOKEN_CREDENTIALS, 'ManagedIdentityCredential');
+  for (const key of ['AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AZURE_TENANT_ID',
+    'AZURE_FEDERATED_TOKEN_FILE', 'AZURE_USERNAME']) assert.equal(env[key], undefined);
+});
+
+test('PAC worker fails closed without explicit identity and dedicated profile', () => {
+  const { pacWorkerEnvironment } = require('../src/powerAppsRuntimeSource');
+  for (const config of [{}, { authMode: 'managedIdentity' },
+    { authMode: 'managedIdentity', pacProfileHome: 'relative/path' },
+    { authMode: 'managedIdentity', pacProfileHome: '/pac', managedIdentityClientId: 'not-a-guid' }]) {
+    assert.throws(() => pacWorkerEnvironment(config), error => error.payload?.status === 'source_unavailable');
+  }
+});
