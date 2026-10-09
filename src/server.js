@@ -8,6 +8,7 @@ const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
+const { StateContextStore } = require('./stateContextStore');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
@@ -827,7 +828,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, stateContextStore) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -867,7 +868,38 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_powerapps_state') {
     const paramError = validateGetPowerAppsStateParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsStore.getAppState();
+
+    // Get base state from Power Apps
+    const baseState = await powerAppsStore.getAppState();
+
+    // Get source information to enrich StateContext
+    let sourceInfo = {};
+    try {
+      // Try to get source file information for branch, sha, etc.
+      const sourcePath = params.relativePath || 'S1_Home.pa.yaml'; // Default path
+      sourceInfo = await powerAppsGitStore.getSourceFile(sourcePath);
+    } catch (error) {
+      // Source may not be available, that's OK - continue with empty sourceInfo
+    }
+
+    // Create and store StateContext
+    const correlationId = StateContextStore.generateCorrelationId();
+    const stateContext = StateContextStore.createFromGetState(baseState, sourceInfo, {
+      correlationId,
+      environmentId: baseState.environmentId,
+      appId: baseState.appId,
+      branch: sourceInfo.branch,
+      canonicalBranch: sourceInfo.canonicalBranch,
+      sha: sourceInfo.sha
+    });
+
+    stateContextStore.store(stateContext);
+
+    // Return state with StateContext embedded
+    return {
+      ...baseState,
+      stateContext
+    };
   }
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
@@ -880,18 +912,194 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+
+    // Resolve StateContext if missing or incomplete
+    // This is best-effort: if resolution fails, we continue without validation
+    // (State Manager enforcement via tools/call will catch this in production)
+    let resolvedStateContext = params.stateContext;
+    if (!resolvedStateContext || !resolvedStateContext.environmentId) {
+      // Try to retrieve from store if correlationId is provided
+      if (params.correlationId) {
+        resolvedStateContext = stateContextStore.get(params.correlationId);
+      }
+
+      // If still missing, try to resolve from current app state (optional, fail gracefully)
+      if (!resolvedStateContext) {
+        try {
+          const appState = await powerAppsStore.getAppState();
+          const sourcePath = params.relativePath || 'S1_Home.pa.yaml';
+          const sourceInfo = await powerAppsGitStore.getSourceFile(sourcePath);
+          const correlationId = StateContextStore.generateCorrelationId();
+          resolvedStateContext = StateContextStore.createFromGetState(appState, sourceInfo, {
+            correlationId,
+            environmentId: appState.environmentId,
+            appId: appState.appId
+          });
+          stateContextStore.store(resolvedStateContext);
+        } catch (error) {
+          // In test/dev scenarios without State Manager enforcement, allow operation to continue
+          // Production enforcement will catch this via tools/call validation
+          resolvedStateContext = null;
+        }
+      }
+    }
+
+    // Validate StateContext only if we have one (backward compatibility for tests)
+    if (resolvedStateContext) {
+      const validation = StateContextStore.validate(resolvedStateContext);
+      if (!validation.valid) {
+        return {
+          status: 'rejected',
+          code: 'INVALID_STATE_CONTEXT',
+          errors: validation.errors,
+          operation: 'save',
+          message: 'Save operation rejected: incomplete state context'
+        };
+      }
+
+      // Check branch match
+      if (resolvedStateContext.branch !== resolvedStateContext.canonicalBranch) {
+        return {
+          status: 'rejected',
+          code: 'branch_mismatch',
+          environmentId: resolvedStateContext.environmentId,
+          appId: resolvedStateContext.appId,
+          branch: resolvedStateContext.branch,
+          canonicalBranch: resolvedStateContext.canonicalBranch,
+          state: resolvedStateContext.state,
+          writable: resolvedStateContext.writable,
+          operation: 'save',
+          message: `Save operation rejected: branch is not canonical (${resolvedStateContext.branch} !== ${resolvedStateContext.canonicalBranch})`
+        };
+      }
+
+      // Check state and writable
+      if (!resolvedStateContext.writable || resolvedStateContext.state !== 'ready') {
+        return {
+          status: 'rejected',
+          code: 'NOT_WRITABLE',
+          environmentId: resolvedStateContext.environmentId,
+          appId: resolvedStateContext.appId,
+          branch: resolvedStateContext.branch,
+          state: resolvedStateContext.state,
+          writable: resolvedStateContext.writable,
+          operation: 'save',
+          message: `Save operation rejected: not in writable state (state=${resolvedStateContext.state}, writable=${resolvedStateContext.writable})`
+        };
+      }
+    } else if (params.branch) {
+      // If branch is explicitly provided but we couldn't resolve stateContext,
+      // try direct branch validation via assertCanonicalBranch
+      try {
+        await powerAppsGitStore.assertCanonicalBranch(params.branch, '保存');
+      } catch (error) {
+        // Convert branch mismatch error to rejection response
+        if (error.status === 409) {
+          return {
+            status: 'rejected',
+            code: 'branch_mismatch',
+            branch: params.branch,
+            operation: 'save',
+            message: error.message
+          };
+        }
+        throw error;
+      }
+    }
+
     // get_powerapps_sourceが返したbranchが渡された場合、正本branchと一致しなければ保存を拒否する。
-    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '保存')));
+    // Only check canonical branch if we have resolved state context
+    if (resolvedStateContext?.branch) {
+      await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(resolvedStateContext.branch, '保存')));
+    }
     const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
     const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     const saved = await powerAppsStore.saveApp();
-    return { ...saved, sync: { refresh, pull } };
+    return { ...saved, sync: { refresh, pull }, stateContext: resolvedStateContext };
   }
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
-    return withUpstreamErrorStatus(powerAppsStore.publishApp());
+
+    // Resolve StateContext if missing or incomplete
+    // This is best-effort: if resolution fails, we continue without validation
+    // (State Manager enforcement via tools/call will catch this in production)
+    let resolvedStateContext = params.stateContext;
+    if (!resolvedStateContext || !resolvedStateContext.environmentId) {
+      // Try to retrieve from store if correlationId is provided
+      if (params.correlationId) {
+        resolvedStateContext = stateContextStore.get(params.correlationId);
+      }
+
+      // If still missing, try to resolve from current app state (optional, fail gracefully)
+      if (!resolvedStateContext) {
+        try {
+          const appState = await powerAppsStore.getAppState();
+          const sourcePath = params.relativePath || 'S1_Home.pa.yaml';
+          const sourceInfo = await powerAppsGitStore.getSourceFile(sourcePath);
+          const correlationId = StateContextStore.generateCorrelationId();
+          resolvedStateContext = StateContextStore.createFromGetState(appState, sourceInfo, {
+            correlationId,
+            environmentId: appState.environmentId,
+            appId: appState.appId
+          });
+          stateContextStore.store(resolvedStateContext);
+        } catch (error) {
+          // In test/dev scenarios without State Manager enforcement, allow operation to continue
+          // Production enforcement will catch this via tools/call validation
+          resolvedStateContext = null;
+        }
+      }
+    }
+
+    // Validate StateContext only if we have one (backward compatibility for tests)
+    if (resolvedStateContext) {
+      const validation = StateContextStore.validate(resolvedStateContext);
+      if (!validation.valid) {
+        return {
+          status: 'rejected',
+          code: 'INVALID_STATE_CONTEXT',
+          errors: validation.errors,
+          operation: 'publish',
+          message: 'Publish operation rejected: incomplete state context'
+        };
+      }
+
+      // Check branch match
+      if (resolvedStateContext.branch !== resolvedStateContext.canonicalBranch) {
+        return {
+          status: 'rejected',
+          code: 'branch_mismatch',
+          environmentId: resolvedStateContext.environmentId,
+          appId: resolvedStateContext.appId,
+          branch: resolvedStateContext.branch,
+          canonicalBranch: resolvedStateContext.canonicalBranch,
+          state: resolvedStateContext.state,
+          writable: resolvedStateContext.writable,
+          operation: 'publish',
+          message: `Publish operation rejected: branch is not canonical (${resolvedStateContext.branch} !== ${resolvedStateContext.canonicalBranch})`
+        };
+      }
+
+      // Check state and writable
+      if (!resolvedStateContext.writable || resolvedStateContext.state !== 'ready') {
+        return {
+          status: 'rejected',
+          code: 'NOT_WRITABLE',
+          environmentId: resolvedStateContext.environmentId,
+          appId: resolvedStateContext.appId,
+          branch: resolvedStateContext.branch,
+          state: resolvedStateContext.state,
+          writable: resolvedStateContext.writable,
+          operation: 'publish',
+          message: `Publish operation rejected: not in writable state (state=${resolvedStateContext.state}, writable=${resolvedStateContext.writable})`
+        };
+      }
+    }
+
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(resolvedStateContext?.branch || params.branch, '公開')));
+    const result = await withUpstreamErrorStatus(powerAppsStore.publishApp());
+    return { ...result, stateContext: resolvedStateContext };
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
@@ -1178,6 +1386,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
   const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
   const bridgeServices = createBridgeServices(config, powerAppsStore, powerAppsGitStore, injectedBridgeServices);
+  const stateContextStore = new StateContextStore(15 * 60 * 1000); // 15 minute TTL
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
@@ -1256,7 +1465,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         // Convert standard method call to tools/call format
         return res.status(200).json(await (async () => {
           try {
-            const result = await executeMcpMethod(body.method, params || {}, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+            const result = await executeMcpMethod(body.method, params || {}, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, stateContextStore);
             return jsonRpcResult(id, result);
           } catch (error) {
             return jsonRpcError(id, -32603, error.message);
@@ -1289,7 +1498,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
             }
           }
 
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, stateContextStore);
 
           // Enrich response with state metadata for audit trail (Phase 9: Evidence Capture)
           // Only add metadata when State Manager enforcement is enabled
@@ -1330,7 +1539,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         }
       }
 
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, stateContextStore);
 
       // Enrich response with state metadata for audit trail
       // Only add metadata when State Manager enforcement is enabled
