@@ -1446,6 +1446,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       } else if (method === 'validate_powerapps_change') {
         // Change validation is fail-closed: the registered source identity is checked
         // before static diff validation, so branch/path/SHA cannot be stale or guessed.
+        const paramError = validateValidatePowerAppsChangeParams(params);
+        if (paramError) throw requestError(paramError);
+        if (params.branch !== record.context.branch) throw contextError(['branch: request does not match registered context']);
         result = await bridgeServices.validatePowerAppsChange({
           ...params,
           branch: record.context.branch,
