@@ -1136,6 +1136,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
   if (method === 'inspect_powerapps_structure') {
     // StateContextがない場合: 実アプリ情報解析（Power Apps API経由）
+    // appId must be explicitly provided (from resolve_app_target response)
+    if (!params.appId) {
+      throw requestError('appId: required. Use resolve_app_target first to obtain appId from app name.', 400);
+    }
     // StateContextがある場合: executeWithStateInternal が処理するため、ここでは使用しない
     return inspectPowerAppsStructure({
       powerAppsStore,
@@ -1466,7 +1470,12 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (failures.length) throw contextError(failures);
       let result;
       if (method === 'inspect_powerapps_structure') {
-        if (params.appId !== undefined && params.appId !== record.context.appId) throw contextError(['appId: mismatch']);
+        // Log appId comparison for debugging
+        const contextAppId = record.context.appId;
+        const paramsAppId = params.appId;
+        if (paramsAppId !== undefined && paramsAppId !== contextAppId) {
+          throw contextError([`appId mismatch: received=${paramsAppId}, stateContext=${contextAppId}`]);
+        }
         result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
           sourceOrigin: 'github_canonical', stateContext: record.context });
       } else if (method === 'validate_powerapps_source') {
