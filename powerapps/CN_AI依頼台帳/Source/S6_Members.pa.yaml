@@ -1,0 +1,115 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S6_Members:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+      OnVisible: |-
+        =If(IsBlank(gblIsAdmin), Set(gblIsAdmin, Or(User().Email = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")));
+        If(!gblIsAdmin, Navigate(S1_Home, ScreenTransition.None));
+        ClearCollect(colMembers, Sort(CN_社員台帳, Title))
+    Children:
+      - Members_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =50
+            Size: =22
+            Text: ="運営管理"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =16
+      - Members_BackBtn:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(255, 255, 255, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            HoverFill: =RGBA(245, 245, 245, 1)
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            PressedFill: =RGBA(224, 224, 224, 1)
+            Size: =14
+            Text: ="ホームへ戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =76
+      - Members_Label:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(255, 255, 255, 1)
+            Height: =28
+            Size: =12
+            Text: ="登録社員一覧"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =130
+      - Members_Gallery:
+          Control: Gallery@2.10.10
+          Properties:
+            AllItems: =colMembers
+            BorderColor: =RGBA(0, 204, 102, 1)
+            BorderThickness: =1
+            Fill: =RGBA(10, 10, 10, 1)
+            Height: =Parent.Height - 290
+            TemplateFill: =RGBA(26, 58, 42, 1)
+            TemplatePadding: =4
+            TemplateSize: =60
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =168
+            Children:
+              - Members_Item_Name:
+                  Control: Label@2.5.1
+                  Properties:
+                    Align: =Align.Left
+                    Color: =RGBA(255, 255, 255, 1)
+                    Size: =12
+                    Text: =ThisItem.Title
+                    Width: =Parent.Width - 80
+                    X: =8
+                    Y: =8
+              - Members_Item_Delete:
+                  Control: Classic/Button@2.2.0
+                  Properties:
+                    Color: =RGBA(10, 10, 10, 1)
+                    Fill: =RGBA(255, 51, 51, 1)
+                    Height: =44
+                    HoverFill: =RGBA(204, 0, 0, 1)
+                    OnSelect: |-
+                      =Notify("削除機能は本番公開後に実装予定です", NotificationType.Warning);
+                      Notify(ThisItem.EmployeeID, NotificationType.Information)
+                    PressedFill: =RGBA(153, 0, 0, 1)
+                    Size: =10
+                    Text: ="削除"
+                    Width: =60
+                    X: =Parent.Width - 68
+                    Y: =8
+      - Members_Summary:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(120, 120, 120, 1)
+            Height: =40
+            Size: =12
+            Text: ="登録社員数: " & CountRows(colMembers) & "名"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 76
+      - Members_AdminInfo:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(200, 200, 200, 1)
+            Height: =30
+            Size: =10
+            Text: ="管理者: " & User().Email
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 40
