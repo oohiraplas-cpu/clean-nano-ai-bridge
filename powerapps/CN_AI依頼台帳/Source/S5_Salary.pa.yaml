@@ -12,8 +12,9 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
+        With({m: Filter(CN_社員台帳, Lower(Trim(EntraObjectId)) = Lower(Trim(User().EntraObjectId)))}, If(CountRows(m) = 1 && !IsBlank(Trim(First(m).EmployeeID)), Set(gblEmpID, Trim(First(m).EmployeeID)), Set(gblEmpID, Blank())));
         If(IsBlank(gblEmpID), Notify("本人を特定できないため勤務データを表示できません", NotificationType.Error));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        If(IsBlank(gblEmpID), Clear(colAttend), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, ((!IsBlank(gblEmpID)) && (EmployeeRecordKey = gblEmpID)), StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))))
     Children:
       - S5_Title:
           Control: Label@2.5.1
@@ -36,7 +37,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(245, 245, 245, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, ((!IsBlank(gblEmpID)) && (EmployeeRecordKey = gblEmpID)), StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
             PressedFill: =RGBA(224, 224, 224, 1)
             Size: =18
             Text: ="＜"
@@ -52,7 +53,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(245, 245, 245, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, ((!IsBlank(gblEmpID)) && (EmployeeRecordKey = gblEmpID)), StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
             PressedFill: =RGBA(224, 224, 224, 1)
             Size: =18
             Text: ="＞"
@@ -305,7 +306,7 @@ Screens:
             Height: =105
             Size: =12
             Text: |-
-              =With({y: Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= Date(Year(gblMonth),1,1), StartAt < Date(Year(gblMonth)+1,1,1))},
+              =With({y: Filter(CN_勤怠明細台帳, ((!IsBlank(gblEmpID)) && (EmployeeRecordKey = gblEmpID)), StartAt >= Date(Year(gblMonth),1,1), StartAt < Date(Year(gblMonth)+1,1,1))},
                 "年間出勤記録 " & CountRows(y) & "件" & Char(10) &
                 "年間実作業 " & Text(Sum(y, Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes,0)))) / 60, "0.0") & "h" & Char(10) &
                 "年間残業 " & Text(Sum(Filter(y, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes,0)))) / 60, "0.0") & "h" & Char(10) &

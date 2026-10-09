@@ -12,8 +12,9 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
+        With({m: Filter(CN_社員台帳, Lower(Trim(EntraObjectId)) = Lower(Trim(User().EntraObjectId)))}, If(CountRows(m) = 1 && !IsBlank(Trim(First(m).EmployeeID)), Set(gblEmpID, Trim(First(m).EmployeeID)), Set(gblEmpID, Blank())));
         If(IsBlank(gblEmpID), Notify("本人を特定できないため勤務データを表示できません", NotificationType.Error));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
+        If(IsBlank(gblEmpID), Clear(colAttend), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, ((!IsBlank(gblEmpID)) && (EmployeeRecordKey = gblEmpID)), StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))));
         If(IsBlank(gblIsAdmin), Set(gblIsAdmin, Or(User().Email = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")))
     Children:
       - S1_Title:
@@ -51,8 +52,7 @@ Screens:
             Items: =Sort(CN_社員台帳, Title).Title
             Items.Value: =Title
             OnChange: |-
-              =Set(gblEmpID, LookUp(CN_社員台帳, Title = Self.Selected.Title).EmployeeID);
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+              =Notify("社員の切替はできません", NotificationType.Warning)
             SelectionFill: =RGBA(0, 204, 102, 1)
             Size: =14
             Width: =Parent.Width - 32
