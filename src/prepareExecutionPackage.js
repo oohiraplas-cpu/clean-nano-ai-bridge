@@ -746,6 +746,19 @@ async function prepareExecutionPackage(options = {}) {
       contract.status = 'READY';
     }
 
+    // Include StateContext for subsequent inspect_powerapps_structure calls
+    // If source was retrieved, include the context data for State Manager
+    if (stateContext && stateContext.canonicalBranch && stateContext.sha) {
+      contract.stateContext = {
+        appId: stateContext.appId,
+        environment: stateContext.environment,
+        branch: stateContext.canonicalBranch,
+        canonicalBranch: stateContext.canonicalBranch,
+        sha: stateContext.sha,
+        correlationId: stateContext.correlationId
+      };
+    }
+
     return contract;
   } catch (err) {
     contract.missing.push(`Unexpected error: ${err.message}`);

@@ -1135,8 +1135,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     });
   }
   if (method === 'inspect_powerapps_structure') {
-    // StateContextがない場合: 実アプリ情報解析（Power Apps API経由）
+    // StateContextがない場合: params.appIdで実アプリ情報解析（Power Apps API経由）
     // StateContextがある場合: executeWithStateInternal が処理するため、ここでは使用しない
+    if (!params.appId && params.correlationId === undefined && params.stateSessionId === undefined) {
+      throw bridgeError('appIdまたはstateContext/stateSessionIdが必要です（resolve_app_targetで対象を解決してください）', 400);
+    }
     return inspectPowerAppsStructure({
       powerAppsStore,
       appId: params.appId
@@ -1466,7 +1469,12 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (failures.length) throw contextError(failures);
       let result;
       if (method === 'inspect_powerapps_structure') {
-        if (params.appId !== undefined && params.appId !== record.context.appId) throw contextError(['appId: mismatch']);
+        if (params.appId !== undefined && params.appId !== record.context.appId) {
+          throw contextError([
+            `appId mismatch: received ${params.appId}, expected ${record.context.appId}`,
+            `requestId/session: correlationId=${record.context.correlationId}, stateSessionId=${record.stateSessionId}`
+          ]);
+        }
         result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
           sourceOrigin: 'github_canonical', stateContext: record.context });
       } else if (method === 'validate_powerapps_source') {
