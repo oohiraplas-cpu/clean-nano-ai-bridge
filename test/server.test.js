@@ -1005,7 +1005,7 @@ test('新9ツールは入力不足・不正型・追加プロパティをHTTP 20
   const cases = [
     ['validate_powerapps_change', {}, /branchが必要/],
     ['validate_powerapps_change', { branch: 1, relativePath: 'a.pa.yaml' }, /branchが必要/],
-    ['validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', content: 5 }, /contentは文字列/],
+    ['validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'a.pa.yaml', content: 5 }, /contentは文字列/],
     ['validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', unexpected: true }, /未対応のプロパティ/],
     ['run_powerapps_tests', {}, /filesは1件以上/],
     ['run_powerapps_tests', { files: [{ relativePath: 'a.pa.yaml' }] }, /content.*delete:true/],
@@ -1062,7 +1062,7 @@ test('validate_powerapps_change: 正本branchの現在内容と比較し、valid
   assert.equal(mismatch.structuredContent.valid, false);
   assert.ok(mismatch.structuredContent.errors.some((e) => e.includes('branch不一致')));
 
-  const viaLegacy = await legacy(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'Screen3.pa.yaml', content: 'a: 9\n' });
+  const viaLegacy = await legacy(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'Screen3.pa.yaml', content: 'a: 9\n' });
   assert.equal(viaLegacy.httpStatus, 200);
   assert.equal(viaLegacy.body.accepted, true);
   assert.equal(viaLegacy.body.method, 'validate_powerapps_change');
