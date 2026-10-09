@@ -1419,7 +1419,8 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, params.relativePath);
       return { ...source, ...bound };
     }
-    if (method === 'validate_powerapps_change' || method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
+    if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
+        method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
         (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined || params.relativePath !== undefined))) {
       const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       // Detect changed Git state and changed app/environment, not just a client
