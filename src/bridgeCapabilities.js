@@ -5,6 +5,9 @@
  */
 
 const crypto = require('node:crypto');
+const yaml = require('js-yaml');
+const { compareSources } = require('./sourceComparison');
+const { sourceUnavailable, validationBlocked } = require('./powerAppsRuntimeSource');
 
 /**
  * 共通レスポンス構造を構築
@@ -272,121 +275,53 @@ async function checkDependencies(options = {}) {
  * 一致、Power Apps側が新しい、Git側が新しい、競合等の状態を判定
  */
 async function comparePowerAppsWithGit(options = {}) {
-  const {
-    powerAppsStore,
-    powerAppsGitStore,
-    targetApp = null,
-    targetFile = null
-  } = options;
-
+  const { powerAppsStore, powerAppsGitStore, targetFile = null } = options;
   const comparison = {
-    powerApps: {},
-    git: {},
-    status: 'unknown',
-    details: {}
+    powerApps: {}, git: {}, status: 'unknown', details: {}, hasDifferences: null,
+    targetSha: options.gitSource?.sha || null,
+    comparisonSources: { powerApps: 'power-apps-runtime', git: 'github-canonical' }
   };
-  const errors = [];
-  const warnings = [];
-
-  try {
-    // Power Apps side
-    let powerAppsContent = null;
-    let powerAppsHash = null;
-    let powerAppsSource = null;
-
-    if (powerAppsStore && targetFile) {
-      try {
-        powerAppsSource = await powerAppsStore.getSourceFile?.(targetFile);
-        if (powerAppsSource) {
-          powerAppsContent = powerAppsSource.content;
-          powerAppsHash = crypto.createHash('sha256').update(powerAppsContent).digest('hex');
-          comparison.powerApps = {
-            exists: true,
-            file: targetFile,
-            hash: powerAppsHash,
-            lastModified: powerAppsSource.lastModified,
-            source: 'power-apps'
-          };
-        }
-      } catch (error) {
-        if (error.message?.includes('404')) {
-          comparison.powerApps = { exists: false, file: targetFile, source: 'power-apps' };
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    // Git side
-    let gitContent = null;
-    let gitHash = null;
-    let gitSource = null;
-    let gitBranch = powerAppsGitStore?.canonicalBranch;
-
-    if (powerAppsGitStore && targetFile) {
-      try {
-        gitSource = await powerAppsGitStore.getSourceFile(targetFile);
-        gitContent = gitSource.content;
-        gitHash = crypto.createHash('sha256').update(gitContent).digest('hex');
-        gitBranch = gitSource.branch;
-        comparison.git = {
-          exists: true,
-          file: targetFile,
-          branch: gitBranch,
-          hash: gitHash,
-          lastCommit: gitSource.commit,
-          source: 'git'
-        };
-      } catch (error) {
-        if (error.message?.includes('404')) {
-          comparison.git = { exists: false, file: targetFile, branch: gitBranch, source: 'git' };
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    // Determine comparison status
-    if (!comparison.powerApps.exists && !comparison.git.exists) {
-      comparison.status = 'both_missing';
-      errors.push('File exists in neither Power Apps nor Git');
-    } else if (!comparison.powerApps.exists) {
-      comparison.status = 'git_only';
-      warnings.push('File exists in Git but not in Power Apps - likely deleted in Power Apps');
-    } else if (!comparison.git.exists) {
-      comparison.status = 'powerapps_only';
-      warnings.push('File exists in Power Apps but not in Git - sync may be incomplete');
-    } else if (powerAppsHash === gitHash) {
-      comparison.status = 'in_sync';
-      comparison.details.match = true;
-    } else {
-      comparison.status = 'diverged';
-      comparison.details = {
-        powerAppsHashPrefix: powerAppsHash?.slice(0, 8),
-        gitHashPrefix: gitHash?.slice(0, 8),
-        recommendation: 'Manual review required - content differs'
-      };
-      warnings.push('Power Apps and Git content differ - potential conflict');
-    }
-
-    return createCommonResponse({
-      status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok',
-      data: comparison,
-      verified: errors.length === 0 && comparison.status === 'in_sync',
-      warnings,
-      errors,
-      summary: comparison.status
-    });
-  } catch (error) {
-    errors.push(error.message);
-    return createCommonResponse({
-      status: 'error',
-      data: comparison,
-      verified: false,
-      errors,
-      summary: `Comparison failed: ${error.message}`
-    });
+  // Preserve the historical diagnostic fields while explicitly refusing parity.
+  if (typeof powerAppsStore?.getSourceFile !== 'function') {
+    comparison.status = 'unconfirmed';
+    comparison.comparisonStatus = 'source_unavailable';
+    comparison.powerApps = { exists: null, source: 'power-apps-runtime', reason: 'source_reader_unavailable' };
+    comparison.git = { exists: Boolean(options.gitSource), file: options.gitSource?.path,
+      branch: options.gitSource?.branch, sha: options.gitSource?.sha, source: 'git' };
+    return { ...createCommonResponse({ status: 'error', data: comparison, verified: false,
+      errors: ['Power Apps runtime source reader is unavailable'],
+      unconfirmed: ['Power Apps runtime source content'], summary: 'Comparison unconfirmed' }),
+      comparisonStatus: 'source_unavailable' };
   }
+  let runtime, git;
+  try {
+    runtime = await powerAppsStore.getSourceFile(targetFile, {
+      stateContext: options.stateContext, assertStateContext: options.assertStateContext
+    });
+    git = options.gitSource || await powerAppsGitStore.getSourceFile(targetFile);
+  } catch (error) {
+    if (error.payload?.comparisonStatus || error.payload?.status === 'state_context_invalid') throw error;
+    // Upstream errors may contain URLs, credentials, CLI output or source text.
+    throw sourceUnavailable('source_read_failed');
+  }
+  if (typeof runtime?.content !== 'string' || typeof git?.content !== 'string') throw sourceUnavailable('source_content_missing');
+  let diff;
+  try { diff = compareSources(git.content, runtime.content, targetFile); }
+  catch { throw validationBlocked(['sourceContent: invalid YAML or complexity limit']); }
+  Object.assign(comparison, diff);
+  comparison.status = diff.hasDifferences ? 'diverged' : 'in_sync';
+  comparison.details = { match: !diff.hasDifferences, presentationOnly: diff.presentationOnly };
+  comparison.powerApps = { exists: true, file: targetFile,
+    hash: crypto.createHash('sha256').update(runtime.content).digest('hex'),
+    lastModified: runtime.lastModified, source: runtime.source || 'power-apps',
+    format: runtime.format, encoding: runtime.encoding };
+  comparison.git = { exists: true, file: targetFile, branch: git.branch, sha: git.sha,
+    hash: crypto.createHash('sha256').update(git.content).digest('hex'), lastCommit: git.commit, source: 'git' };
+  return { ...createCommonResponse({ status: diff.hasDifferences ? 'warning' : 'ok',
+    data: comparison, verified: !diff.hasDifferences,
+    warnings: diff.hasDifferences ? ['Power Apps and Git source properties differ'] : [],
+    summary: comparison.status }), comparisonStatus: diff.comparisonStatus,
+    comparisonVerified: true };
 }
 
 /**
@@ -412,10 +347,11 @@ async function validatePowerAppsSource(options = {}) {
     // 1. JSON/YAML 構文チェック
     try {
       if (relativePath?.endsWith('.yaml') || relativePath?.endsWith('.yml')) {
-        // YAML の簡易チェック（フル YAMLパーサーなし）
+        if (typeof sourceContent !== 'string' || !sourceContent.trim()) throw new Error('Empty YAML source');
+        yaml.load(sourceContent, { schema: yaml.JSON_SCHEMA });
         validation.checks.yamlSyntax = {
-          status: 'checked',
-          valid: sourceContent && sourceContent.trim().length > 0
+          status: 'ok',
+          valid: true
         };
       } else if (relativePath?.endsWith('.json')) {
         JSON.parse(sourceContent);
@@ -512,4 +448,3 @@ module.exports = {
   comparePowerAppsWithGit,
   validatePowerAppsSource
 };
-

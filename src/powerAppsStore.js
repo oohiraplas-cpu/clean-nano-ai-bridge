@@ -3,6 +3,7 @@
  */
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
+const { PowerAppsRuntimeSourceAdapter } = require('./powerAppsRuntimeSource');
 
 // 上流(Entra ID / Power Apps管理API / Dataverse)の失敗を、秘密値を含めずに
 // HTTP status・error code・error message・失敗工程付きのErrorにする。
@@ -150,6 +151,14 @@ class PowerAppsStore {
     this._cache = new ResponseCache(config.cacheTtlMs || 300000);
     this._metrics = new Metrics();
     this._retry = new RetryStrategy();
+    this._runtimeSource = new PowerAppsRuntimeSourceAdapter({
+      ...config.runtimeSource, appId: this.appId, environmentId: this.environmentId,
+      canonicalBranch: config.githubBranch || 'main'
+    }, config.runtimeSourceWorker);
+  }
+
+  async getSourceFile(relativePath, options) {
+    return this._runtimeSource.getSourceFile(relativePath, options);
   }
 
   async _managementFetch(path, options = {}) {

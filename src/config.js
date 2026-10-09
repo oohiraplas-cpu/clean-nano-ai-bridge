@@ -37,6 +37,10 @@ function getConfig(env = process.env) {
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     mcpApiKey: env.MCP_API_KEY || '',
+    stateContextRegistry: {
+      ttlMs: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_TTL_MS, 300000)),
+      maxEntries: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_MAX_ENTRIES, 1000))
+    },
     taskStoreBackend: env.TASK_STORE_BACKEND || 'file',
     sharepoint: {
       tenantId: env.SHAREPOINT_TENANT_ID || env.AZURE_TENANT_ID || '',
@@ -52,6 +56,15 @@ function getConfig(env = process.env) {
       clientSecret: env.POWERAPPS_CLIENT_SECRET || env.AZURE_CLIENT_SECRET || '',
       environmentId: env.POWERAPPS_ENVIRONMENT_ID || '',
       appId: env.POWERAPPS_APP_ID || '',
+      runtimeSource: {
+        mode: env.POWERAPPS_RUNTIME_SOURCE_ADAPTER || '',
+        authMode: env.POWERAPPS_RUNTIME_AUTH_MODE || '',
+        managedIdentityClientId: env.POWERAPPS_RUNTIME_MI_CLIENT_ID || null,
+        pacProfileHome: env.POWERAPPS_RUNTIME_PAC_PROFILE_HOME || '',
+        pythonExecutable: env.POWERAPPS_RUNTIME_PYTHON || 'python3',
+        pacExecutable: env.POWERAPPS_RUNTIME_PAC || 'pac',
+        sourceMap: parsePowerAutomateFlows(env.POWERAPPS_RUNTIME_SOURCE_MAP)
+      },
       logPath: path.resolve(env.POWERAPPS_LOG_PATH || 'data/powerapps-operations.jsonl'),
       orgUrl: env.POWERAPPS_ORG_URL || DEFAULT_POWERAPPS_ORG_URL,
       solutionUniqueName: env.POWERAPPS_SOLUTION_UNIQUE_NAME || DEFAULT_POWERAPPS_SOLUTION,

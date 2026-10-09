@@ -74,6 +74,7 @@ const {
   inspectPowerAppsStructure
 } = require('./bridgeEnhancedFeatures');
 const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError } = require('./stateContext');
 const {
   FAIL_CLOSED_TOOLS,
   validateStateContext,
@@ -137,21 +138,6 @@ const MCP_METHODS = Object.freeze([
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target'
 ]);
-
-const STATE_CONTEXT_SCHEMA = Object.freeze({
-  type: 'object',
-  description: 'Fail-Closed書込み検証用の状態コンテキスト。書込み系ツールでは6項目すべて必須です。',
-  properties: {
-    appId: { type: 'string', description: '対象Power AppsのApp ID' },
-    environment: { type: 'string', description: '対象Power Platform Environment ID' },
-    branch: { type: 'string', description: '書込み対象Git branch' },
-    canonicalBranch: { type: 'string', description: '正本として固定したGit branch。branchと一致必須' },
-    sha: { type: 'string', pattern: '^[a-f0-9]{40}$', description: 'State Lock時点の40桁Git commit SHA' },
-    correlationId: { type: 'string', minLength: 8, description: '監査・追跡用Correlation ID' }
-  },
-  required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'],
-  additionalProperties: false
-});
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
@@ -234,7 +220,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '既存Power Appsソースの指定ファイルを取得します。',
     inputSchema: {
       type: 'object',
-      properties: { relativePath: { type: 'string', description: '取得するソースファイルの相対パス' } },
+      properties: {
+        relativePath: { type: 'string', description: '取得するソースファイルの相対パス' },
+        correlationId: { type: 'string', description: 'get_powerapps_stateが返したcorrelationId' },
+        stateSessionId: { type: 'string', description: '同じ実行単位のstateSessionId' }
+      },
       required: ['relativePath'],
       additionalProperties: false
     }
@@ -657,8 +647,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         targetFile: { type: 'string', description: '比較するファイルの相対パス（例：Source/Home.pa.yaml）' },
-        targetApp: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' }
+        targetApp: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: 'get_powerapps_stateが返した実行単位ID' }
       },
+      required: ['stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -670,9 +663,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: {
         sourceContent: { type: 'string', description: '検査するソースコンテンツ' },
         relativePath: { type: 'string', description: 'ソースファイルの相対パス' },
-        expectedBranch: { type: 'string', description: '期待するbranch名（省略可）' }
+        expectedBranch: { type: 'string', description: '期待するbranch名（省略可）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: 'get_powerapps_stateが返した実行単位ID' }
       },
-      required: ['sourceContent'],
+      required: ['stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -712,7 +707,10 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: {
       type: 'object',
       properties: {
-        appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' }
+        appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: '登録済みGitソース解析時の実行session capability' },
+        relativePath: { type: 'string', description: '登録済み対象Gitファイル' }
       },
       additionalProperties: false
     }
@@ -1203,6 +1201,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
   const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
   const bridgeServices = createBridgeServices(config, powerAppsStore, powerAppsGitStore, injectedBridgeServices);
+  const stateRegistry = new StateContextRegistry(config.stateContextRegistry);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
@@ -1253,6 +1252,108 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     handleMcpRequest(req, res, next).catch(next);
   });
 
+  async function executeWithState(method, params, req) {
+    try { return await executeWithStateInternal(method, params, req); }
+    catch (error) {
+      if (method === 'compare_powerapps_with_git') {
+        if (error.payload?.status === 'state_context_invalid') {
+          error.payload = { ...error.payload, comparisonStatus: 'validation_blocked' };
+        } else if (!error.payload?.comparisonStatus) {
+          // Do not expose provider diagnostics or connection information.
+          const safe = new Error('Power Apps/Git source could not be read');
+          safe.status = 503;
+          safe.payload = { status: 'source_unavailable', comparisonStatus: 'source_unavailable' };
+          throw safe;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async function executeWithStateInternal(method, params, req) {
+    // Scope to authenticated transport + MCP session when present. The explicit,
+    // random stateSessionId also scopes stateless Copilot/legacy requests.
+    const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+    const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+    if (method === 'get_powerapps_state') {
+      const state = await execute(params);
+      return { ...state, ...stateRegistry.begin(state, scope) };
+    }
+    if (method === 'get_powerapps_source') {
+      let session;
+      if (params.correlationId !== undefined || params.stateSessionId !== undefined) {
+        session = stateRegistry.response(stateRegistry.lookup(params.correlationId, params.stateSessionId, scope));
+      }
+      const source = await execute(params);
+      if (!session) {
+        try {
+          session = stateRegistry.begin(await powerAppsStore.getAppState(), scope);
+        } catch (error) {
+          if (config.enforceStateManager === true) throw error;
+          // Historical standalone reads remain available if app-state lookup
+          // fails; this response deliberately carries no executable context.
+          return { ...source, stateContextComplete: false,
+            stateContextUnavailable: 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
+        }
+      }
+      // Preserve pre-enforcement standalone reads, but never grant an unbound
+      // context permission to run the guarded tools.
+      // Pre-enforcement readers historically accept upstream diagnostic SHAs.
+      // Such reads cannot establish a registered, executable State Context.
+      if (config.enforceStateManager !== true && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
+        return { ...source, stateContextComplete: false };
+      }
+      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, params.relativePath);
+      return { ...source, ...bound };
+    }
+    if (method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
+        (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined || params.relativePath !== undefined))) {
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      // Detect changed Git state and changed app/environment, not just a client
+      // tuple matching an old registry entry. Do not guess paths or branches.
+      const currentState = await powerAppsStore.getAppState();
+      const failures = [];
+      if (currentState.appId !== record.context.appId) failures.push('appId: observed app changed');
+      if (currentState.environmentId !== record.context.environment) failures.push('environment: observed environment changed');
+      const source = await powerAppsGitStore.getSourceFile(record.source.path);
+      for (const field of ['branch', 'canonicalBranch', 'sha']) if (source[field] !== record.context[field]) failures.push(`${field}: observed source changed`);
+      if (source.path !== record.source.path || source.content !== record.source.content) failures.push('sourceContent/path: observed source changed');
+      // Recheck TTL and session after upstream calls; slow requests may expire.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      if (failures.length) throw contextError(failures);
+      let result;
+      if (method === 'inspect_powerapps_structure') {
+        if (params.appId !== undefined && params.appId !== record.context.appId) throw contextError(['appId: mismatch']);
+        result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
+          sourceOrigin: 'github_canonical', stateContext: record.context });
+      } else if (method === 'validate_powerapps_source') {
+        result = await validatePowerAppsSource({ sourceContent: params.sourceContent ?? record.source.content,
+          relativePath: record.source.path, expectedBranch: params.expectedBranch ?? record.context.branch, powerAppsGitStore });
+        result.validationStatus = result.data.valid && result.verified ? 'VALID' : 'INVALID';
+      } else {
+        result = await comparePowerAppsWithGit({ powerAppsStore, powerAppsGitStore,
+          targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
+          stateContext: record.context,
+          assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
+        // Export may take time: reject provider or Git drift during the read.
+        const afterState = await powerAppsStore.getAppState();
+        const afterSource = await powerAppsGitStore.getSourceFile(record.source.path);
+        const afterFailures = [];
+        if (afterState.appId !== record.context.appId) afterFailures.push('appId: observed app changed during export');
+        if (afterState.environmentId !== record.context.environment) afterFailures.push('environment: observed environment changed during export');
+        for (const field of ['branch', 'canonicalBranch', 'sha']) if (afterSource[field] !== record.context[field]) afterFailures.push(`${field}: observed source changed during export`);
+        if (afterSource.path !== record.source.path || afterSource.content !== record.source.content) afterFailures.push('sourceContent/path: observed source changed during export');
+        if (afterFailures.length) throw contextError(afterFailures);
+      }
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return { ...result, correlationId: record.context.correlationId,
+        stateContext: { ...record.context }, stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha, comparisonSources: method === 'compare_powerapps_with_git' ? result.data.comparisonSources : undefined };
+    }
+    return execute(params);
+  }
+
   async function handleMcpRequest(req, res, next) {
     const body = req.body || {};
 
@@ -1281,10 +1382,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         // Convert standard method call to tools/call format
         return res.status(200).json(await (async () => {
           try {
-            const result = await executeMcpMethod(body.method, params || {}, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+            const result = await executeWithState(body.method, params || {}, req);
             return jsonRpcResult(id, result);
           } catch (error) {
-            return jsonRpcError(id, -32603, error.message);
+            return jsonRpcError(id, -32603, error.message, error.payload);
           }
         })());
       }
@@ -1308,13 +1409,13 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
               const error = createStateValidationError(stateValidation, name);
               return res.status(200).json(jsonRpcResult(id, {
                 content: [{ type: 'text', text: error.message }],
-                structuredContent: { error: error.message, ...error.details },
+                structuredContent: { error: error.message, ...error.details, ...(name === 'compare_powerapps_with_git' ? { comparisonStatus: 'validation_blocked' } : {}) },
                 isError: true
               }));
             }
           }
 
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+          const result = await executeWithState(name, toolParams, req);
 
           // Enrich response with state metadata for audit trail (Phase 9: Evidence Capture)
           // Only add metadata when State Manager enforcement is enabled
@@ -1323,7 +1424,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: JSON.stringify(enrichedResult) }],
             structuredContent: enrichedResult,
-            isError: false
+            isError: enrichedResult.comparisonStatus === 'source_unavailable' || enrichedResult.comparisonStatus === 'validation_blocked'
           }));
         } catch (error) {
           if (!error.status) return next(error);
@@ -1355,7 +1456,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         }
       }
 
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+      const result = await executeWithState(method, params, req);
 
       // Enrich response with state metadata for audit trail
       // Only add metadata when State Manager enforcement is enabled

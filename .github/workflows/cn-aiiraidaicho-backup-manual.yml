@@ -56,15 +56,28 @@ jobs:
                   props = json.loads(app.read('Properties.json'))
                   if props.get('Name') != 'CN_AI依頼台帳':
                       raise SystemExit('Unexpected Canvas App display name')
-                  names = [n for n in app.namelist() if n.startswith('Src\\') and n.endswith('.pa.yaml')]
+                  names = [n for n in app.namelist() if n.replace('\\', '/').startswith('Src/') and n.endswith('.pa.yaml')]
                   if not names: raise SystemExit('No Canvas App YAML source found')
+                  archive_entries = {}
                   for name in names:
-                      basename = name.rsplit('\\', 1)[-1]
+                      parts = name.replace('\\', '/').split('/')
+                      if any(part in ('', '.', '..') for part in parts):
+                          raise SystemExit('Unsafe source archive entry')
+                      basename = parts[-1]
+                      if basename in archive_entries or app.namelist().count(name) != 1:
+                          raise SystemExit('Ambiguous source archive entry')
+                      info = app.getinfo(name)
+                      if info.file_size > 2 * 1024 * 1024:
+                          raise SystemExit('Source size limit')
+                      archive_entries[basename] = name
                       (dst / basename).write_bytes(app.read(name))
                   (dst.parent / 'source-manifest.json').write_text(json.dumps({
                       'solution': 'CN_AIIraiDaicho',
                       'appDisplayName': props['Name'],
                       'files': sorted(p.name for p in dst.iterdir()),
+                      'observedArchiveEntries': archive_entries,
+                      'appIdParityVerified': False,
+                      'savedSourceComparisonVerified': False,
                       'note': 'Review-only artifact; not a Studio draft or proof of app ID parity'
                   }, ensure_ascii=False, indent=2), encoding='utf-8')
           PY

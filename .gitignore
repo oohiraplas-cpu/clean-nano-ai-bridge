@@ -4,6 +4,8 @@ node_modules/
 !.env.example
 npm-debug.log*
 coverage/
+__pycache__/
+*.pyc
 *.log
 data/deployments.jsonl
 data/powerapps-operations.jsonl
