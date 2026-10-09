@@ -18,7 +18,9 @@ const STATE_CONTEXT_SCHEMA = Object.freeze({
     branch: { type: 'string', minLength: 1 },
     canonicalBranch: { type: 'string', minLength: 1 },
     sha: { type: 'string', pattern: '^[a-f0-9]{40}$', description: '対象ファイルのGit blob SHA' },
-    correlationId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが生成したUUID' }
+    correlationId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが生成したUUID' },
+    repository: { type: 'string', minLength: 1, description: 'GitHub repository (owner/repo)' },
+    gitRoot: { type: 'string', minLength: 1, description: 'Git root path for Power Apps source' }
   },
   required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'],
   additionalProperties: false
@@ -92,6 +94,31 @@ class StateContextRegistry {
     record.context = context;
     record.source = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
     return this.response(record);
+  }
+
+  lookupBySessionId(stateSessionId, scope, appId) {
+    // Dedicated API for inspect_powerapps_structure stateSessionId-only lookup
+    if (typeof stateSessionId !== 'string' || stateSessionId.length < 8) {
+      throw contextError(['stateSessionId: invalid format'], 400);
+    }
+    // Iterate through records to find matching stateSessionId
+    for (const [correlationId, record] of this.records.entries()) {
+      if (this.now() >= record.expiresAt) {
+        this.records.delete(correlationId);
+        continue;
+      }
+      if (record.stateSessionId === stateSessionId && record.source && record.scope === scope) {
+        // Validate appId if specified
+        if (appId !== undefined && appId !== record.context.appId) {
+          throw contextError([
+            `appId mismatch: received ${appId}, expected ${record.context.appId}`,
+            `correlationId: ${record.context.correlationId}, stateSessionId: ${stateSessionId}`
+          ]);
+        }
+        return record;
+      }
+    }
+    throw contextError(['stateSessionId: not found or expired'], 404);
   }
 
   validate(context, stateSessionId, scope, params, method) {

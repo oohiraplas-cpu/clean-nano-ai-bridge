@@ -1135,8 +1135,32 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     });
   }
   if (method === 'inspect_powerapps_structure') {
-    // StateContextがない場合: 実アプリ情報解析（Power Apps API経由）
-    // StateContextがある場合: executeWithStateInternal が処理するため、ここでは使用しない
+    // StateContextなし: params.appIdで実アプリ情報解析（Power Apps API経由）
+    // StateContextあり: executeWithStateInternal が処理
+    // stateSessionIdのみ: State Registryからappid、sourceを取得
+    if (!params.appId && params.correlationId === undefined && params.stateSessionId === undefined) {
+      throw bridgeError('appIdまたはstateContext/stateSessionIdが必要です（resolve_app_targetまたはprepare_powerapps_executionで対象を解決してください）', 400);
+    }
+
+    // stateSessionIdのみで実行（StateContext完全なし）
+    if (params.stateSessionId !== undefined && params.stateContext === undefined && params.correlationId === undefined) {
+      // Use formal Registry lookup API
+      const record = stateRegistry.lookupBySessionId(params.stateSessionId, scope, params.appId);
+      const result = await inspectPowerAppsStructure({
+        powerAppsStore,
+        sourceContent: record.source.content,
+        sourceOrigin: 'github_canonical',
+        stateContext: record.context
+      });
+      return {
+        ...result,
+        correlationId: record.context.correlationId,
+        stateContext: { ...record.context },
+        stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha
+      };
+    }
+
     return inspectPowerAppsStructure({
       powerAppsStore,
       appId: params.appId
@@ -1253,7 +1277,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validatePrepareExecutionPackageParams(params);
     if (paramError) throw requestError(paramError);
     const resolver = getResolver(powerAppsStore, powerAppsGitStore);
-    return prepareExecutionPackage({
+    const contract = await prepareExecutionPackage({
       appName: params.appName,
       objective: params.objective,
       isolatedCommit: params.isolatedCommit,
@@ -1264,6 +1288,43 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         powerAutomateRunner
       }
     });
+
+    // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
+    // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
+    if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
+      try {
+        const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
+        if (!sourceFile || !sourceFile.content) {
+          contract.missing.push('Source file not found for State Registry binding');
+          contract.status = 'BLOCKED';
+          return contract;
+        }
+        if (sourceFile.sha !== contract.stateContext.sha) {
+          contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
+          contract.status = 'BLOCKED';
+          return contract;
+        }
+        const bound = stateRegistry.bind(
+          contract.stateContext.correlationId,
+          contract.stateContext.correlationId,
+          scope,
+          {
+            ...sourceFile,
+            branch: contract.stateContext.branch,
+            canonicalBranch: contract.stateContext.canonicalBranch,
+            sha: contract.stateContext.sha
+          },
+          sourceFile.path
+        );
+        contract.stateSessionId = bound.stateSessionId;
+      } catch (err) {
+        contract.missing.push(`State Registry binding failed: ${err.message}`);
+        contract.status = 'BLOCKED';
+        return contract;
+      }
+    }
+
+    return contract;
   }
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }
@@ -1466,7 +1527,12 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (failures.length) throw contextError(failures);
       let result;
       if (method === 'inspect_powerapps_structure') {
-        if (params.appId !== undefined && params.appId !== record.context.appId) throw contextError(['appId: mismatch']);
+        if (params.appId !== undefined && params.appId !== record.context.appId) {
+          throw contextError([
+            `appId mismatch: received ${params.appId}, expected ${record.context.appId}`,
+            `requestId/session: correlationId=${record.context.correlationId}, stateSessionId=${record.stateSessionId}`
+          ]);
+        }
         result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
           sourceOrigin: 'github_canonical', stateContext: record.context });
       } else if (method === 'validate_powerapps_source') {
