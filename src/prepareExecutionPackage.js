@@ -462,6 +462,14 @@ async function prepareExecutionPackage(options = {}) {
       // - missing dependencies from improvement backlog
       // - confirmed gaps in modification ledger
 
+      // Fail-Closed: Only extract candidates from confirmed sources
+      // Valid sources:
+      // 1. Objective parameter (explicit feature mention)
+      // 2. Modification ledger (confirmed incomplete items)
+      // 3. Confirmed source-vs-implementation diffs
+      // 4. Unresolved refs / unconnected elements / explicit TODO comments
+      // NO guessing from naming patterns - tool must work for ANY Power App, not just S1-S7 convention
+
       if (objective) {
         // Parse objective for explicit screen/feature mentions
         // Example: "Implement S6_Members admin panel" → extract "S6_Members"
@@ -480,28 +488,9 @@ async function prepareExecutionPackage(options = {}) {
             });
           }
         }
-      } else {
-        // Fallback: If no objective provided, detect missing screens from naming pattern
-        // This is a secondary detection method for backward compatibility with tests
-        // Valid only when explicit objective is unavailable
-        const firstScreenExists = screenFiles.some(f => f.includes('/Source/S1'));
-        if (firstScreenExists) {
-          // Known pattern: CN_AI依頼台帳 uses S1-S7 naming
-          // Detect which screens exist to identify missing ones
-          for (let i = 2; i <= 7; i++) {
-            const screenPattern = `S${i}`;
-            const exists = screenFiles.some(f => f.includes(`/Source/${screenPattern}`));
-            if (!exists) {
-              screenReferences.push({
-                screenPattern: screenPattern,
-                status: 'missing',
-                referencedIn: 'pattern detection (no objective)',
-                source: 'S1-S7 naming convention'
-              });
-            }
-          }
-        }
       }
+      // Without objective or other confirmed source, do NOT generate candidates
+      // This ensures Fail-Closed behavior and generic app support
 
       step4.gitDiff = gitDiff;
       step4.sourceStructure = gitStructure;

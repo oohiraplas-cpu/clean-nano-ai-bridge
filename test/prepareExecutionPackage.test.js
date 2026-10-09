@@ -170,6 +170,27 @@ node_test.describe('prepare_execution_package', () => {
     assert.ok(result.missing.length > 0);
   });
 
+  node_test.test('Fail-Closed: no objective, no confirmed source → BLOCKED', async () => {
+    // Fail-Closed: without objective or other confirmed sources, cannot generate candidates
+    const resolvers = createMockResolver({
+      appExists: true,
+      branchesAvailable: true,
+      hasSixMembers: false,
+      sharePointLists: []
+    });
+
+    const result = await prepareExecutionPackage({
+      appName: 'CN_AI依頼台帳',
+      // No objective provided, no modification ledger, no confirmed diff
+      resolvers
+    });
+
+    // Must be BLOCKED - no evidence for candidates
+    assert.strictEqual(result.status, 'BLOCKED');
+    assert.ok(result.missing.some(m => m.includes('候補') || m.includes('candidate')));
+    assert.strictEqual(result.feature, null);
+  });
+
   node_test.test('git diff succeeds, no duplicates → READY', async () => {
     const resolvers = createMockResolver({
       appExists: true,
@@ -180,6 +201,7 @@ node_test.describe('prepare_execution_package', () => {
 
     const result = await prepareExecutionPackage({
       appName: 'CN_AI依頼台帳',
+      objective: 'Implement S6_Members screen',
       resolvers
     });
 
@@ -199,12 +221,13 @@ node_test.describe('prepare_execution_package', () => {
 
     const result = await prepareExecutionPackage({
       appName: 'CN_AI依頼台帳',
+      objective: 'Add S6_Members admin panel',
       resolvers
     });
 
     // With S6 missing and no duplicates, should be READY
     assert.strictEqual(result.status, 'READY');
-    assert.strictEqual(result.feature?.screenPattern, 'S6');
+    assert.strictEqual(result.feature?.screenPattern, 'S6_Members');
   });
 
   node_test.test('isolatedCommit provided → REVIEW_REQUIRED (not READY)', async () => {
@@ -216,6 +239,7 @@ node_test.describe('prepare_execution_package', () => {
 
     const result = await prepareExecutionPackage({
       appName: 'CN_AI依頼台帳',
+      objective: 'Create S10_Reports dashboard',
       isolatedCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       resolvers
     });
@@ -246,6 +270,7 @@ node_test.describe('prepare_execution_package', () => {
 
     const result = await prepareExecutionPackage({
       appName: 'CN_AI依頼台帳',
+      objective: 'Create S7_Reports screen',
       resolvers
     });
 
