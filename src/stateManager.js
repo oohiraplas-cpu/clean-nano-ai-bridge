@@ -167,14 +167,15 @@ function createStateValidationError(validation, method, params = {}) {
 function extractStateContext(params = {}) {
   if (!params || typeof params !== 'object') return null;
 
-  // Pattern 1: Explicit stateContext property
+  // Pattern 1: Explicit stateContext property (highest priority)
   if (params.stateContext && typeof params.stateContext === 'object') {
     return params.stateContext;
   }
 
   // Pattern 2: Inline state fields in params
-  const hasInlineFields = REQUIRED_STATE_FIELDS.some(field => field in params);
-  if (hasInlineFields) {
+  // Only extract if MOST required fields are present (avoid false positives when appId appears alone)
+  const inlinePresent = REQUIRED_STATE_FIELDS.filter(field => field in params);
+  if (inlinePresent.length >= 4) {  // Require at least 4 of 6 required fields to avoid confusion with tool-specific params
     const context = {};
     for (const field of REQUIRED_STATE_FIELDS) {
       if (field in params) {
@@ -189,9 +190,9 @@ function extractStateContext(params = {}) {
     if (params.payload.stateContext) {
       return params.payload.stateContext;
     }
-    // Also check for inline in payload
-    const hasPayloadFields = REQUIRED_STATE_FIELDS.some(field => field in params.payload);
-    if (hasPayloadFields) {
+    // Also check for inline in payload (same logic as pattern 2)
+    const payloadPresent = REQUIRED_STATE_FIELDS.filter(field => field in params.payload);
+    if (payloadPresent.length >= 4) {
       const context = {};
       for (const field of REQUIRED_STATE_FIELDS) {
         if (field in params.payload) {

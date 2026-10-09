@@ -14,11 +14,14 @@ async function fixture(t, options = {}) {
   let now = 100000;
   const state = { status: 'ok', appId: APP, environmentId: ENV };
   const source = { status: 'ok', path: PATH, content: CONTENT, sha: blobSha(CONTENT), branch: 'main', canonicalBranch: 'main', writable: true };
-  const appStore = { getAppState: async () => ({ ...state, operationId: crypto.randomUUID() }),
+  const appStore = {
+    getAppState: async () => ({ ...state, operationId: crypto.randomUUID() }),
+    getAppInfo: async () => ({ id: APP, name: 'Test App', environmentId: ENV, screenCount: 1, screens: [{ name: 'S1_Home' }] }),
     ...(options.runtimeReader === false ? {} : { getSourceFile: async (file) => {
       assert.equal(file, PATH);
       return { content: options.runtimeContent ?? CONTENT };
-    } }) };
+    } })
+  };
   const gitStore = { canonicalBranch: 'main', getSourceFile: async (file) => {
     assert.ok([PATH, 'S1_Home.pa.yaml'].includes(file));
     return { ...source };
@@ -188,4 +191,42 @@ test('registered structure inspection rejects stale, mismatched and cross-sessio
   f.source.sha = args.stateContext.sha;
   f.expire();
   assert.equal((await f.rpc('inspect_powerapps_structure', args)).error, true);
+});
+
+test('inspect_powerapps_structure supports dual mode: appId-only (live app) or stateContext (Git source)', async t => {
+  const f = await fixture(t);
+
+  // Mode 1: appId-only, no StateContext (live app analysis via Power Apps API)
+  const liveAppResult = await f.rpc('inspect_powerapps_structure', { appId: APP });
+  assert.equal(liveAppResult.error, false);
+  // Live app mode should return app-based data without targetSha field
+  assert.ok(liveAppResult.data.data);
+
+  // Mode 2: With StateContext (Git source analysis)
+  const args = await f.chain();
+  const gitSourceResult = await f.rpc('inspect_powerapps_structure', {
+    ...args, appId: APP, relativePath: PATH
+  });
+  assert.equal(gitSourceResult.error, false);
+  assert.equal(gitSourceResult.data.data.structure.sourceOrigin, 'github_canonical');
+  assert.equal(gitSourceResult.data.targetSha, args.stateContext.sha);
+});
+
+test('inspect_powerapps_structure: appId-only mode uses Power Apps API, ignoring relativePath', async t => {
+  const f = await fixture(t);
+
+  // Request without StateContext uses Power Apps API (live app mode)
+  const liveAppOnly = await f.rpc('inspect_powerapps_structure', { appId: APP });
+  assert.equal(liveAppOnly.error, false, `liveAppOnly error: ${JSON.stringify(liveAppOnly.data)}`);
+  assert.ok(liveAppOnly.data.data);
+
+  // With relativePath but no StateContext: relative path is ignored (appId-only mode)
+  // The tool should not fail, just ignore the relativePath
+  const withIgnoredPath = await f.rpc('inspect_powerapps_structure', {
+    appId: APP,
+    relativePath: 'ignored/path.yaml'
+  });
+  assert.equal(withIgnoredPath.error, false, `withIgnoredPath error: ${JSON.stringify(withIgnoredPath.data)}`);
+  // Both should return app-based structure (same mode)
+  assert.deepEqual(liveAppOnly.data.data, withIgnoredPath.data.data);
 });
