@@ -46,7 +46,10 @@ async function createTestServer(tasks, options = {}) {
       healthRetryDelayMs: 0,
       ...options.deploymentOverrides
     },
-    permissions: { ...options.permissionsOverrides }
+    permissions: { ...options.permissionsOverrides },
+    // Legacy unit tests exercise pure diff validation. State Context enforcement
+    // is covered by the registered-context contract tests.
+    enforceStateManager: options.enforceStateManager ?? false
   });
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
@@ -934,6 +937,18 @@ const gitOverrides = (extra = {}) => ({
   githubToken: 'github-token', githubOwner: 'owner', githubRepo: 'repo', githubBranch: 'main', githubRoot: GITHUB_ROOT, ...extra
 });
 
+const CHANGE_CONTEXT = {
+  stateContext: {
+    appId: 'test-app',
+    environment: 'test-env',
+    branch: 'main',
+    canonicalBranch: 'main',
+    sha: 'a'.repeat(40),
+    correlationId: '12345678-1234-4123-8123-123456789012'
+  },
+  stateSessionId: '12345678-1234-4123-8123-123456789013'
+};
+
 async function rpc(server, name, args = {}) {
   const response = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers: MCP_HEADERS,
@@ -990,7 +1005,7 @@ test('新9ツールは入力不足・不正型・追加プロパティをHTTP 20
   const cases = [
     ['validate_powerapps_change', {}, /branchが必要/],
     ['validate_powerapps_change', { branch: 1, relativePath: 'a.pa.yaml' }, /branchが必要/],
-    ['validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', content: 5 }, /contentは文字列/],
+    ['validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'a.pa.yaml', content: 5 }, /contentは文字列/],
     ['validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', unexpected: true }, /未対応のプロパティ/],
     ['run_powerapps_tests', {}, /filesは1件以上/],
     ['run_powerapps_tests', { files: [{ relativePath: 'a.pa.yaml' }] }, /content.*delete:true/],
@@ -1035,19 +1050,19 @@ test('validate_powerapps_change: 正本branchの現在内容と比較し、valid
   const mock = routedFetch([githubContentsRoute({ main: { [`${GITHUB_ROOT}/Screen3.pa.yaml`]: 'a: 1\nb: 2\n' } })]);
   const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
 
-  const ok = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'Screen3.pa.yaml', content: 'a: 1\nb: 3\n' });
+  const ok = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'Screen3.pa.yaml', content: 'a: 1\nb: 3\n' });
   assert.equal(ok.isError, false);
   assert.equal(ok.structuredContent.valid, true);
   assert.deepEqual(Object.keys(ok.structuredContent).sort(), ['errors', 'summary', 'valid', 'warnings']);
   assert.equal(ok.structuredContent.summary.diffChecked, true);
   assert.equal(ok.structuredContent.summary.canonicalBranch, 'main');
 
-  const mismatch = await rpc(server, 'validate_powerapps_change', { branch: FALLBACK_BRANCH, relativePath: 'Screen3.pa.yaml', content: 'a: 1\n' });
+  const mismatch = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: FALLBACK_BRANCH, relativePath: 'Screen3.pa.yaml', content: 'a: 1\n' });
   assert.equal(mismatch.isError, false, '検証結果はvalid:falseで返す（ツール自体は成功）');
   assert.equal(mismatch.structuredContent.valid, false);
   assert.ok(mismatch.structuredContent.errors.some((e) => e.includes('branch不一致')));
 
-  const viaLegacy = await legacy(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'Screen3.pa.yaml', content: 'a: 9\n' });
+  const viaLegacy = await legacy(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'Screen3.pa.yaml', content: 'a: 9\n' });
   assert.equal(viaLegacy.httpStatus, 200);
   assert.equal(viaLegacy.body.accepted, true);
   assert.equal(viaLegacy.body.method, 'validate_powerapps_change');
@@ -1058,26 +1073,26 @@ test('validate_powerapps_change: 対象不存在は拒否し、フォールバ�
   const mock = routedFetch([githubContentsRoute({ [FALLBACK_BRANCH]: { [`${GITHUB_ROOT}/OnlyOld.pa.yaml`]: 'a: 1\n' } })]);
   const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
 
-  const missing = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'Nope.pa.yaml', content: 'a: 1\n' });
+  const missing = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'Nope.pa.yaml', content: 'a: 1\n' });
   assert.equal(missing.structuredContent.valid, false);
   assert.ok(missing.structuredContent.errors.some((e) => e.includes('存在しません')));
 
-  const created = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'Nope.pa.yaml', content: 'a: 1\n', create: true });
+  const created = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'Nope.pa.yaml', content: 'a: 1\n', create: true });
   assert.equal(created.structuredContent.valid, true);
   assert.equal(created.structuredContent.summary.operation, 'create');
 
-  const old = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'OnlyOld.pa.yaml', content: 'a: 2\n' });
+  const old = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'OnlyOld.pa.yaml', content: 'a: 2\n' });
   assert.equal(old.structuredContent.valid, false);
   assert.ok(old.structuredContent.errors.some((e) => e.includes(FALLBACK_BRANCH)));
 });
 
 test('validate_powerapps_change: GitHub設定不足でも落とさず、差分未検査を警告する／currentContent指定時は取得しない', async (t) => {
   const server = await newServer(t);
-  const noGit = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', content: 'a: 1\n' });
+  const noGit = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'a.pa.yaml', content: 'a: 1\n' });
   assert.equal(noGit.isError, false);
   assert.equal(noGit.structuredContent.summary.diffChecked, false);
   assert.ok(noGit.structuredContent.warnings.some((w) => w.includes('GitHub設定が不足')));
-  const provided = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', currentContent: 'a: 0\n', content: 'a: 1\n' });
+  const provided = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'a.pa.yaml', currentContent: 'a: 0\n', content: 'a: 1\n' });
   assert.equal(provided.structuredContent.valid, true);
   assert.equal(provided.structuredContent.summary.diffChecked, true);
 });
@@ -1085,7 +1100,7 @@ test('validate_powerapps_change: GitHub設定不足でも落とさず、差分�
 test('validate_powerapps_change: 上流500は502相当のエラー（isError:true）で、GitHub 404以外は握りつぶさない', async (t) => {
   const mock = routedFetch([[(c) => c.url.includes('/contents/'), () => jsonResponse({ message: 'boom' }, 500)]]);
   const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
-  const failed = await rpc(server, 'validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', content: 'a: 1\n' });
+  const failed = await rpc(server, 'validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'a.pa.yaml', content: 'a: 1\n' });
   assert.equal(failed.isError, true);
   assert.match(failed.structuredContent.error, /GitHub API エラー \(500\)/);
 });

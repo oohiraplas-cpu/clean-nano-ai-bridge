@@ -122,7 +122,14 @@ function validateStateContext(method, params, stateContext = {}) {
  * @param {string} method
  * @returns {object}
  */
-function createStateValidationError(validation, method) {
+function createStateValidationError(validation, method, params = {}) {
+  const stateContext = params?.stateContext && typeof params.stateContext === 'object' ? params.stateContext : {};
+  const missingKeys = REQUIRED_STATE_FIELDS.filter(field => !stateContext[field]);
+  const mismatchedKeys = validation.errors
+    .map(error => String(error).split(':')[0])
+    .filter(field => REQUIRED_STATE_FIELDS.includes(field) && !missingKeys.includes(field));
+  const correlationValid = typeof stateContext.correlationId === 'string' && stateContext.correlationId.length >= 8;
+  const stateSessionValid = typeof params?.stateSessionId === 'string' && params.stateSessionId.trim().length > 0;
   return {
     status: 400,
     message: `State Manager検証エラー: ${method}の実行には完全な状態コンテキストが必須です。`,
@@ -130,7 +137,18 @@ function createStateValidationError(validation, method) {
       method,
       failures: validation.errors,
       required: REQUIRED_STATE_FIELDS,
+      missingKeys,
+      mismatchedKeys,
+      expired: validation.errors.some(error => /expired|TTL/i.test(String(error))),
+      expectedPath: null,
+      receivedPath: params?.relativePath ?? null,
+      expectedBranch: null,
+      receivedBranch: stateContext.branch ?? params?.branch ?? null,
+      shaMatched: null,
+      stateSessionValid,
+      correlationValid,
       failedClosedTool: FAIL_CLOSED_TOOLS.includes(method),
+      recommendedNextAction: 'get_powerapps_state → get_powerapps_source を同一セッションで再取得し、返却値をそのまま再送してください',
       policy: 'Fail-Closed: state context validation required before write'
     }
   };

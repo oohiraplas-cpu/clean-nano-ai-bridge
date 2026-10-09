@@ -1,6 +1,7 @@
 /**
  * Power Apps関連のリクエスト入力検証
  */
+const { REQUIRED_STATE_FIELDS } = require('./stateContext');
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -66,10 +67,21 @@ function stringOrError(value, name, { max = 300 } = {}) {
 
 function validateValidatePowerAppsChangeParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  const unknown = unknownProperty(params, ['branch', 'relativePath', 'content', 'currentContent', 'currentExists', 'delete', 'create', 'allowLargeDiff']);
+  const unknown = unknownProperty(params, ['branch', 'relativePath', 'content', 'currentContent', 'currentExists', 'delete', 'create', 'allowLargeDiff', 'stateContext', 'stateSessionId']);
   if (unknown) return unknown;
   const required = stringOrError(params.branch, 'branch') || stringOrError(params.relativePath, 'relativePath');
   if (required) return required;
+  if (!isPlainObject(params.stateContext)) return 'stateContextはJSONオブジェクトで必須です';
+  for (const field of REQUIRED_STATE_FIELDS) {
+    const fieldError = stringOrError(params.stateContext[field], `stateContext.${field}`);
+    if (fieldError) return fieldError;
+  }
+  if (!/^[a-f0-9]{40}$/.test(params.stateContext.sha)) return 'stateContext.shaは40桁のGit blob SHAである必要があります';
+  for (const key of Object.keys(params.stateContext)) {
+    if (!REQUIRED_STATE_FIELDS.includes(key)) return `stateContextに未対応のプロパティです: ${key}`;
+  }
+  const sessionError = stringOrError(params.stateSessionId, 'stateSessionId');
+  if (sessionError) return sessionError;
   for (const key of ['content', 'currentContent']) {
     if (params[key] !== undefined && typeof params[key] !== 'string') return `${key}は文字列である必要があります`;
   }
