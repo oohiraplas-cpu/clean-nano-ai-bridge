@@ -52,12 +52,23 @@ function createCommonResponse(options = {}) {
  * Bridge の能力情報を取得
  * Version, MCP仕様, 公開ツール, 制約情報を返す
  */
-function getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version = '1.0.0', mcpVersion = '2025-06-18' } = {}) {
+function getBridgeCapabilities(MCP_PUBLIC_TOOLS, {
+  version = '1.0.0',
+  mcpVersion = '2025-06-18',
+  schemaVersion = '2025-10-10',
+  deploymentSha = null,
+  executionPackageVersion = '1.0.0',
+  supportedStateContextFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId']
+} = {}) {
   const capabilities = {
     bridge: {
       version,
       name: 'clean-nano-ai-bridge',
-      description: 'Power Apps/SharePoint/Power Automate/Git管理用MCP'
+      description: 'Power Apps/SharePoint/Power Automate/Git管理用MCP',
+      schemaVersion,
+      deploymentSha,
+      executionPackageVersion,
+      supportedStateContextFields
     },
     mcp: {
       version: mcpVersion,
