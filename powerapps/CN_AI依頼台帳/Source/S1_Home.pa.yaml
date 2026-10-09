@@ -12,7 +12,7 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
+        If(IsBlank(gblEmpID), Notify("本人を特定できないため勤務データを表示できません", NotificationType.Error));
         ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
         If(IsBlank(gblIsAdmin), Set(gblIsAdmin, Or(User().Email = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")))
     Children:
