@@ -144,7 +144,7 @@ const MCP_METHODS = Object.freeze([
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
-  'prepare_execution_package'
+  'prepare_powerapps_execution'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -805,7 +805,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     }
   },
   {
-    name: 'prepare_execution_package',
+    name: 'prepare_powerapps_execution',
     description: 'Power Apps実装契約を1回で生成します。対象アプリ・環境解決→StateContext生成→正本ブランチ/SHA/ソース一覧取得→Git差分解析→SharePointスキーマ/Flow/依存関係取得→重複・未完成機能確認→ROI最高の機能選定→受入条件/変更範囲/ロールバック確定の8ステップを内部処理し、完全な実行契約をJSON形式で返します。Copilot Studioによる複数ツール呼出と手動StateContext継承を廃止します。読み取り専用。',
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: {
@@ -1249,7 +1249,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       });
     }
   }
-  if (method === 'prepare_execution_package') {
+  if (method === 'prepare_powerapps_execution') {
     const paramError = validatePrepareExecutionPackageParams(params);
     if (paramError) throw requestError(paramError);
     const resolver = getResolver(powerAppsStore, powerAppsGitStore);

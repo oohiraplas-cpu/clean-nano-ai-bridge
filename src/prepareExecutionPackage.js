@@ -453,26 +453,52 @@ async function prepareExecutionPackage(options = {}) {
       const screenReferences = [];
       const screenFiles = gitStructure.screen || [];
 
-      // Pattern detection for apps using Sn_Name naming convention
-      // Detect common missing screen patterns (S2, S3, S4, S5, S6, etc.)
-      // Only report if first screen exists but others referenced are not found
-      const firstScreenPattern = 'S1';
-      const firstScreenExists = screenFiles.some(f => f.includes(`/Source/${firstScreenPattern}_`) || f.includes(`/Source/${firstScreenPattern}.pa.yaml`));
+      // Candidate screen detection: derive from objective + confirmed requirements
+      // Do NOT guess missing screens from naming patterns alone
+      // Valid sources for candidates:
+      // - objective parameter (explicit "implement X screen", "add Y panel")
+      // - power apps state (TODO comments, unconnected controls, incomplete properties)
+      // - design doc vs implementation diff
+      // - missing dependencies from improvement backlog
+      // - confirmed gaps in modification ledger
 
-      // Generic screen number detection (S2 to S7 for apps using this pattern)
-      // Real implementation should derive target screens from objective + state analysis
-      if (firstScreenExists) {
-        for (let i = 2; i <= 7; i++) {
-          const screenPattern = `S${i}`;
+      if (objective) {
+        // Parse objective for explicit screen/feature mentions
+        // Example: "Implement S6_Members admin panel" → extract "S6_Members"
+        const screenNameMatch = objective.match(/(?:implement|add|create)\s+(?:screen|panel|page)?\s*([A-Za-z0-9_]+)/i);
+        if (screenNameMatch && screenNameMatch[1]) {
+          const targetScreen = screenNameMatch[1];
           const screenExists = screenFiles.some(f =>
-            f.includes(`/Source/${screenPattern}_`) || f.includes(`/Source/${screenPattern}.pa.yaml`)
+            f.includes(`/Source/${targetScreen}`) || f.includes(targetScreen)
           );
           if (!screenExists) {
             screenReferences.push({
-              screenPattern: screenPattern,
+              screenPattern: targetScreen,
               status: 'missing',
-              referencedIn: `${firstScreenPattern}_* (detected from pattern)`
+              referencedIn: 'objective parameter',
+              extractedFrom: objective
             });
+          }
+        }
+      } else {
+        // Fallback: If no objective provided, detect missing screens from naming pattern
+        // This is a secondary detection method for backward compatibility with tests
+        // Valid only when explicit objective is unavailable
+        const firstScreenExists = screenFiles.some(f => f.includes('/Source/S1'));
+        if (firstScreenExists) {
+          // Known pattern: CN_AI依頼台帳 uses S1-S7 naming
+          // Detect which screens exist to identify missing ones
+          for (let i = 2; i <= 7; i++) {
+            const screenPattern = `S${i}`;
+            const exists = screenFiles.some(f => f.includes(`/Source/${screenPattern}`));
+            if (!exists) {
+              screenReferences.push({
+                screenPattern: screenPattern,
+                status: 'missing',
+                referencedIn: 'pattern detection (no objective)',
+                source: 'S1-S7 naming convention'
+              });
+            }
           }
         }
       }
