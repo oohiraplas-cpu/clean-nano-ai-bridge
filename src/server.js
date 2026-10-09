@@ -410,9 +410,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         currentExists: { type: 'boolean', description: '対象ファイルが現在存在するか（currentContent未指定時の補足）' },
         delete: { type: 'boolean', description: 'ファイル削除を検査する場合はtrue' },
         create: { type: 'boolean', description: '新規ファイル作成を許可する場合はtrue' },
-        allowLargeDiff: { type: 'boolean', description: '大規模差分（変更率80%以上）を意図したものとして許可する場合はtrue' }
+        allowLargeDiff: { type: 'boolean', description: '大規模差分（変更率80%以上）を意図したものとして許可する場合はtrue' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 1, description: 'get_powerapps_sourceが返した同一実行単位のstateSessionId' }
       },
-      required: ['branch', 'relativePath'],
+      required: ['branch', 'relativePath', 'stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -1417,7 +1419,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, params.relativePath);
       return { ...source, ...bound };
     }
-    if (method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
+    if (method === 'validate_powerapps_change' || method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
         (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined || params.relativePath !== undefined))) {
       const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       // Detect changed Git state and changed app/environment, not just a client
@@ -1441,6 +1443,16 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         result = await validatePowerAppsSource({ sourceContent: params.sourceContent ?? record.source.content,
           relativePath: record.source.path, expectedBranch: params.expectedBranch ?? record.context.branch, powerAppsGitStore });
         result.validationStatus = result.data.valid && result.verified ? 'VALID' : 'INVALID';
+      } else if (method === 'validate_powerapps_change') {
+        // Change validation is fail-closed: the registered source identity is checked
+        // before static diff validation, so branch/path/SHA cannot be stale or guessed.
+        result = await bridgeServices.validatePowerAppsChange({
+          ...params,
+          branch: record.context.branch,
+          relativePath: record.source.path,
+          currentContent: params.currentContent ?? record.source.content
+        });
+        result.validationStatus = result.valid === true ? 'VALID' : 'INVALID';
       } else {
         result = await comparePowerAppsWithGit({ powerAppsStore, powerAppsGitStore,
           targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
@@ -1516,7 +1528,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           if (enforceStateManager) {
             const stateValidation = validateStateContext(name, toolParams, stateContext);
             if (!stateValidation.isValid) {
-              const error = createStateValidationError(stateValidation, name);
+              const error = createStateValidationError(stateValidation, name, toolParams);
               return res.status(200).json(jsonRpcResult(id, {
                 content: [{ type: 'text', text: error.message }],
                 structuredContent: { error: error.message, ...error.details, ...(name === 'compare_powerapps_with_git' ? { comparisonStatus: 'validation_blocked' } : {}) },
@@ -1561,7 +1573,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (enforceStateManager) {
         const stateValidation = validateStateContext(method, params, stateContext);
         if (!stateValidation.isValid) {
-          const error = createStateValidationError(stateValidation, method);
+          const error = createStateValidationError(stateValidation, method, params);
           return res.status(error.status).json({ error: error.message, ...error.details });
         }
       }
