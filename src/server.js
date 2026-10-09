@@ -58,7 +58,8 @@ const {
   validateCanViewUserInfoParams,
   validateCanEditUserInfoParams,
   validateCanDeleteUserInfoParams,
-  validateGenerateUIControlStateParams
+  validateGenerateUIControlStateParams,
+  validatePrepareExecutionPackageParams
 } = require('./bridgeExtensionsValidation');
 const { UserProtectionService } = require('./userProtectionService');
 const {
@@ -77,6 +78,7 @@ const {
   inspectPowerAppsStructure
 } = require('./bridgeEnhancedFeatures');
 const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError } = require('./stateContext');
 const {
   FAIL_CLOSED_TOOLS,
@@ -141,7 +143,8 @@ const MCP_METHODS = Object.freeze([
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
   'check_payment_status',
-  'discover_sharepoint_ai4_resources'
+  'discover_sharepoint_ai4_resources',
+  'prepare_execution_package'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -800,6 +803,21 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: {},
       additionalProperties: false
     }
+  },
+  {
+    name: 'prepare_execution_package',
+    description: 'Power Apps実装契約を1回で生成します。対象アプリ・環境解決→StateContext生成→正本ブランチ/SHA/ソース一覧取得→Git差分解析→SharePointスキーマ/Flow/依存関係取得→重複・未完成機能確認→ROI最高の機能選定→受入条件/変更範囲/ロールバック確定の8ステップを内部処理し、完全な実行契約をJSON形式で返します。Copilot Studioによる複数ツール呼出と手動StateContext継承を廃止します。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appName: { type: 'string', description: 'Target Power Apps app name (e.g., CN_AI依頼台帳)' },
+        objective: { type: 'string', description: 'Feature selection objective (optional, max 500 chars)' },
+        isolatedCommit: { type: 'string', description: 'Optional 40-char hex SHA for testing on non-canonical branch' }
+      },
+      required: ['appName'],
+      additionalProperties: false
+    }
   }
 ]);
 
@@ -1230,6 +1248,22 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         summary: '自動探索処理エラー'
       });
     }
+  }
+  if (method === 'prepare_execution_package') {
+    const paramError = validatePrepareExecutionPackageParams(params);
+    if (paramError) throw requestError(paramError);
+    const resolver = getResolver(powerAppsStore, powerAppsGitStore);
+    return prepareExecutionPackage({
+      appName: params.appName,
+      objective: params.objective,
+      isolatedCommit: params.isolatedCommit,
+      resolvers: {
+        appTargetResolver: resolver,
+        powerAppsGitStore,
+        sharePointReader,
+        powerAutomateRunner
+      }
+    });
   }
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }

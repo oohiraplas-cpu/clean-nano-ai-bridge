@@ -231,6 +231,23 @@ function validateGenerateUIControlStateParams(params) {
   return null;
 }
 
+function validatePrepareExecutionPackageParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['appName', 'objective', 'isolatedCommit']);
+  if (unknown) return unknown;
+  const appNameError = requiredString(params, 'appName');
+  if (appNameError) return appNameError;
+  const objectiveError = optionalString(params, 'objective', { max: 500 });
+  if (objectiveError) return objectiveError;
+  if (params.isolatedCommit !== undefined) {
+    const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+    if (typeof params.isolatedCommit !== 'string' || !SHA_PATTERN.test(params.isolatedCommit)) {
+      return 'isolatedCommitは40文字の16進数SHAである必要があります';
+    }
+  }
+  return null;
+}
+
 module.exports = {
   validateDeployToTestParams,
   validateVerifyDeploymentParams,
@@ -250,5 +267,6 @@ module.exports = {
   validateCanViewUserInfoParams,
   validateCanEditUserInfoParams,
   validateCanDeleteUserInfoParams,
-  validateGenerateUIControlStateParams
+  validateGenerateUIControlStateParams,
+  validatePrepareExecutionPackageParams
 };
