@@ -1144,39 +1144,21 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     // stateSessionIdのみで実行（StateContext完全なし）
     if (params.stateSessionId !== undefined && params.stateContext === undefined && params.correlationId === undefined) {
-      // Try to resolve session from registry
-      try {
-        // Iterate through records to find matching stateSessionId
-        for (const [correlationId, record] of stateRegistry.records.entries()) {
-          if (record.stateSessionId === params.stateSessionId && record.source) {
-            // Found matching session; validate it
-            const record2 = stateRegistry.validate({ ...record.context }, params.stateSessionId, scope, params, method);
-            if (params.appId !== undefined && params.appId !== record2.context.appId) {
-              throw contextError([
-                `appId mismatch: received ${params.appId}, expected ${record2.context.appId}`,
-                `stateSessionId: ${params.stateSessionId}, correlationId: ${record2.context.correlationId}`
-              ]);
-            }
-            const result = await inspectPowerAppsStructure({
-              powerAppsStore,
-              sourceContent: record2.source.content,
-              sourceOrigin: 'github_canonical',
-              stateContext: record2.context
-            });
-            return {
-              ...result,
-              correlationId: record2.context.correlationId,
-              stateContext: { ...record2.context },
-              stateSessionId: record2.stateSessionId,
-              targetSha: record2.context.sha
-            };
-          }
-        }
-        throw contextError(['stateSessionId: not found in registry'], 404);
-      } catch (err) {
-        if (err.status) throw err;
-        throw contextError(['stateSessionId: registry lookup failed'], 500);
-      }
+      // Use formal Registry lookup API
+      const record = stateRegistry.lookupBySessionId(params.stateSessionId, scope, params.appId);
+      const result = await inspectPowerAppsStructure({
+        powerAppsStore,
+        sourceContent: record.source.content,
+        sourceOrigin: 'github_canonical',
+        stateContext: record.context
+      });
+      return {
+        ...result,
+        correlationId: record.context.correlationId,
+        stateContext: { ...record.context },
+        stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha
+      };
     }
 
     return inspectPowerAppsStructure({
@@ -1308,29 +1290,37 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     });
 
     // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
-    // Only if execution contract is READY or REVIEW_REQUIRED with complete source
+    // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
     if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
       try {
         const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
-        if (sourceFile && sourceFile.content && sourceFile.sha === contract.stateContext.sha) {
-          const bound = stateRegistry.bind(
-            contract.stateContext.correlationId,
-            contract.stateContext.correlationId, // Use correlationId as stateSessionId initially
-            scope,
-            {
-              ...sourceFile,
-              branch: contract.stateContext.branch,
-              canonicalBranch: contract.stateContext.canonicalBranch,
-              sha: contract.stateContext.sha
-            },
-            sourceFile.path
-          );
-          // Update contract with stateSessionId for caller
-          contract.stateSessionId = bound.stateSessionId;
+        if (!sourceFile || !sourceFile.content) {
+          contract.missing.push('Source file not found for State Registry binding');
+          contract.status = 'BLOCKED';
+          return contract;
         }
+        if (sourceFile.sha !== contract.stateContext.sha) {
+          contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
+          contract.status = 'BLOCKED';
+          return contract;
+        }
+        const bound = stateRegistry.bind(
+          contract.stateContext.correlationId,
+          contract.stateContext.correlationId,
+          scope,
+          {
+            ...sourceFile,
+            branch: contract.stateContext.branch,
+            canonicalBranch: contract.stateContext.canonicalBranch,
+            sha: contract.stateContext.sha
+          },
+          sourceFile.path
+        );
+        contract.stateSessionId = bound.stateSessionId;
       } catch (err) {
-        // State Registry binding failure is not fatal to the contract; log but continue
-        // Caller can still use appId-only mode if binding fails
+        contract.missing.push(`State Registry binding failed: ${err.message}`);
+        contract.status = 'BLOCKED';
+        return contract;
       }
     }
 

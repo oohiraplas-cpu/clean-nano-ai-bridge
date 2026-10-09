@@ -96,6 +96,31 @@ class StateContextRegistry {
     return this.response(record);
   }
 
+  lookupBySessionId(stateSessionId, scope, appId) {
+    // Dedicated API for inspect_powerapps_structure stateSessionId-only lookup
+    if (typeof stateSessionId !== 'string' || stateSessionId.length < 8) {
+      throw contextError(['stateSessionId: invalid format'], 400);
+    }
+    // Iterate through records to find matching stateSessionId
+    for (const [correlationId, record] of this.records.entries()) {
+      if (this.now() >= record.expiresAt) {
+        this.records.delete(correlationId);
+        continue;
+      }
+      if (record.stateSessionId === stateSessionId && record.source && record.scope === scope) {
+        // Validate appId if specified
+        if (appId !== undefined && appId !== record.context.appId) {
+          throw contextError([
+            `appId mismatch: received ${appId}, expected ${record.context.appId}`,
+            `correlationId: ${record.context.correlationId}, stateSessionId: ${stateSessionId}`
+          ]);
+        }
+        return record;
+      }
+    }
+    throw contextError(['stateSessionId: not found or expired'], 404);
+  }
+
   validate(context, stateSessionId, scope, params, method) {
     const failures = [];
     if (!context || typeof context !== 'object' || Array.isArray(context)) context = {};

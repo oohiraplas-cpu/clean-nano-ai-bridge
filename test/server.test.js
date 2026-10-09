@@ -1544,14 +1544,64 @@ test('MCP public Power Apps write tools expose complete required stateContext sc
   }
 });
 
-test('StateContext Registry binding: prepare_powerapps_execution returns stateSessionId', () => {
-  // Verify prepare_powerapps_execution is defined in MCP_PUBLIC_TOOLS
-  const tools = MCP_PUBLIC_TOOLS.filter(t => t.name === 'prepare_powerapps_execution');
-  assert.equal(tools.length, 1, 'prepare_powerapps_execution tool defined in MCP_PUBLIC_TOOLS');
+test('StateContext Registry: lookupBySessionId API', () => {
+  const { StateContextRegistry, blobSha } = require('../src/stateContext');
+  const registry = new StateContextRegistry({ ttlMs: 300000 });
 
-  const tool = tools[0];
-  assert.ok(tool.inputSchema, 'tool has inputSchema');
+  const scope = 'test';
+  const beginResult = registry.begin({ appId: 'test-app', environmentId: 'test-env' }, scope);
+  const { correlationId, stateSessionId } = beginResult;
 
-  // stateSessionId is returned at runtime when State Registry binding succeeds
-  // Contract verification: tool definition and implementation complete
+  const content = 'test content';
+  const sha = blobSha(content);
+
+  registry.bind(correlationId, stateSessionId, scope, {
+    content,
+    path: 'test/path',
+    branch: 'main',
+    canonicalBranch: 'main',
+    sha
+  }, 'test/path');
+
+  const record = registry.lookupBySessionId(stateSessionId, scope, undefined);
+  assert.ok(record, 'lookupBySessionId returns record');
+  assert.equal(record.context.appId, 'test-app', 'appId matches');
+  assert.equal(record.stateSessionId, stateSessionId, 'stateSessionId matches');
+});
+
+test('StateContext Registry: lookupBySessionId appId mismatch', () => {
+  const { StateContextRegistry, blobSha } = require('../src/stateContext');
+  const registry = new StateContextRegistry({ ttlMs: 300000 });
+
+  const scope = 'test';
+  const beginResult = registry.begin({ appId: 'test-app-1', environmentId: 'test-env' }, scope);
+  const { correlationId, stateSessionId } = beginResult;
+
+  const content = 'test content mismatch';
+  const sha = blobSha(content);
+
+  registry.bind(correlationId, stateSessionId, scope, {
+    content,
+    path: 'test/path',
+    branch: 'main',
+    canonicalBranch: 'main',
+    sha
+  }, 'test/path');
+
+  assert.throws(
+    () => registry.lookupBySessionId(stateSessionId, scope, 'test-app-2'),
+    /appId mismatch/,
+    'appId mismatch throws error'
+  );
+});
+
+test('StateContext Registry: lookupBySessionId not found', () => {
+  const { StateContextRegistry } = require('../src/stateContext');
+  const registry = new StateContextRegistry({ ttlMs: 300000 });
+
+  assert.throws(
+    () => registry.lookupBySessionId('nonexistent-session-id-xyz', 'test', undefined),
+    /stateSessionId: not found or expired/,
+    'non-existent sessionId throws 404'
+  );
 });
