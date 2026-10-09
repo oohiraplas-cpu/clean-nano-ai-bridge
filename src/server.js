@@ -710,14 +710,14 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'inspect_powerapps_structure',
-    description: 'Power Appsアプリの構造を解析します。画面一覧、コントロール、コンポーネント、データソース、コネクタ、Power Fx参照、警告を返します。読み取り専用。',
+    description: 'Power Appsアプリの構造を解析します。appIdのみで実アプリ情報を解析、またはstateContext+relativePath指定でGit保存ソースを解析。画面一覧、コントロール、コンポーネント、データソース、コネクタ、Power Fx参照、警告を返します。読み取り専用。',
     inputSchema: {
       type: 'object',
       properties: {
         appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
         stateContext: STATE_CONTEXT_SCHEMA,
-        stateSessionId: { type: 'string', description: '登録済みGitソース解析時の実行session capability' },
-        relativePath: { type: 'string', description: '登録済み対象Gitファイル' }
+        stateSessionId: { type: 'string', description: 'Git保存ソース解析時の実行session ID（stateContextと併用時のみ有効）' },
+        relativePath: { type: 'string', description: 'Git解析対象ファイルの相対パス（stateContextと併用時のみ有効）' }
       },
       additionalProperties: false
     }
@@ -1089,21 +1089,14 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       powerAppsGitStore
     });
   }
+  // Note: compare_powerapps_with_git and validate_powerapps_source require State Manager validation.
+  // These are handled in executeWithStateInternal() when stateContext is provided.
+  // If they reach here (no stateContext), they fail with missing State Context.
   if (method === 'compare_powerapps_with_git') {
-    return comparePowerAppsWithGit({
-      powerAppsStore,
-      powerAppsGitStore,
-      targetFile: params.targetFile,
-      targetApp: params.targetApp
-    });
+    throw contextError(['stateContext: required for compare_powerapps_with_git'], 400);
   }
   if (method === 'validate_powerapps_source') {
-    return validatePowerAppsSource({
-      sourceContent: params.sourceContent,
-      relativePath: params.relativePath,
-      expectedBranch: params.expectedBranch,
-      powerAppsGitStore
-    });
+    throw contextError(['stateContext: required for validate_powerapps_source'], 400);
   }
   if (method === 'get_sharepoint_list_schema') {
     return getSharePointListSchema({
@@ -1124,6 +1117,8 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     });
   }
   if (method === 'inspect_powerapps_structure') {
+    // StateContextがない場合: 実アプリ情報解析（Power Apps API経由）
+    // StateContextがある場合: executeWithStateInternal が処理するため、ここでは使用しない
     return inspectPowerAppsStructure({
       powerAppsStore,
       appId: params.appId
@@ -1421,7 +1416,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     }
     if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
         method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
-        (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined || params.relativePath !== undefined))) {
+        (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined))) {
       const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       // Detect changed Git state and changed app/environment, not just a client
       // tuple matching an old registry entry. Do not guess paths or branches.
