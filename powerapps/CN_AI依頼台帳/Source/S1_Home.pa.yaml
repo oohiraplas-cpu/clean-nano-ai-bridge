@@ -16,7 +16,7 @@ Screens:
         ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
         If(IsBlank(gblIsAdmin), Set(gblIsAdmin, Or(User().Email = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")))
     Children:
-      - S1_Title:
+      - Home_Title:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(0, 204, 102, 1)
@@ -27,7 +27,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =16
-      - S1_EmpLabel:
+      - Home_EmpLabel:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(120, 120, 120, 1)
@@ -38,7 +38,7 @@ Screens:
             X: =16
             Y: =76
             Visible: =false
-      - S1_EmpDrop:
+      - Home_EmpDrop:
           Control: Classic/DropDown@2.3.1
           Properties:
             BorderColor: =RGBA(0, 204, 102, 1)
@@ -59,7 +59,7 @@ Screens:
             X: =16
             Y: =106
             Visible: =false
-      - S1_MonthLabel:
+      - Home_MonthLabel:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(255, 255, 255, 1)
@@ -70,7 +70,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =174
-      - S1_Card1:
+      - Home_CardDays:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
@@ -78,7 +78,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =214
-      - S1_DaysCap:
+      - Home_DaysLabel:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(255, 255, 255, 1)
@@ -88,7 +88,7 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =224
-      - S1_DaysVal:
+      - Home_DaysValue:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(0, 204, 102, 1)
@@ -99,7 +99,7 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =258
-      - S1_Card2:
+      - Home_CardAllowance:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
@@ -107,7 +107,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =360
-      - S1_AllowCap:
+      - Home_AllowanceLabel:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(255, 255, 255, 1)
@@ -117,7 +117,7 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =370
-      - S1_AllowVal:
+      - Home_AllowanceValue:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(0, 204, 102, 1)
@@ -135,7 +135,7 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =404
-      - btn_nav_calendar:
+      - Home_BtnCalendar:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -151,7 +151,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =510
-      - btn_nav_equipment:
+      - Home_BtnEquipment:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -167,7 +167,7 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =578
-      - btnHome_OperationsManagement:
+      - Home_BtnAdmin:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -189,7 +189,7 @@ Screens:
             Width: =120
             X: =Parent.Width - 136
             Y: =Parent.Height - 64
-      - S1_NavBar:
+      - Home_NavBar:
           Control: Rectangle@2.3.0
           Properties:
             Visible: =false
@@ -197,7 +197,7 @@ Screens:
             Height: =70
             Width: =Parent.Width
             Y: =Parent.Height - 70
-      - btn_nav_home:
+      - Home_NavHome:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -219,7 +219,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
             Y: =Parent.Height - 70
-      - btn_nav_calendar_2:
+      - Home_NavCalendar:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -241,7 +241,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
             Y: =Parent.Height - 70
-      - btn_nav_register:
+      - Home_NavRegister:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -263,7 +263,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
             Y: =Parent.Height - 70
-      - btn_nav_summary:
+      - Home_NavSummary:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
@@ -285,7 +285,7 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
             Y: =Parent.Height - 70
-      - btn_nav_settings:
+      - Home_BtnSettings:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
@@ -306,7 +306,7 @@ Screens:
             Width: =80
             X: =Parent.Width - 96
             Y: =16
-      - btn_unknown:
+      - Home_Unused:
           Control: Classic/Button@2.2.0
           Properties:
             Visible: =false
