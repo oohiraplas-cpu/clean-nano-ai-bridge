@@ -900,7 +900,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -1277,6 +1277,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validatePrepareExecutionPackageParams(params);
     if (paramError) throw requestError(paramError);
 
+    if (!stateRegistry) {
+      throw requestError('State Registry is not configured (stateRegistry not initialized)', 503);
+    }
+
     let contract;
     try {
       const resolver = getResolver(powerAppsStore, powerAppsGitStore);
@@ -1512,7 +1516,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
       return { ...state, ...stateRegistry.begin(state, scope) };
