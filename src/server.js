@@ -1276,57 +1276,87 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'prepare_powerapps_execution') {
     const paramError = validatePrepareExecutionPackageParams(params);
     if (paramError) throw requestError(paramError);
-    const resolver = getResolver(powerAppsStore, powerAppsGitStore);
-    const contract = await prepareExecutionPackage({
-      appName: params.appName,
-      appId: params.appId,
-      environmentId: params.environmentId,
-      stateSessionId: params.stateSessionId,
-      stateContext: params.stateContext,
-      objective: params.objective,
-      isolatedCommit: params.isolatedCommit,
-      resolvers: {
-        appTargetResolver: resolver,
-        powerAppsGitStore,
-        sharePointReader,
-        powerAutomateRunner,
-        stateRegistry
-      }
-    });
 
-    // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
-    // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
-    if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
-      try {
-        const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
-        if (!sourceFile || !sourceFile.content) {
-          contract.missing.push('Source file not found for State Registry binding');
-          contract.status = 'BLOCKED';
-          return contract;
+    let contract;
+    try {
+      const resolver = getResolver(powerAppsStore, powerAppsGitStore);
+      contract = await prepareExecutionPackage({
+        appName: params.appName,
+        appId: params.appId,
+        environmentId: params.environmentId,
+        stateSessionId: params.stateSessionId,
+        stateContext: params.stateContext,
+        objective: params.objective,
+        isolatedCommit: params.isolatedCommit,
+        resolvers: {
+          appTargetResolver: resolver,
+          powerAppsGitStore,
+          sharePointReader,
+          powerAutomateRunner,
+          stateRegistry
         }
-        if (sourceFile.sha !== contract.stateContext.sha) {
-          contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
+      });
+
+      // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
+      // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
+      if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
+        try {
+          const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
+          if (!sourceFile || !sourceFile.content) {
+            contract.missing.push('Source file not found for State Registry binding');
+            contract.status = 'BLOCKED';
+          } else if (sourceFile.sha !== contract.stateContext.sha) {
+            contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
+            contract.status = 'BLOCKED';
+          } else {
+            const bound = stateRegistry.bind(
+              contract.stateContext.correlationId,
+              contract.stateContext.correlationId,
+              scope,
+              {
+                ...sourceFile,
+                branch: contract.stateContext.branch,
+                canonicalBranch: contract.stateContext.canonicalBranch,
+                sha: contract.stateContext.sha
+              },
+              sourceFile.path
+            );
+            contract.stateSessionId = bound.stateSessionId;
+          }
+        } catch (err) {
+          contract.missing.push(`State Registry binding failed: ${err.message}`);
           contract.status = 'BLOCKED';
-          return contract;
         }
-        const bound = stateRegistry.bind(
-          contract.stateContext.correlationId,
-          contract.stateContext.correlationId,
-          scope,
-          {
-            ...sourceFile,
-            branch: contract.stateContext.branch,
-            canonicalBranch: contract.stateContext.canonicalBranch,
-            sha: contract.stateContext.sha
-          },
-          sourceFile.path
-        );
-        contract.stateSessionId = bound.stateSessionId;
-      } catch (err) {
-        contract.missing.push(`State Registry binding failed: ${err.message}`);
-        contract.status = 'BLOCKED';
-        return contract;
       }
+    } catch (err) {
+      // Catch ANY error in prepare_powerapps_execution and return BLOCKED contract
+      if (err.message && err.message.includes('appId') || err.message.includes('timeout')) {
+        throw requestError(err.message, err.status || 502);
+      }
+      // Return gracefully with BLOCKED status instead of failing response
+      contract = {
+        status: 'BLOCKED',
+        requestId: crypto.randomUUID(),
+        generatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        target: { appName: params.appName, appId: params.appId, environmentId: params.environmentId },
+        canonicalBranch: 'main',
+        baseSha: null,
+        feature: { id: '', name: '', description: '', roiRank: 999, category: 'unknown', impact: [] },
+        dependencies: [],
+        changes: [],
+        acceptanceCriteria: [],
+        validation: { tests: [], staticChecks: [] },
+        rollback: { strategy: 'none', estimatedRecoveryTime: 'unknown' },
+        additionalCost: { sharePointColumns: false, powerAutomateRuns: false, premiumConnectors: false, estimatedMonthlyCost: 'unknown' },
+        missing: [err.message || 'prepare_powerapps_execution internal error'],
+        warnings: []
+      };
+    }
+
+    // Ensure contract is valid JSON-serializable before return
+    if (!contract || typeof contract !== 'object') {
+      throw requestError('prepare_powerapps_execution returned invalid contract', 500);
     }
 
     return contract;
