@@ -18,7 +18,9 @@ const STATE_CONTEXT_SCHEMA = Object.freeze({
     branch: { type: 'string', minLength: 1 },
     canonicalBranch: { type: 'string', minLength: 1 },
     sha: { type: 'string', pattern: '^[a-f0-9]{40}$', description: '対象ファイルのGit blob SHA' },
-    correlationId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが生成したUUID' }
+    correlationId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが生成したUUID' },
+    repository: { type: 'string', minLength: 1, description: 'GitHub repository (owner/repo)' },
+    gitRoot: { type: 'string', minLength: 1, description: 'Git root path for Power Apps source' }
   },
   required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'],
   additionalProperties: false

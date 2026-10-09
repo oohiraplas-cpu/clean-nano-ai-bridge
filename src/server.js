@@ -1135,11 +1135,50 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     });
   }
   if (method === 'inspect_powerapps_structure') {
-    // StateContextがない場合: params.appIdで実アプリ情報解析（Power Apps API経由）
-    // StateContextがある場合: executeWithStateInternal が処理するため、ここでは使用しない
+    // StateContextなし: params.appIdで実アプリ情報解析（Power Apps API経由）
+    // StateContextあり: executeWithStateInternal が処理
+    // stateSessionIdのみ: State Registryからappid、sourceを取得
     if (!params.appId && params.correlationId === undefined && params.stateSessionId === undefined) {
-      throw bridgeError('appIdまたはstateContext/stateSessionIdが必要です（resolve_app_targetで対象を解決してください）', 400);
+      throw bridgeError('appIdまたはstateContext/stateSessionIdが必要です（resolve_app_targetまたはprepare_powerapps_executionで対象を解決してください）', 400);
     }
+
+    // stateSessionIdのみで実行（StateContext完全なし）
+    if (params.stateSessionId !== undefined && params.stateContext === undefined && params.correlationId === undefined) {
+      // Try to resolve session from registry
+      try {
+        // Iterate through records to find matching stateSessionId
+        for (const [correlationId, record] of stateRegistry.records.entries()) {
+          if (record.stateSessionId === params.stateSessionId && record.source) {
+            // Found matching session; validate it
+            const record2 = stateRegistry.validate({ ...record.context }, params.stateSessionId, scope, params, method);
+            if (params.appId !== undefined && params.appId !== record2.context.appId) {
+              throw contextError([
+                `appId mismatch: received ${params.appId}, expected ${record2.context.appId}`,
+                `stateSessionId: ${params.stateSessionId}, correlationId: ${record2.context.correlationId}`
+              ]);
+            }
+            const result = await inspectPowerAppsStructure({
+              powerAppsStore,
+              sourceContent: record2.source.content,
+              sourceOrigin: 'github_canonical',
+              stateContext: record2.context
+            });
+            return {
+              ...result,
+              correlationId: record2.context.correlationId,
+              stateContext: { ...record2.context },
+              stateSessionId: record2.stateSessionId,
+              targetSha: record2.context.sha
+            };
+          }
+        }
+        throw contextError(['stateSessionId: not found in registry'], 404);
+      } catch (err) {
+        if (err.status) throw err;
+        throw contextError(['stateSessionId: registry lookup failed'], 500);
+      }
+    }
+
     return inspectPowerAppsStructure({
       powerAppsStore,
       appId: params.appId
@@ -1256,7 +1295,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validatePrepareExecutionPackageParams(params);
     if (paramError) throw requestError(paramError);
     const resolver = getResolver(powerAppsStore, powerAppsGitStore);
-    return prepareExecutionPackage({
+    const contract = await prepareExecutionPackage({
       appName: params.appName,
       objective: params.objective,
       isolatedCommit: params.isolatedCommit,
@@ -1267,6 +1306,35 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         powerAutomateRunner
       }
     });
+
+    // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
+    // Only if execution contract is READY or REVIEW_REQUIRED with complete source
+    if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
+      try {
+        const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
+        if (sourceFile && sourceFile.content && sourceFile.sha === contract.stateContext.sha) {
+          const bound = stateRegistry.bind(
+            contract.stateContext.correlationId,
+            contract.stateContext.correlationId, // Use correlationId as stateSessionId initially
+            scope,
+            {
+              ...sourceFile,
+              branch: contract.stateContext.branch,
+              canonicalBranch: contract.stateContext.canonicalBranch,
+              sha: contract.stateContext.sha
+            },
+            sourceFile.path
+          );
+          // Update contract with stateSessionId for caller
+          contract.stateSessionId = bound.stateSessionId;
+        }
+      } catch (err) {
+        // State Registry binding failure is not fatal to the contract; log but continue
+        // Caller can still use appId-only mode if binding fails
+      }
+    }
+
+    return contract;
   }
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }

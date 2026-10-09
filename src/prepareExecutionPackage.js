@@ -747,7 +747,7 @@ async function prepareExecutionPackage(options = {}) {
     }
 
     // Include StateContext for subsequent inspect_powerapps_structure calls
-    // If source was retrieved, include the context data for State Manager
+    // If source was retrieved, include the context data for State Manager binding
     if (stateContext && stateContext.canonicalBranch && stateContext.sha) {
       contract.stateContext = {
         appId: stateContext.appId,
@@ -755,7 +755,9 @@ async function prepareExecutionPackage(options = {}) {
         branch: stateContext.canonicalBranch,
         canonicalBranch: stateContext.canonicalBranch,
         sha: stateContext.sha,
-        correlationId: stateContext.correlationId
+        correlationId: stateContext.correlationId,
+        repository: contract.repository || 'oohiraplas-cpu/clean-nano-ai-bridge',
+        gitRoot: contract.gitRoot || 'powerapps/CN_AI依頼台帳/Source'
       };
     }
 
