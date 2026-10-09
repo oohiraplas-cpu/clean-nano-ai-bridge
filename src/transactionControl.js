@@ -158,6 +158,7 @@ class Transaction {
 
       this._recordStep('EXECUTE', { success: true });
       this.results.executionResult = result;
+      this._transition(TRANSACTION_STATE.EXECUTED);
 
       return result;
     } catch (error) {
@@ -185,6 +186,7 @@ class Transaction {
 
       this._recordStep('VERIFY', { success: true, verification });
       this.results.verification = verification;
+      this._transition(TRANSACTION_STATE.VERIFIED);
 
       return verification;
     } catch (error) {

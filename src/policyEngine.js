@@ -173,7 +173,11 @@ const DEFAULT_POLICIES = {
  */
 class PolicyEngine {
   constructor(policies = DEFAULT_POLICIES) {
-    this.policies = new Map(Object.entries(policies));
+    // Convert policies object to Map, using policy id as key
+    this.policies = new Map();
+    for (const policy of Object.values(policies)) {
+      this.policies.set(policy.id, policy);
+    }
     this.policyVersion = '1.0.0';
   }
 
@@ -287,6 +291,25 @@ class PolicyEngine {
           ? policyDef.target.sourceOrigin
           : [policyDef.target.sourceOrigin];
         if (!targets.includes(params.context?.source?.sourceOrigin)) {
+          continue;
+        }
+      }
+
+      // Check if policy applies based on containsSecrets
+      if (policyDef.target?.containsSecrets !== undefined) {
+        if (policyDef.target.containsSecrets === true && !params.containsSecrets) {
+          continue;
+        }
+      }
+
+      // Check if policy applies based on environment
+      if (policyDef.target?.environment && policyDef.target.environment !== params.context?.environment) {
+        continue;
+      }
+
+      // Check if policy conditions are met
+      if (policyDef.conditions && policyDef.conditions.length > 0) {
+        if (!this._evaluateConditions(policyDef.conditions, params)) {
           continue;
         }
       }

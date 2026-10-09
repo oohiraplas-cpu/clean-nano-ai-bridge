@@ -44,9 +44,17 @@ class StateContextResolver {
     const resolved = {};
     const sources = {};
 
-    // Step 1: Extract explicitly provided fields
-    const explicit = stateManagerModule.extractStateContext(params);
-    let context = { ...explicit };
+    // Step 1: Extract explicitly provided fields - check all possible fields
+    let context = {};
+    const fieldsToExtract = [
+      'appId', 'environmentId', 'displayName', 'branch', 'canonicalBranch',
+      'sha', 'sourceOrigin', 'state', 'writable', 'correlationId'
+    ];
+    for (const field of fieldsToExtract) {
+      if (field in params) {
+        context[field] = params[field];
+      }
+    }
 
     // Step 2: Determine correlationId to use
     const effectiveCorrelationId = correlationId || context.correlationId;

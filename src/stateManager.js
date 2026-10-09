@@ -194,7 +194,7 @@ function extractStateContext(params = {}) {
  * @returns {string} UUID v4-like correlation ID
  */
 function generateCorrelationId() {
-  return crypto.randomUUID();
+  return `aid-${crypto.randomUUID()}`;
 }
 
 /**
