@@ -81,7 +81,11 @@ class DataPolicy {
     Object.entries(patterns).forEach(([type, pattern]) => {
       const matches = content.matchAll(pattern);
       for (const match of matches) {
-        secrets.push({ type, value: match[1], position: match.index });
+        // Calculate the position of the captured group (not the start of the entire match)
+        const capturedValue = match[1];
+        const matchText = match[0];
+        const capturedPosition = match.index + matchText.indexOf(capturedValue);
+        secrets.push({ type, value: capturedValue, position: capturedPosition });
       }
     });
 
