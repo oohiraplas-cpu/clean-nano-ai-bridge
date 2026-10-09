@@ -46,7 +46,10 @@ async function createTestServer(tasks, options = {}) {
       healthRetryDelayMs: 0,
       ...options.deploymentOverrides
     },
-    permissions: { ...options.permissionsOverrides }
+    permissions: { ...options.permissionsOverrides },
+    // Legacy unit tests exercise pure diff validation. State Context enforcement
+    // is covered by the registered-context contract tests.
+    enforceStateManager: options.enforceStateManager ?? false
   });
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
