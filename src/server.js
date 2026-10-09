@@ -987,24 +987,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
           message: `Save operation rejected: not in writable state (state=${resolvedStateContext.state}, writable=${resolvedStateContext.writable})`
         };
       }
-    } else if (params.branch) {
-      // If branch is explicitly provided but we couldn't resolve stateContext,
-      // try direct branch validation via assertCanonicalBranch
-      try {
-        await powerAppsGitStore.assertCanonicalBranch(params.branch, '保存');
-      } catch (error) {
-        // Convert branch mismatch error to rejection response
-        if (error.status === 409) {
-          return {
-            status: 'rejected',
-            code: 'branch_mismatch',
-            branch: params.branch,
-            operation: 'save',
-            message: error.message
-          };
-        }
-        throw error;
-      }
+    } else {
+      // If stateContext couldn't be resolved, branch must be explicitly provided and valid
+      // This enforces State Lock: operations require branch to be specified and canonical
+      await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '保存')));
     }
 
     // get_powerapps_sourceが返したbranchが渡された場合、正本branchと一致しなければ保存を拒否する。
