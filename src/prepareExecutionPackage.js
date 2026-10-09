@@ -354,12 +354,13 @@ async function prepareExecutionPackage(options = {}) {
     const step2 = {};
     let stateContext;
     try {
+      // StateContext will be completed in step 3 with actual branch/SHA from source
       stateContext = {
         appId: targetApp.id,
         environment: targetApp.environmentId,
-        branch: isolatedCommit ? 'isolated-test' : null,
-        canonicalBranch: null,
-        sha: isolatedCommit || null,
+        branch: null,  // Set in step 3
+        canonicalBranch: null,  // Set in step 3
+        sha: null,  // Set in step 3
         correlationId: requestId
       };
       step2.generated = true;
@@ -398,6 +399,12 @@ async function prepareExecutionPackage(options = {}) {
       contract.canonicalBranch = canonicalBranch;
       contract.baseSha = baseSha;
 
+      // Update StateContext with confirmed values
+      stateContext.branch = isolatedCommit ? 'isolated-test' : canonicalBranch;
+      stateContext.canonicalBranch = canonicalBranch;
+      stateContext.sha = isolatedCommit || baseSha;
+      contract.stateContext = stateContext;
+
       step3.canonicalBranch = canonicalBranch;
       step3.baseSha = baseSha;
       step3.sourceFileCount = sourceList.length;
@@ -424,18 +431,28 @@ async function prepareExecutionPackage(options = {}) {
         return acc;
       }, {});
 
-      // Identify incomplete screens (referenced but missing)
+      // Identify incomplete/missing screens from structure analysis
+      // Common pattern: S1_Home references other screens, check which are missing
       const screenReferences = [];
       const screenFiles = gitStructure.screen || [];
-      const s6MembersExists = screenFiles.some(f => f.includes('S6_Members'));
 
-      if (!s6MembersExists && sourceList.some(f => f.includes('S1_Home'))) {
-        screenReferences.push({
-          screen: 'S6_Members',
-          status: 'missing',
-          referencedIn: 'S1_Home.pa.yaml',
-          line: 180
-        });
+      // Detect common missing screen patterns (S2, S3, S4, S5, S6, etc.)
+      // Only report if S1_Home exists but others referenced are not found
+      const s1Exists = screenFiles.some(f => f.includes('S1_Home'));
+      if (s1Exists) {
+        for (let i = 2; i <= 7; i++) {
+          const screenPattern = `S${i}`;
+          const screenExists = screenFiles.some(f =>
+            f.includes(`/Source/${screenPattern}_`) || f.includes(`/Source/${screenPattern}.pa.yaml`)
+          );
+          if (!screenExists) {
+            screenReferences.push({
+              screenPattern: screenPattern,
+              status: 'missing',
+              referencedIn: 'S1_Home.pa.yaml'
+            });
+          }
+        }
       }
 
       step4.gitDiff = gitDiff;
@@ -477,6 +494,10 @@ async function prepareExecutionPackage(options = {}) {
       step5.sharePointListsFound = sharePointSchemas.length;
       step5.registeredFlowsFound = registeredFlows.length;
       step5.confirmed = true;
+
+      // Mark whether dependencies were actually fetched vs. just empty
+      step5.sharePointFetched = !!spSchemaResult;
+      step5.flowsFetched = !!flowsResult;
     } catch (err) {
       step5.error = err.message;
       contract.missing.push(`Step 5 (dependencies): ${err.message}`);
@@ -487,19 +508,33 @@ async function prepareExecutionPackage(options = {}) {
     const step6 = {};
     const duplicates = [];
     try {
-      // Check for existing management features that would conflict
-      if (sharePointSchemas.find(s => s.listName === '運営管理')) {
-        duplicates.push('管理機能は既にSharePointに存在します（重複検出）');
-      }
+      // Duplicate detection only relevant if we're implementing an admin/management feature
+      // Check if any incomplete screens are admin-related first
+      const adminPatterns = ['Admin', 'Management', '管理', '運営'];
+      const incompleteScreensToImplement = step4.incompleteScreens || [];
+      const targetIsAdmin = incompleteScreensToImplement.some(s =>
+        adminPatterns.some(pattern => s.screenPattern?.includes(pattern))
+      );
 
-      // Check for existing S6_Members screen specifically
-      if (gitStructure.screen?.some(f => f.includes('S6_Members'))) {
-        duplicates.push('S6_Members画面は既に存在します（重複検出）');
-      }
+      // Only flag duplicates if target IS admin and existing admin features are found
+      if (targetIsAdmin) {
+        // Check SharePoint for admin-like lists
+        const adminListsInSP = sharePointSchemas.filter(s =>
+          adminPatterns.some(pattern => s.listName?.includes(pattern))
+        );
+        if (adminListsInSP.length > 0) {
+          duplicates.push(`既存管理機能: SharePoint ${adminListsInSP.map(s => s.listName).join(', ')}`);
+        }
 
-      // Check for existing Admin/Management screens
-      if (gitStructure.screen?.some(f => f.includes('Admin'))) {
-        duplicates.push('管理画面は既に存在します（重複検出）');
+        // Check screens for other admin/management features
+        const screenFiles = gitStructure.screen || [];
+        const otherAdminScreens = screenFiles.filter(f =>
+          adminPatterns.some(pattern => f.includes(pattern)) &&
+          !incompleteScreensToImplement.some(s => f.includes(s.screenPattern))
+        );
+        if (otherAdminScreens.length > 0) {
+          duplicates.push(`既存管理画面: ${otherAdminScreens.map(f => f.split('/').pop()).join(', ')}`);
+        }
       }
 
       contract.validation.duplicatesDetected = duplicates;
@@ -515,58 +550,70 @@ async function prepareExecutionPackage(options = {}) {
     // ========== STEP 7: ROI feature selection ==========
     const step7 = {};
     let selectedFeature = null;
+    const candidates = [];
+
     try {
-      // Based on Git analysis and objective, select highest ROI incomplete feature
-      // For CN_AI依頼台帳: S6_Members (admin panel) is a good candidate if not duplicate
+      // Generic candidate selection from incomplete screens
       if (!duplicates.length && step4.incompleteScreens?.length > 0) {
-        selectedFeature = {
-          id: 'S6_Members_admin_panel',
-          name: '運営管理画面（S6_Members）',
-          description: 'ホーム画面から参照される管理者専用画面。社員台帳の表示と削除機能を提供。',
-          roiRank: 1,
-          category: 'screen',
-          currentState: 'missing',
-          estimatedEffort: 'low',
-          profitImpact: 'medium',
-          recoveryAcceleration: 'none',
-          timeSavings: '管理作業5-10分/月',
-          usageFrequency: '月1-2回（管理者のみ）',
-          existingAssetReuse: [
-            'gblIsAdmin（既存グローバル変数）',
-            'CN_社員台帳（既存SharePointリスト）',
-            'S1_Home.pa.yamlナビゲーション参照'
-          ]
-        };
+        // Rank candidates by ROI (profit > recovery > timeSavings > usage > assets > effort > charges)
+        step4.incompleteScreens.forEach((screen, idx) => {
+          const screenName = screen.screenPattern || screen.screen;
+          candidates.push({
+            id: `screen_${screenName}`,
+            name: `画面: ${screenName}`,
+            screenPattern: screenName,
+            description: `Missing screen ${screenName}`,
+            roiRank: idx + 1,
+            category: 'screen',
+            currentState: 'missing',
+            estimatedEffort: 'medium',
+            profitImpact: 'unknown',
+            recoveryAcceleration: 'unknown',
+            timeSavings: 'unknown',
+            usageFrequency: 'unknown',
+            existingAssetReuse: []
+          });
+        });
+
+        // Handle candidates: single → select, multiple → REVIEW_REQUIRED
+        if (candidates.length === 1) {
+          selectedFeature = candidates[0];
+        } else if (candidates.length > 1) {
+          // Multiple candidates: mark as REVIEW_REQUIRED (同点)
+          contract.warnings.push(`Step 7: 複数候補存在（${candidates.length}個、同点判定）`);
+        }
       } else if (duplicates.length > 0) {
-        // Duplicates detected: warn but don't block; will set REVIEW_REQUIRED
-        contract.warnings.push('Step 7: スクリーン選定対象なし（既存重複）');
+        // Duplicates detected: warn but don't block; requires human review for duplicate handling
+        contract.warnings.push('Step 7: 候補選定対象なし（既存重複）');
+        // Don't add to missing - duplicates should trigger REVIEW_REQUIRED, not BLOCKED
       } else {
         // No duplicates but no screens to select: this is blocking
-        contract.missing.push('Step 7: スクリーン選定対象なし（スクリーン参照なし）');
+        contract.missing.push('Step 7: 候補選定対象なし（不完全な画面なし）');
       }
 
       if (selectedFeature) {
         contract.feature = selectedFeature;
-        contract.changes.filesPaths = ['powerapps/CN_AI依頼台帳/Source/S6_Members.pa.yaml'];
-        contract.changes.estimatedLines = 120;
-        contract.changes.minimumScope = 'S6_Members画面定義、OnVisible初期化、メンバーGallery、戻るボタン、管理者権限チェック';
+        // Generic change scope (will be confirmed during implementation)
+        contract.changes.filesPaths = [`powerapps/**/Source/${selectedFeature.screenPattern}.pa.yaml`];
+        contract.changes.estimatedLines = 0;  // Unknown at this stage
+        contract.changes.minimumScope = `${selectedFeature.screenPattern}画面定義`;
         contract.changes.breakingChanges = false;
         contract.changes.newSharePointColumns = [];
         contract.changes.newFlows = [];
 
+        // Generic acceptance criteria
         contract.acceptanceCriteria = [
-          'S6_Members画面ファイル存在（powerapps/CN_AI依頼台帳/Source/S6_Members.pa.yaml）',
-          'OnVisible: gblIsAdmin チェック実装',
-          'Gallery: CN_社員台帳から全件取得、ソート実装',
-          'Members_Title, Members_BackBtn, Members_Label, Members_Gallery, Members_Summary, Members_AdminInfo の6コントロール実装',
-          'S1_Home→S6_Members → S1_Home の双方向ナビゲーション動作',
-          'npm test 659/659 成功、リグレッションなし'
+          `${selectedFeature.screenPattern}画面ファイル作成、保存完了`,
+          `コントロール実装完了`,
+          `ナビゲーション検証完了`,
+          `npm test 成功、リグレッションなし`
         ];
       }
 
+      step7.candidatesFound = candidates.length;
       step7.selectedFeature = selectedFeature?.name || 'none';
       step7.roiAnalysis = 'profit > recovery > timeSavings > usage > assets > effort > charges';
-      step7.confirmed = !!selectedFeature;
+      step7.confirmed = !!selectedFeature && candidates.length === 1;  // Only confirmed if exactly one candidate
     } catch (err) {
       step7.error = err.message;
       contract.missing.push(`Step 7 (feature selection): ${err.message}`);
@@ -622,7 +669,7 @@ async function prepareExecutionPackage(options = {}) {
     // Final status determination
     if (contract.missing.length > 0) {
       contract.status = 'BLOCKED';
-    } else if (!allConfirmed || duplicates.length > 0) {
+    } else if (!allConfirmed || step6.duplicatesFound > 0 || step7.candidatesFound > 1) {
       contract.status = 'REVIEW_REQUIRED';
     } else {
       contract.status = 'READY';

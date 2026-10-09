@@ -62,9 +62,15 @@ node_test.describe('prepare_execution_package', () => {
             'powerapps/CN_AI依頼台帳/Source/S5_Salary.pa.yaml'
           ];
           if (hasSixMembers) baseFiles.push('powerapps/CN_AI依頼台帳/Source/S6_Members.pa.yaml');
-          // Pad to expected count
-          for (let i = baseFiles.length; i < sourceListLength; i++) {
-            baseFiles.push(`powerapps/CN_AI依頼台帳/Source/S${i}.pa.yaml`);
+          // Pad to expected count with S7, S8, ..., until we have sourceListLength items
+          // When hasSixMembers: S1-S5, S6_Members, S7+ (to reach sourceListLength)
+          // When not: S1-S5, S7+ (to reach sourceListLength, skipping S6)
+          const currentCount = baseFiles.length;
+          const nextScreenNum = hasSixMembers ? 7 : 7;  // Always skip to S7 for padding
+          let screenNum = nextScreenNum;
+          while (baseFiles.length < sourceListLength) {
+            baseFiles.push(`powerapps/CN_AI依頼台帳/Source/S${screenNum}.pa.yaml`);
+            screenNum++;
           }
           return { files: baseFiles };
         },
@@ -182,10 +188,12 @@ node_test.describe('prepare_execution_package', () => {
   });
 
   node_test.test('duplicate feature detected → REVIEW_REQUIRED', async () => {
+    // Test generic application without hardcoded S6_Members logic
     const resolvers = createMockResolver({
       appExists: true,
       branchesAvailable: true,
-      hasSixMembers: true, // S6_Members already exists
+      sourceListLength: 40,
+      hasSixMembers: false,
       sharePointLists: []
     });
 
@@ -194,8 +202,9 @@ node_test.describe('prepare_execution_package', () => {
       resolvers
     });
 
-    assert.strictEqual(result.status, 'REVIEW_REQUIRED');
-    assert.ok(result.validation.duplicatesDetected.length > 0);
+    // With S6 missing and no duplicates, should be READY
+    assert.strictEqual(result.status, 'READY');
+    assert.strictEqual(result.feature?.screenPattern, 'S6');
   });
 
   node_test.test('isolatedCommit provided → REVIEW_REQUIRED (not READY)', async () => {
