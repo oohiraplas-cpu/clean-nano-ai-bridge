@@ -11,8 +11,11 @@ const { PowerAppsGitStore } = require('./powerAppsGitStore');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
+const { PaymentMonitorService } = require('./paymentMonitorService');
+const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { PermissionsService } = require('./permissionsService');
+const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
 const {
@@ -136,7 +139,9 @@ const MCP_METHODS = Object.freeze([
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target'
+  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
+  'check_payment_status',
+  'discover_sharepoint_ai4_resources'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -768,6 +773,31 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: { sources: { type: 'array', maxItems: 8, items: {
       type: 'object', properties: { metric: { type: 'string', enum: require('./executivePolicy.json').managementData }, siteId: { type: 'string' }, listId: { type: 'string' }, listName: { type: 'string' }, field: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['metric', 'field'], anyOf: [{ required: ['listId'] }, { required: ['listName'] }], additionalProperties: false
     } } }, additionalProperties: false }
+  },
+  {
+    name: 'check_payment_status',
+    description: 'SharePoint AI4 支払管理リストから未入金・遅延案件を検出（期限超過、期限内未入金、入金済み、キャンセル済み）。各案件の遅延日数・期限までの日数を算出し、優先度付きの一覧を返します。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePoint サイト ID（未指定時は既定サイト）' },
+        listId: { type: 'string', description: '支払管理リスト ID（listName 指定時は省略可）' },
+        listName: { type: 'string', description: '支払管理リスト名（デフォルト: 支払管理）' },
+        top: { type: 'integer', minimum: 10, maximum: 200, description: '取得件数（デフォルト: 100）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'discover_sharepoint_ai4_resources',
+    description: 'SharePoint テナント内から AI4 関連サイトとリストを自動探索します。AI4 サイトが見つからない場合は全テナントを検索します。支払管理・請求管理・案件管理・社員管理リストを自動分類し、推奨リストを返します。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false
+    }
   }
 ]);
 
@@ -850,7 +880,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -1124,6 +1154,86 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'export_knowledge_snapshot') {
     return getResolver(powerAppsStore, powerAppsGitStore).exportKnowledgeSnapshot();
   }
+  if (method === 'check_payment_status') {
+    if (!sharePointReader) throw notConfiguredError('SharePoint設定', ['SHAREPOINT_TENANT_ID', 'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET', 'SHAREPOINT_SITE_ID']);
+    const paymentMonitor = new PaymentMonitorService({ sharePointReader });
+    const report = await paymentMonitor.generatePaymentReport(params);
+    if (report.errors.length > 0) {
+      return createCommonResponse({
+        status: 'error',
+        verified: false,
+        data: report.analysis,
+        errors: report.errors,
+        summary: '未入金監視エラー'
+      });
+    }
+    const { overdue, pending, paid, cancelled, summary } = report.analysis;
+    return createCommonResponse({
+      status: overdue.length > 0 ? 'warning' : 'ok',
+      verified: true,
+      data: {
+        overdue: overdue.map(p => ({
+          estimateId: p.estimateId,
+          invoiceId: p.invoiceId,
+          daysOverdue: p.daysOverdue,
+          amount: p.amount,
+          dueDate: p.dueDate,
+          statusLabel: p.statusLabel
+        })),
+        pending: pending.map(p => ({
+          estimateId: p.estimateId,
+          invoiceId: p.invoiceId,
+          daysUntilDue: p.daysUntilDue,
+          amount: p.amount,
+          dueDate: p.dueDate,
+          statusLabel: p.statusLabel
+        })),
+        paid: paid.length,
+        cancelled: cancelled.length,
+        summary
+      },
+      warnings: overdue.length > 0 ? [`期限超過: ${overdue.length}件、合計${summary.overdueAmount.toLocaleString('ja-JP')}円`] : [],
+      summary: `期限超過${overdue.length}件、期限内未入金${pending.length}件、入金済み${paid.length}件`
+    });
+  }
+  if (method === 'discover_sharepoint_ai4_resources') {
+    if (!config.sharePoint?.tenantId || !config.sharePoint?.clientId || !config.sharePoint?.clientSecret) {
+      throw notConfiguredError('SharePoint設定', ['SHAREPOINT_TENANT_ID', 'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET']);
+    }
+    const discovery = new SharePointSiteDiscovery(config.sharePoint);
+    try {
+      const results = await discovery.findAI4Resources();
+      const recommendations = discovery.getRecommendedLists(results);
+      if (results.error) {
+        return createCommonResponse({
+          status: 'error',
+          verified: false,
+          data: results,
+          errors: [results.error],
+          summary: 'AI4 サイト自動探索エラー'
+        });
+      }
+      return createCommonResponse({
+        status: results.sites.length === 0 ? 'warning' : 'ok',
+        verified: true,
+        data: {
+          sites: results.sites,
+          found: recommendations.found,
+          recommendations: recommendations.recommendations
+        },
+        warnings: results.sites.length === 0 ? ['AI4 サイトが見つかりませんでした'] : [],
+        summary: `AI4 サイト${results.sites.filter(s => s.normalizedName.includes('ai4') || s.normalizedName.includes('ai依頼') || s.normalizedName.includes('cleannano')).length}件、支払管理${recommendations.found.paymentLists}件、請求管理${recommendations.found.invoiceLists}件、案件管理${recommendations.found.projectLists}件`
+      });
+    } catch (error) {
+      return createCommonResponse({
+        status: 'error',
+        verified: false,
+        data: null,
+        errors: [error.message],
+        summary: '自動探索処理エラー'
+      });
+    }
+  }
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }
 
@@ -1275,7 +1385,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config);
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
       return { ...state, ...stateRegistry.begin(state, scope) };
