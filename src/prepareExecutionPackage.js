@@ -320,37 +320,63 @@ async function prepareExecutionPackage(options = {}) {
 
   try {
     // ========== STEP 1: Target app/environment resolution ==========
+    // Resolution pipeline: registry → resolve_app_target → application rules → BLOCKED
     const step1 = {};
     let targetApp, targetEnv;
+    let resolutionSource = null; // Track where app info came from
+
     try {
       if (!appName) {
         contract.missing.push('appName: required parameter');
       } else {
+        // Try appTargetResolver first (includes registry fallback + dynamic resolution)
+        // appTargetResolver is the unified resolver covering all sources
         targetApp = await appTargetResolver.resolve({ appName });
-        step1.resolved = true;
+
+        step1.resolved = targetApp ? true : false;
         step1.appName = appName;
         step1.appId = targetApp?.id;
         step1.environmentId = targetApp?.environmentId;
         step1.environmentName = targetApp?.environmentName;
+        step1.resolutionSource = targetApp?.source || 'not_found'; // registry, resolver, etc.
 
-        if (!targetApp?.id) {
-          contract.missing.push(`appName "${appName}": not found in Bridge app registry`);
-        } else {
+        if (targetApp?.id && targetApp?.environmentId) {
+          // Successful resolution from any source (registry, resolver, rules)
           contract.target = {
             appName,
             appId: targetApp.id,
             environmentId: targetApp.environmentId,
-            environmentName: targetApp.environmentName
+            environmentName: targetApp.environmentName || ''
           };
+          contract.repository = targetApp.repository; // e.g., "oohiraplas-cpu/clean-nano-ai-bridge"
+          contract.gitRoot = targetApp.gitRoot; // e.g., "powerapps/CN_AI依頼台帳/Source"
+          contract.canonicalBranch = targetApp.canonicalBranch || 'main';
+
+          resolutionSource = targetApp.source;
+          step1.success = true;
+        } else {
+          // Resolution failed from all sources
+          contract.missing.push(`appName "${appName}": could not be resolved (checked registry, resolver, and application rules)`);
+          step1.success = false;
         }
       }
     } catch (err) {
       step1.error = err.message;
       contract.missing.push(`Step 1 (app resolution): ${err.message}`);
+      step1.success = false;
     }
+
+    step1.diagnostics = {
+      resolutionSource,
+      pipelineSteps: ['registry', 'resolve_app_target', 'application_rules'],
+      failureReasonIfAny: step1.success ? null : 'all_sources_exhausted'
+    };
     contract.diagnostics.step1AppResolution = step1;
 
-    if (contract.missing.length > 0) return contract;
+    // Fail-Closed: If Step 1 fails, no resolution → BLOCKED
+    if (!step1.success || contract.missing.length > 0) {
+      return contract;
+    }
 
     // ========== STEP 2: StateContext generation ==========
     const step2 = {};
