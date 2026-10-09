@@ -245,13 +245,17 @@ const EXECUTION_CONTRACT_SCHEMA = {
  *
  * @param {Object} options
  * @param {string} options.appName - Target app name (e.g., "CN_AI依頼台帳")
+ * @param {string} [options.appId] - Pre-resolved app ID (takes priority over appName)
+ * @param {string} [options.environmentId] - Pre-resolved environment ID (with appId)
+ * @param {string} [options.stateSessionId] - Session ID for StateContextRegistry lookup
+ * @param {Object} [options.stateContext] - Pre-populated StateContext
  * @param {string} options.objective - Feature selection objective
  * @param {string} [options.isolatedCommit] - Optional non-canonical branch SHA for testing
- * @param {Object} options.resolvers - {appTargetResolver, powerAppsGitStore, sharePointReader, powerAutomateRunner}
+ * @param {Object} options.resolvers - {appTargetResolver, powerAppsGitStore, sharePointReader, powerAutomateRunner, stateRegistry}
  * @returns {Promise<Object>} Execution contract JSON
  */
 async function prepareExecutionPackage(options = {}) {
-  const { appName, objective, isolatedCommit, resolvers = {} } = options;
+  const { appName, appId, environmentId, stateSessionId, stateContext, objective, isolatedCommit, resolvers = {} } = options;
   const requestId = crypto.randomUUID();
   const generatedAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -310,7 +314,7 @@ async function prepareExecutionPackage(options = {}) {
     diagnostics: {}
   };
 
-  const { appTargetResolver, powerAppsGitStore, sharePointReader, powerAutomateRunner } = resolvers;
+  const { appTargetResolver, powerAppsGitStore, sharePointReader, powerAutomateRunner, stateRegistry } = resolvers;
 
   // Validation: ensure required resolvers are available
   if (!appTargetResolver) {
@@ -320,57 +324,100 @@ async function prepareExecutionPackage(options = {}) {
 
   try {
     // ========== STEP 1: Target app/environment resolution ==========
-    // Resolution pipeline: registry → resolve_app_target → application rules → BLOCKED
+    // Priority order (Fail-Closed):
+    // 1. If appId + environmentId provided as input → use directly
+    // 2. If stateContext exists → extract appId from it
+    // 3. If stateSessionId exists → lookup via StateContextRegistry
+    // 4. Only if none exist → call resolve_app_target
+    // 5. If all fail → BLOCKED
     const step1 = {};
-    let targetApp, targetEnv;
+    let targetApp;
     let resolutionSource = null; // Track where app info came from
 
     try {
-      if (!appName) {
-        contract.missing.push('appName: required parameter');
-      } else {
-        // Try appTargetResolver first (includes registry fallback + dynamic resolution)
-        // appTargetResolver is the unified resolver covering all sources
-        targetApp = await appTargetResolver.resolve({ appName });
-
-        step1.resolved = targetApp ? true : false;
-        step1.appName = appName;
-        step1.appId = targetApp?.id;
-        step1.environmentId = targetApp?.environmentId;
-        step1.environmentName = targetApp?.environmentName;
-        step1.resolutionSource = targetApp?.source || 'not_found'; // registry, resolver, etc.
-
-        if (targetApp?.id && targetApp?.environmentId) {
-          // Successful resolution from any source (registry, resolver, rules)
-          contract.target = {
-            appName,
-            appId: targetApp.id,
-            environmentId: targetApp.environmentId,
-            environmentName: targetApp.environmentName || ''
-          };
-          contract.repository = targetApp.repository; // e.g., "oohiraplas-cpu/clean-nano-ai-bridge"
-          contract.gitRoot = targetApp.gitRoot; // e.g., "powerapps/CN_AI依頼台帳/Source"
-          contract.canonicalBranch = targetApp.canonicalBranch || 'main';
-
-          resolutionSource = targetApp.source;
-          step1.success = true;
-        } else {
-          // Resolution failed from all sources
-          contract.missing.push(`appName "${appName}": could not be resolved (checked registry, resolver, and application rules)`);
-          step1.success = false;
+      // Priority 1: Check input parameters
+      if (appId && environmentId) {
+        // Direct pre-resolved app target
+        step1.resolutionMethod = 'input_parameters';
+        targetApp = { id: appId, environmentId, source: 'input_parameters' };
+        resolutionSource = 'input_parameters';
+        step1.success = true;
+      }
+      // Priority 2: Check stateContext parameter
+      else if (stateContext && stateContext.appId) {
+        step1.resolutionMethod = 'stateContext_parameter';
+        targetApp = { id: stateContext.appId, environmentId: stateContext.environment, source: 'stateContext' };
+        resolutionSource = 'stateContext';
+        step1.success = true;
+      }
+      // Priority 3: Check stateSessionId via Registry
+      else if (stateSessionId && stateRegistry) {
+        try {
+          step1.resolutionMethod = 'stateSessionId_registry_lookup';
+          // lookupBySessionId returns the full record with context
+          const record = stateRegistry.lookupBySessionId(stateSessionId, 'powerapps', null); // scope=powerapps, appId check optional
+          if (record && record.context) {
+            targetApp = {
+              id: record.context.appId,
+              environmentId: record.context.environment,
+              source: 'stateRegistry'
+            };
+            resolutionSource = 'stateRegistry';
+            step1.success = true;
+          }
+        } catch (registryErr) {
+          contract.missing.push(`Step 1 (stateSessionId lookup): ${registryErr.message}`);
+          step1.registryError = registryErr.message;
         }
       }
+      // Priority 4: Dynamic resolution via appTargetResolver
+      if (!step1.success && appName) {
+        try {
+          step1.resolutionMethod = 'appTargetResolver_dynamic';
+          targetApp = await appTargetResolver.resolve({ appName });
+          resolutionSource = targetApp?.source || 'resolve_app_target';
+          step1.success = targetApp?.id && targetApp?.environmentId;
+        } catch (resolveErr) {
+          contract.missing.push(`Step 1 (app resolution): ${resolveErr.message}`);
+          step1.resolverError = resolveErr.message;
+        }
+      }
+
+      // If resolution succeeded, populate contract fields
+      if (step1.success && targetApp?.id && targetApp?.environmentId) {
+        contract.target = {
+          appName: appName || targetApp.appName || '',
+          appId: targetApp.id,
+          environmentId: targetApp.environmentId,
+          environmentName: targetApp.environmentName || ''
+        };
+        contract.repository = targetApp.repository || 'oohiraplas-cpu/clean-nano-ai-bridge';
+        contract.gitRoot = targetApp.gitRoot || 'powerapps/CN_AI依頼台帳/Source';
+        contract.canonicalBranch = targetApp.canonicalBranch || 'main';
+      } else {
+        // All resolution methods exhausted
+        if (!appId && !stateContext?.appId && !stateSessionId) {
+          contract.missing.push(`appName "${appName}" could not be resolved (checked registry, resolver, and application rules)`);
+        } else {
+          contract.missing.push('app resolution: all methods exhausted (direct params, stateContext, stateRegistry, resolve_app_target)');
+        }
+        step1.success = false;
+      }
+
+      step1.appId = targetApp?.id;
+      step1.environmentId = targetApp?.environmentId;
+      step1.appName = appName;
     } catch (err) {
       step1.error = err.message;
       contract.missing.push(`Step 1 (app resolution): ${err.message}`);
       step1.success = false;
     }
 
-    step1.diagnostics = {
-      resolutionSource,
-      pipelineSteps: ['registry', 'resolve_app_target', 'application_rules'],
-      failureReasonIfAny: step1.success ? null : 'all_sources_exhausted'
-    };
+    // Add resolution diagnostics directly to step1 (not nested)
+    step1.resolutionSource = resolutionSource;
+    step1.pipelineSteps = ['input_parameters', 'stateContext', 'stateSessionId_registry', 'appTargetResolver_dynamic'];
+    step1.failureReasonIfAny = step1.success ? null : 'all_sources_exhausted';
+
     contract.diagnostics.step1AppResolution = step1;
 
     // Fail-Closed: If Step 1 fails, no resolution → BLOCKED
@@ -380,10 +427,11 @@ async function prepareExecutionPackage(options = {}) {
 
     // ========== STEP 2: StateContext generation ==========
     const step2 = {};
-    let stateContext;
+    let generatedStateContext; // Local variable for generated context
     try {
       // StateContext will be completed in step 3 with actual branch/SHA from source
-      stateContext = {
+      // Use provided stateContext if available, otherwise generate new one
+      generatedStateContext = stateContext || {
         appId: targetApp.id,
         environment: targetApp.environmentId,
         branch: null,  // Set in step 3
@@ -391,9 +439,9 @@ async function prepareExecutionPackage(options = {}) {
         sha: null,  // Set in step 3
         correlationId: requestId
       };
-      step2.generated = true;
-      step2.appId = stateContext.appId;
-      step2.environment = stateContext.environment;
+      step2.generated = !stateContext; // Mark as generated if not provided as input
+      step2.appId = generatedStateContext.appId;
+      step2.environment = generatedStateContext.environment;
     } catch (err) {
       step2.error = err.message;
       contract.missing.push(`Step 2 (StateContext generation): ${err.message}`);
@@ -429,10 +477,10 @@ async function prepareExecutionPackage(options = {}) {
       contract.repository = 'oohiraplas-cpu/clean-nano-ai-bridge';  // GitHub repository
 
       // Update StateContext with confirmed values
-      stateContext.branch = isolatedCommit ? 'isolated-test' : canonicalBranch;
-      stateContext.canonicalBranch = canonicalBranch;
-      stateContext.sha = isolatedCommit || baseSha;
-      contract.stateContext = stateContext;
+      generatedStateContext.branch = isolatedCommit ? 'isolated-test' : canonicalBranch;
+      generatedStateContext.canonicalBranch = canonicalBranch;
+      generatedStateContext.sha = isolatedCommit || baseSha;
+      contract.stateContext = generatedStateContext;
 
       step3.canonicalBranch = canonicalBranch;
       step3.baseSha = baseSha;
@@ -748,14 +796,14 @@ async function prepareExecutionPackage(options = {}) {
 
     // Include StateContext for subsequent inspect_powerapps_structure calls
     // If source was retrieved, include the context data for State Manager binding
-    if (stateContext && stateContext.canonicalBranch && stateContext.sha) {
+    if (generatedStateContext && generatedStateContext.canonicalBranch && generatedStateContext.sha) {
       contract.stateContext = {
-        appId: stateContext.appId,
-        environment: stateContext.environment,
-        branch: stateContext.canonicalBranch,
-        canonicalBranch: stateContext.canonicalBranch,
-        sha: stateContext.sha,
-        correlationId: stateContext.correlationId,
+        appId: generatedStateContext.appId,
+        environment: generatedStateContext.environment,
+        branch: generatedStateContext.canonicalBranch,
+        canonicalBranch: generatedStateContext.canonicalBranch,
+        sha: generatedStateContext.sha,
+        correlationId: generatedStateContext.correlationId,
         repository: contract.repository || 'oohiraplas-cpu/clean-nano-ai-bridge',
         gitRoot: contract.gitRoot || 'powerapps/CN_AI依頼台帳/Source'
       };

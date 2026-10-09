@@ -233,10 +233,17 @@ function validateGenerateUIControlStateParams(params) {
 
 function validatePrepareExecutionPackageParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
-  const unknown = unknownProperty(params, ['appName', 'objective', 'isolatedCommit']);
+  const unknown = unknownProperty(params, ['appName', 'appId', 'environmentId', 'stateSessionId', 'stateContext', 'objective', 'isolatedCommit']);
   if (unknown) return unknown;
   const appNameError = requiredString(params, 'appName');
   if (appNameError) return appNameError;
+
+  // Optional pre-resolved app target parameters (priority over appName resolution)
+  if (params.appId !== undefined && typeof params.appId !== 'string') return 'appIdは文字列である必要があります';
+  if (params.environmentId !== undefined && typeof params.environmentId !== 'string') return 'environmentIdは文字列である必要があります';
+  if (params.stateSessionId !== undefined && typeof params.stateSessionId !== 'string') return 'stateSessionIdは文字列である必要があります';
+  if (params.stateContext !== undefined && !isPlainObject(params.stateContext)) return 'stateContextはJSONオブジェクトである必要があります';
+
   const objectiveError = optionalString(params, 'objective', { max: 500 });
   if (objectiveError) return objectiveError;
   if (params.isolatedCommit !== undefined) {

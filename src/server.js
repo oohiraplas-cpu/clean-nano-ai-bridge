@@ -1279,13 +1279,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const resolver = getResolver(powerAppsStore, powerAppsGitStore);
     const contract = await prepareExecutionPackage({
       appName: params.appName,
+      appId: params.appId,
+      environmentId: params.environmentId,
+      stateSessionId: params.stateSessionId,
+      stateContext: params.stateContext,
       objective: params.objective,
       isolatedCommit: params.isolatedCommit,
       resolvers: {
         appTargetResolver: resolver,
         powerAppsGitStore,
         sharePointReader,
-        powerAutomateRunner
+        powerAutomateRunner,
+        stateRegistry
       }
     });
 
