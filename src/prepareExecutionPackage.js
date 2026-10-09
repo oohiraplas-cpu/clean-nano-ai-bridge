@@ -264,8 +264,10 @@ async function prepareExecutionPackage(options = {}) {
     target: null,
     canonicalBranch: null,
     baseSha: null,
+    repository: null,  // GitHub repository (set in step 3)
     isolatedCommit: isolatedCommit || null,
     feature: null,
+    evidence: {},  // Bridge confirmations per step
     dependencies: {
       sharePoint: [],
       powerAutomate: [],
@@ -398,6 +400,7 @@ async function prepareExecutionPackage(options = {}) {
 
       contract.canonicalBranch = canonicalBranch;
       contract.baseSha = baseSha;
+      contract.repository = 'oohiraplas-cpu/clean-nano-ai-bridge';  // GitHub repository
 
       // Update StateContext with confirmed values
       stateContext.branch = isolatedCommit ? 'isolated-test' : canonicalBranch;
@@ -409,6 +412,15 @@ async function prepareExecutionPackage(options = {}) {
       step3.baseSha = baseSha;
       step3.sourceFileCount = sourceList.length;
       step3.confirmed = true;
+
+      // Populate evidence map for this step
+      contract.evidence.step3SourceFetch = {
+        timestamp: new Date().toISOString(),
+        confirmed: true,
+        canonicalBranch,
+        baseSha,
+        sourceFileCount: sourceList.length
+      };
     } catch (err) {
       step3.error = err.message;
       contract.missing.push(`Step 3 (source fetch): ${err.message}`);
@@ -432,14 +444,24 @@ async function prepareExecutionPackage(options = {}) {
       }, {});
 
       // Identify incomplete/missing screens from structure analysis
-      // Common pattern: S1_Home references other screens, check which are missing
+      // NOTE: This logic detects missing screens by pattern in CN_AI依頼台帳 (S1-S7 naming).
+      // For generic apps, missing screens should be derived from:
+      // - objective parameter (explicit feature reference)
+      // - power apps state analysis (TODO comments, unconnected controls)
+      // - design document vs. implementation diff
+      // - bridgeExtensionsValidation/prepareExecutionPackage should accept explicit objectiveScreens[] input
       const screenReferences = [];
       const screenFiles = gitStructure.screen || [];
 
+      // Pattern detection for apps using Sn_Name naming convention
       // Detect common missing screen patterns (S2, S3, S4, S5, S6, etc.)
-      // Only report if S1_Home exists but others referenced are not found
-      const s1Exists = screenFiles.some(f => f.includes('S1_Home'));
-      if (s1Exists) {
+      // Only report if first screen exists but others referenced are not found
+      const firstScreenPattern = 'S1';
+      const firstScreenExists = screenFiles.some(f => f.includes(`/Source/${firstScreenPattern}_`) || f.includes(`/Source/${firstScreenPattern}.pa.yaml`));
+
+      // Generic screen number detection (S2 to S7 for apps using this pattern)
+      // Real implementation should derive target screens from objective + state analysis
+      if (firstScreenExists) {
         for (let i = 2; i <= 7; i++) {
           const screenPattern = `S${i}`;
           const screenExists = screenFiles.some(f =>
@@ -449,7 +471,7 @@ async function prepareExecutionPackage(options = {}) {
             screenReferences.push({
               screenPattern: screenPattern,
               status: 'missing',
-              referencedIn: 'S1_Home.pa.yaml'
+              referencedIn: `${firstScreenPattern}_* (detected from pattern)`
             });
           }
         }
@@ -459,6 +481,14 @@ async function prepareExecutionPackage(options = {}) {
       step4.sourceStructure = gitStructure;
       step4.incompleteScreens = screenReferences;
       step4.confirmed = true;
+
+      // Populate evidence for this step
+      contract.evidence.step4GitAnalysis = {
+        timestamp: new Date().toISOString(),
+        confirmed: true,
+        diffSummary: gitDiff,
+        incompleteScreenCount: screenReferences.length
+      };
     } catch (err) {
       step4.error = err.message;
       contract.missing.push(`Step 4 (Git analysis): ${err.message}`);
