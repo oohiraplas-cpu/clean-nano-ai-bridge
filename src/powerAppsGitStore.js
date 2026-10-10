@@ -261,33 +261,48 @@ class PowerAppsGitStore {
    * @returns {Promise<{branch: string, canonicalBranch: string, sha: string}>}
    */
   async getSourceFileMetadata(gitRoot) {
-    const encodedRoot = (gitRoot || this.githubRoot).split('/').map(encodeURIComponent).join('/');
+    // CRITICAL: StateContext requires branch commit SHA (not tree SHA or directory SHA).
+    // commit SHA = HEAD of the branch, the authoritative snapshot for all files in that commit.
+    // Do NOT use tree SHA (directory listing) or file blob SHA as Context state identifier.
+    this._assertGitHubConfig();
     const branches = [...new Set([this.githubBranch, ...this.githubFallbackBranches].filter(Boolean))];
 
     for (const branch of branches) {
       try {
-        const response = await this._githubRequest(
-          `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/git/trees/${encodeURIComponent(branch)}?recursive=0`
+        // Get the commit SHA for the HEAD of this branch
+        // This is the StateContext authority: what exactly was committed at this point in time
+        const refResponse = await this._githubRequest(
+          `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/git/refs/heads/${encodeURIComponent(branch)}`
         );
 
-        // Get the tree SHA for this branch
-        if (response && response.sha) {
-          return {
-            branch,
-            canonicalBranch: this.canonicalBranch,
-            sha: response.sha
-          };
+        if (!refResponse || !refResponse.object || !refResponse.object.sha) {
+          continue;
         }
+
+        // Verify the SHA is a valid commit hash (40 hex chars)
+        const commitSha = refResponse.object.sha;
+        if (!/^[a-f0-9]{40}$/.test(commitSha)) {
+          continue;
+        }
+
+        return {
+          branch,
+          canonicalBranch: this.canonicalBranch,
+          sha: commitSha  // Commit SHA: the definitive snapshot for StateContext
+        };
       } catch (error) {
         // Silently continue to next branch
         continue;
       }
     }
 
-    // Fallback: if no branch succeeds, throw
-    const error = new Error('Failed to get Git metadata for StateContext hydration');
+    // Fail-Closed: if no branch provides valid commit SHA, cannot issue StateContext
+    const error = new Error('Failed to get Git metadata for StateContext hydration: no valid commit SHA retrieved');
     error.status = 502;
-    error.payload = { status: 'AUTH_CONFIGURATION', reason: 'Cannot retrieve branch/sha metadata' };
+    error.payload = {
+      status: 'state_context_invalid',
+      reason: 'Cannot retrieve commit SHA from any configured branch for StateContext authority'
+    };
     throw error;
   }
 

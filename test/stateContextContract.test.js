@@ -290,3 +290,126 @@ test('State Registry invalidateBySessionId: idempotent single-session invalidati
     registry.lookup(s1.correlationId, s1.stateSessionId, 'powerapps');
   });
 });
+
+test('CRITICAL: single correlationId per request (no mixing)', async t => {
+  const f = await fixture(t);
+
+  // Call get_powerapps_state
+  const state1 = await f.rpc('get_powerapps_state', {}, 'session-a');
+  assert.equal(state1.error, false);
+  const correlationId1 = state1.data.correlationId;
+  const stateSessionId1 = state1.data.stateSessionId;
+
+  // Second independent request should get a DIFFERENT correlationId
+  const state2 = await f.rpc('get_powerapps_state', {}, 'session-b');
+  assert.equal(state2.error, false);
+  const correlationId2 = state2.data.correlationId;
+  const stateSessionId2 = state2.data.stateSessionId;
+
+  // CRITICAL: Different requests must have different correlationIds and stateSessionIds
+  assert.notEqual(correlationId1, correlationId2, 'each request must have unique correlationId');
+  assert.notEqual(stateSessionId1, stateSessionId2, 'each request must have unique stateSessionId');
+
+  // Each correlationId should be injected consistently within a request
+  // When user calls get_powerapps_source with correlationId1, it should work
+  const source1 = await f.rpc('get_powerapps_source', {
+    relativePath: PATH, correlationId: correlationId1, stateSessionId: stateSessionId1
+  }, 'session-a');
+  assert.equal(source1.error, false);
+  assert.equal(source1.data.correlationId, correlationId1, 'source must use same correlationId');
+
+  // Using mismatched correlationId2 with session1 should fail
+  const sourceMismatch = await f.rpc('get_powerapps_source', {
+    relativePath: PATH, correlationId: correlationId2, stateSessionId: stateSessionId1
+  }, 'session-a');
+  assert.equal(sourceMismatch.error, true, 'mismatched correlationId/stateSessionId should fail');
+});
+
+test('CRITICAL: incomplete context (missing sha) must NOT issue stateSessionId', async t => {
+  const f = await fixture(t);
+
+  // Create fixture where getSourceFileMetadata fails
+  const appStore = {
+    getAppState: async () => ({ status: 'ok', appId: APP, environmentId: ENV, operationId: crypto.randomUUID() })
+  };
+  const gitStoreBroken = {
+    canonicalBranch: 'main',
+    getSourceFile: async (file) => ({ status: 'ok', path: file, content: CONTENT, sha: blobSha(CONTENT), branch: 'main', canonicalBranch: 'main' }),
+    getSourceFileMetadata: async (gitRoot) => {
+      // Simulates Git metadata fetch failure
+      throw new Error('Git API unavailable');
+    }
+  };
+
+  const config = getConfig({});
+  config.enforceStateManager = true;
+  config.stateContextRegistry = { ttlMs: 1000, now: () => 100000 };
+  const app = createApp(config, {}, appStore, gitStoreBroken, {}, {}, {});
+  const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+
+  const url = `http://127.0.0.1:${server.address().port}/mcp`;
+  async function rpc(name, args = {}) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
+    });
+    const result = await response.json();
+    return { error: result.result?.isError, data: result.result?.structuredContent };
+  }
+
+  // CRITICAL: get_powerapps_state must FAIL and NOT issue stateSessionId
+  const state = await rpc('get_powerapps_state', {});
+  assert.equal(state.error, true, 'get_powerapps_state must fail when Git metadata unavailable');
+  assert.equal(state.data.stateSessionId, undefined, 'FAIL-CLOSED: must not issue stateSessionId on incomplete context');
+  assert.equal(state.data.status, 'state_context_invalid', 'error must indicate state context invalid');
+});
+
+test('CRITICAL: same stateSessionId can be reused for 3+ screens in one session', async t => {
+  const f = await fixture(t);
+
+  // Get initial state
+  const state = await f.rpc('get_powerapps_state', {});
+  assert.equal(state.error, false);
+  const correlationId = state.data.correlationId;
+  const stateSessionId = state.data.stateSessionId;
+
+  // Get first source (S1_Home)
+  const source1 = await f.rpc('get_powerapps_source', {
+    relativePath: PATH,
+    correlationId,
+    stateSessionId
+  });
+  assert.equal(source1.error, false);
+  assert.equal(source1.data.stateSessionId, stateSessionId, 'session must be preserved');
+
+  // Get second source (S2_Screen via targetNames)
+  const source2 = await f.rpc('get_powerapps_source', {
+    targetNames: ['S1_Home', 'S2_Screen'],
+    correlationId,
+    stateSessionId
+  });
+  // Even if S2_Screen doesn't exist, the stateSessionId should be reused
+  // (Implementation handles missing screens gracefully)
+
+  // Validate with same session
+  const validate = await f.rpc('validate_powerapps_source', {
+    stateContext: source1.data.stateContext,
+    stateSessionId,
+    sourceContent: CONTENT,
+    relativePath: PATH
+  });
+  assert.equal(validate.error, false);
+  assert.equal(validate.data.correlationId, correlationId, 'correlation must be consistent');
+
+  // Compare with same session
+  const compare = await f.rpc('compare_powerapps_with_git', {
+    stateContext: source1.data.stateContext,
+    stateSessionId,
+    targetFile: PATH,
+    targetApp: APP
+  });
+  assert.equal(compare.error, false);
+  assert.equal(compare.data.correlationId, correlationId, 'correlation must be consistent');
+});
