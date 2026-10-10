@@ -181,7 +181,9 @@ class StateContextRegistry {
   validate(context, stateSessionId, scope, params, method) {
     const failures = [];
     if (!context || typeof context !== 'object' || Array.isArray(context)) context = {};
-    for (const field of REQUIRED_STATE_FIELDS) {
+    // Phase 6: sha is in SourceObservation, not AuthorityContext; exclude from context validation
+    const contextRequiredFields = REQUIRED_STATE_FIELDS.filter(f => f !== 'sha');
+    for (const field of contextRequiredFields) {
       if (typeof context[field] !== 'string' || !context[field].trim()) failures.push(`${field}: missing or invalid`);
     }
     if (context.sha && !/^[a-f0-9]{40}$/.test(context.sha)) failures.push('sha: must be 40-character hex string');
