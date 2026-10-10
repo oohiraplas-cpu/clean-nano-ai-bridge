@@ -982,8 +982,21 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       }
 
       // Phase 6: 各resultについてSourceObservation検証→bindSourceObservation
+      // Fail-Closed: stateSessionId必須（Phase 6 Architecture）
       const sourceObservations = [];
       const bindErrors = [];
+
+      if (!params.stateSessionId && results.length > 0) {
+        // Fail-Closed: stateSessionId missing
+        const error = new Error('Phase 6: stateSessionId required for targetNames SourceObservation binding');
+        error.status = 400;
+        error.payload = {
+          status: 'state_context_invalid',
+          reason: 'stateSessionId required for targetNames binding',
+          targetNames: params.targetNames
+        };
+        throw error;
+      }
 
       if (params.stateSessionId && results.length > 0) {
         for (const result of results) {
