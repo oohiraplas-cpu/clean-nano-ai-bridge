@@ -255,6 +255,42 @@ class PowerAppsGitStore {
     }
   }
 
+  /**
+   * Get metadata (branch, canonicalBranch, sha) for gitRoot without full content.
+   * Used for StateContext hydration only.
+   * @returns {Promise<{branch: string, canonicalBranch: string, sha: string}>}
+   */
+  async getSourceFileMetadata(gitRoot) {
+    const encodedRoot = (gitRoot || this.githubRoot).split('/').map(encodeURIComponent).join('/');
+    const branches = [...new Set([this.githubBranch, ...this.githubFallbackBranches].filter(Boolean))];
+
+    for (const branch of branches) {
+      try {
+        const response = await this._githubRequest(
+          `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/git/trees/${encodeURIComponent(branch)}?recursive=0`
+        );
+
+        // Get the tree SHA for this branch
+        if (response && response.sha) {
+          return {
+            branch,
+            canonicalBranch: this.canonicalBranch,
+            sha: response.sha
+          };
+        }
+      } catch (error) {
+        // Silently continue to next branch
+        continue;
+      }
+    }
+
+    // Fallback: if no branch succeeds, throw
+    const error = new Error('Failed to get Git metadata for StateContext hydration');
+    error.status = 502;
+    error.payload = { status: 'AUTH_CONFIGURATION', reason: 'Cannot retrieve branch/sha metadata' };
+    throw error;
+  }
+
   async getSourceFile(relativePath) {
     const clean = String(relativePath || '').replace(/^\/+/, '');
     if (!clean) throw new Error('relativePathが必要です');

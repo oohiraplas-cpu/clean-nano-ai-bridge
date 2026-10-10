@@ -145,7 +145,17 @@ async function mcpFixture(t, options = {}) {
       return exported(request, options.content ?? SOURCE);
     } });
   store.getAppState = async () => ({ ...state, operationId: crypto.randomUUID() });
-  const gitStore = { canonicalBranch: 'main', getSourceFile: async file => { gitReads++; assert.equal(file, FILE); return { ...source }; } };
+  const gitStore = {
+    canonicalBranch: 'main',
+    getSourceFile: async file => { gitReads++; assert.equal(file, FILE); return { ...source }; },
+    getSourceFileMetadata: async (gitRoot) => {
+      return {
+        branch: 'main',
+        canonicalBranch: 'main',
+        sha: blobSha(SOURCE)
+      };
+    }
+  };
   const app = createApp(config, {}, store, gitStore, {}, {}, {});
   const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   t.after(() => new Promise(resolve => server.close(resolve)));

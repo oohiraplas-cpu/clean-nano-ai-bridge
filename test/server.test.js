@@ -10,7 +10,8 @@ async function createTestServer(tasks, options = {}) {
   const tasksFile = path.join(directory, 'tasks.json');
   await fs.writeFile(tasksFile, `${JSON.stringify(tasks)}\n`);
   const logFile = path.join(directory, 'powerapps-operations.jsonl');
-  const app = createApp({
+
+  const config = {
     corsOrigins: ['http://localhost:3000'],
     tasksFile,
     webhookApiKey: options.webhookApiKey || '',
@@ -50,7 +51,9 @@ async function createTestServer(tasks, options = {}) {
     // Legacy unit tests exercise pure diff validation. State Context enforcement
     // is covered by the registered-context contract tests.
     enforceStateManager: options.enforceStateManager ?? false
-  });
+  };
+
+  const app = createApp(config);
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
   });

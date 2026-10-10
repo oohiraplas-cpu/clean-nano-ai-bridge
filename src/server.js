@@ -1644,6 +1644,57 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     handleMcpRequest(req, res, next).catch(next);
   });
 
+  /**
+   * Hydrate a complete StateContext with all required fields.
+   * Called once per execution to ensure stateSessionId is only issued with complete context.
+   * Required fields: appId, environmentId, repository, gitRoot, branch, canonicalBranch, sha, correlationId
+   */
+  async function hydratePowerAppsStateContext(scope) {
+    const appState = await powerAppsStore.getAppState();
+
+    let gitState = null;
+    try {
+      gitState = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+    } catch (error) {
+      // Git access unavailable - continue with partial context
+    }
+
+    const context = {
+      appId: appState.appId,
+      environmentId: appState.environmentId,
+      repository: config.powerApps.githubRepo,
+      gitRoot: config.powerApps.githubRoot,
+      branch: gitState?.branch,
+      canonicalBranch: gitState?.canonicalBranch,
+      sha: gitState?.sha,
+      correlationId: crypto.randomUUID()
+    };
+
+    // Validate all required fields are present
+    const missing = [];
+    if (!context.appId) missing.push('appId');
+    if (!context.environmentId) missing.push('environmentId');
+    if (!context.repository) missing.push('repository');
+    if (!context.gitRoot) missing.push('gitRoot');
+    if (!context.branch) missing.push('branch');
+    if (!context.canonicalBranch) missing.push('canonicalBranch');
+    if (!context.sha || !/^[a-f0-9]{40}$/.test(context.sha)) missing.push('sha');
+    if (!context.correlationId) missing.push('correlationId');
+
+    if (missing.length > 0) {
+      const error = new Error('StateContext hydration failed: missing required fields');
+      error.status = 400;
+      error.payload = {
+        status: 'state_context_invalid',
+        missingFields: missing,
+        reason: `Cannot issue stateSessionId without: ${missing.join(', ')}`
+      };
+      throw error;
+    }
+
+    return stateRegistry.begin(context, scope);
+  }
+
   async function executeWithState(method, params, req) {
     try { return await executeWithStateInternal(method, params, req); }
     catch (error) {
@@ -1670,7 +1721,18 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
-      return { ...state, ...stateRegistry.begin(state, scope) };
+      // Hydrate complete StateContext with all required fields before issuing stateSessionId
+      try {
+        const session = await hydratePowerAppsStateContext(scope);
+        return { ...state, ...session };
+      } catch (error) {
+        if (config.enforceStateManager === true) throw error;
+        // Legacy tests and non-enforcement mode: return state without full context
+        return { ...state, stateContextComplete: false,
+          stateContextUnavailable: error.payload?.missingFields
+            ? `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Start with get_powerapps_state`
+            : 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
+      }
     }
     if (method === 'get_powerapps_source') {
       let session;
@@ -1680,11 +1742,16 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const source = await execute(params);
       if (!session) {
         try {
-          session = stateRegistry.begin(await powerAppsStore.getAppState(), scope);
+          // Hydrate complete StateContext with all required fields before binding source
+          session = await hydratePowerAppsStateContext(scope);
         } catch (error) {
           if (config.enforceStateManager === true) throw error;
           // Historical standalone reads remain available if app-state lookup
           // fails; this response deliberately carries no executable context.
+          if (error.payload?.missingFields) {
+            return { ...source, stateContextComplete: false,
+              stateContextUnavailable: `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Start with get_powerapps_state` };
+          }
           return { ...source, stateContextComplete: false,
             stateContextUnavailable: 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
         }
@@ -1697,7 +1764,8 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         return { ...source, stateContextComplete: false };
       }
       // relativePath (直接指定) または screenName を記録 (StateContext保存用)
-      const sourceIdentifier = params.relativePath || params.screenName;
+      // targetNames の場合はすべての結果をStateContextに保存
+      const sourceIdentifier = params.relativePath || params.screenName || (params.targetNames ? JSON.stringify(source.result) : null);
       const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
       return { ...source, ...bound };
     }
