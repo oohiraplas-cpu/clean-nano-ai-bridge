@@ -190,7 +190,7 @@ class StateContextRegistry {
     const fieldsToCompare = REQUIRED_STATE_FIELDS.filter(f => f !== 'sha');
     for (const field of fieldsToCompare) if (context[field] !== record.context[field]) failures.push(`${field}: mismatch with registered context`);
     if (context.sha !== record.source.sha) failures.push('sha: mismatch with registered source');
-    if (context.branch !== context.canonicalBranch) failures.push('branch: non-canonical source');
+    if (record.context.branch !== record.context.canonicalBranch) failures.push('branch: non-canonical source');
     const suppliedPath = method === 'compare_powerapps_with_git' ? params.targetFile : params.relativePath;
     if (suppliedPath !== undefined && suppliedPath !== record.source.path && suppliedPath !== record.source.requestedPath) failures.push('relativePath/targetFile: mismatch with registered file');
     if (params.expectedBranch !== undefined && params.expectedBranch !== context.branch) failures.push('expectedBranch: mismatch');
