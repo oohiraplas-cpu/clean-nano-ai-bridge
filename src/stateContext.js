@@ -72,6 +72,12 @@ class StateContextRegistry {
       return acc;
     }, {});
 
+    // Phase 6: If source is bound, include sha from SourceObservation in stateContext
+    // (sha is required by STATE_CONTEXT_SCHEMA but stored in SourceObservation, not AuthorityContext)
+    if (record.source && record.source.sha && !stateContextFields.sha) {
+      stateContextFields.sha = record.source.sha;
+    }
+
     // authorityContext: full 8-field structure for executable sessions
     const authorityContextFields = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId'];
     const authorityContext = authorityContextFields.reduce((acc, field) => {
@@ -108,18 +114,42 @@ class StateContextRegistry {
   bind(correlationId, stateSessionId, scope, source, relativePath) {
     const record = this.lookup(correlationId, stateSessionId, scope);
     const failures = [];
-    for (const field of ['branch', 'canonicalBranch', 'sha', 'path']) {
+
+    for (const field of ['sha', 'path']) {
       if (typeof source[field] !== 'string' || !source[field].length) failures.push(`${field}: missing from observed source`);
     }
     if (typeof source.content !== 'string') failures.push('content: missing from observed source');
     if (!/^[a-f0-9]{40}$/.test(source.sha || '')) failures.push('sha: invalid observed blob SHA');
     if (typeof source.content === 'string' && blobSha(source.content) !== source.sha) failures.push('sha: observed content does not match blob SHA');
     if (failures.length) throw contextError(failures);
-    const context = { ...record.context, branch: source.branch, canonicalBranch: source.canonicalBranch, sha: source.sha };
-    if (record.source && (record.source.path !== source.path || record.context.sha !== source.sha || record.context.branch !== source.branch || record.context.canonicalBranch !== source.canonicalBranch)) {
-      throw contextError(['correlationId: already bound to a different file, branch or SHA']);
+
+    if (record.source && (record.source.path !== source.path || record.source.sha !== source.sha)) {
+      throw contextError(['stateSessionId: already bound to a different file or SHA']);
     }
-    record.context = context;
+    // Note: bind() does NOT update branch/canonicalBranch from source (those are AuthorityContext, not SourceObservation)
+    record.source = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
+    return this.response(record);
+  }
+
+  bindSourceObservation(correlationId, stateSessionId, scope, source, relativePath) {
+    // Phase 6: targetNames-specific binding for multiple SourceObservations without re-validating AuthorityContext
+    // AuthorityContext fields (branch, canonicalBranch) were validated BEFORE stateSessionId was issued
+    // SourceObservation binding ONLY validates file-level fields: sha, path, content
+    // Do NOT re-validate or require branch/canonicalBranch from source object
+    const record = this.lookup(correlationId, stateSessionId, scope);
+    const failures = [];
+
+    for (const field of ['sha', 'path']) {
+      if (typeof source[field] !== 'string' || !source[field].length) failures.push(`${field}: missing from observed source`);
+    }
+    if (typeof source.content !== 'string') failures.push('content: missing from observed source');
+    if (!/^[a-f0-9]{40}$/.test(source.sha || '')) failures.push('sha: invalid observed blob SHA');
+    if (typeof source.content === 'string' && blobSha(source.content) !== source.sha) failures.push('sha: observed content does not match blob SHA');
+    if (failures.length) throw contextError(failures);
+
+    if (record.source && (record.source.path !== source.path || record.source.sha !== source.sha)) {
+      throw contextError(['stateSessionId: already bound to a different file or SHA']);
+    }
     record.source = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
     return this.response(record);
   }
@@ -160,7 +190,10 @@ class StateContextRegistry {
     if (failures.length) throw contextError(failures, 400);
     const record = this.lookup(context.correlationId, stateSessionId, scope);
     if (!record.source) throw contextError(['stateContext: source not acquired']);
-    for (const field of REQUIRED_STATE_FIELDS) if (context[field] !== record.context[field]) failures.push(`${field}: mismatch with registered context`);
+    // Phase 6: sha is in SourceObservation, not AuthorityContext; check it separately
+    const fieldsToCompare = REQUIRED_STATE_FIELDS.filter(f => f !== 'sha');
+    for (const field of fieldsToCompare) if (context[field] !== record.context[field]) failures.push(`${field}: mismatch with registered context`);
+    if (context.sha !== record.source.sha) failures.push('sha: mismatch with registered source');
     if (context.branch !== context.canonicalBranch) failures.push('branch: non-canonical source');
     const suppliedPath = method === 'compare_powerapps_with_git' ? params.targetFile : params.relativePath;
     if (suppliedPath !== undefined && suppliedPath !== record.source.path && suppliedPath !== record.source.requestedPath) failures.push('relativePath/targetFile: mismatch with registered file');
