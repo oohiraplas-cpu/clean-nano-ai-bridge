@@ -80,7 +80,7 @@ const {
 } = require('./bridgeEnhancedFeatures');
 const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
 const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
-const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError } = require('./stateContext');
+const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError, blobSha } = require('./stateContext');
 const {
   FAIL_CLOSED_TOOLS,
   validateStateContext,
@@ -1021,17 +1021,29 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
             }
 
             // SourceObservation検証: sha/path/content が必須（source取得後に検証）
-            if (!result.sha || !/^[a-f0-9]{40}$/.test(result.sha)) {
+            // ROOT CAUSE FIX: Use fileData.sha (retrieved actual SHA) instead of result.sha (resolution-time SHA)
+            // to ensure SHA matches actual fetched content, preventing data-integrity loss
+            const actualSha = fileData.sha || blobSha(fileData.content);
+            if (!actualSha || !/^[a-f0-9]{40}$/.test(actualSha)) {
               bindErrors.push({
                 screenName: result.name,
-                reason: `Invalid blob SHA: ${result.sha}`
+                reason: `Failed to compute/retrieve valid blob SHA for content`
               });
               continue;
             }
 
-            // SourceObservation: {sha, path, content}
+            // Verify that resolved SHA matches actual retrieved content (fail-closed)
+            if (result.sha && result.sha !== actualSha) {
+              bindErrors.push({
+                screenName: result.name,
+                reason: `SHA mismatch: resolved=${result.sha.substring(0, 8)}..., actual=${actualSha.substring(0, 8)}...`
+              });
+              continue;
+            }
+
+            // SourceObservation: {sha, path, content} - use actualSha from retrieved file
             const source = {
-              sha: result.sha,
+              sha: actualSha,
               path: result.path,
               content: fileData.content
             };
