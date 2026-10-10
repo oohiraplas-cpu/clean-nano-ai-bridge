@@ -1001,14 +1001,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       if (params.stateSessionId && results.length > 0) {
         for (const result of results) {
           try {
-            // SourceObservation検証: sha/path/content が必須
-            if (!result.sha || !/^[a-f0-9]{40}$/.test(result.sha)) {
-              bindErrors.push({
-                screenName: result.name,
-                reason: `Invalid blob SHA: ${result.sha}`
-              });
-              continue;
-            }
+            // Phase 6: Retrieve source first, then validate SourceObservation fields
             if (!result.path || typeof result.path !== 'string') {
               bindErrors.push({
                 screenName: result.name,
@@ -1023,6 +1016,15 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
               bindErrors.push({
                 screenName: result.name,
                 reason: 'Failed to retrieve file content'
+              });
+              continue;
+            }
+
+            // SourceObservation検証: sha/path/content が必須（source取得後に検証）
+            if (!result.sha || !/^[a-f0-9]{40}$/.test(result.sha)) {
+              bindErrors.push({
+                screenName: result.name,
+                reason: `Invalid blob SHA: ${result.sha}`
               });
               continue;
             }
