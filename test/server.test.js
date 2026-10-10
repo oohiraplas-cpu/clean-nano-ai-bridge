@@ -1605,3 +1605,103 @@ test('StateContext Registry: lookupBySessionId not found', () => {
     'non-existent sessionId throws 404'
   );
 });
+
+test('execute_powerplatform_request: input normalization and MCP E2E contract', async (t) => {
+  const server = await newServer(t, { mcpApiKey: 'test-key' });
+
+  // Test A: target.appId + target.environmentId normalization
+  const resA = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'test-key' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'execute_powerplatform_request',
+        arguments: {
+          request: 'Test Preflight',
+          target: {
+            appId: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e',
+            environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb'
+          },
+          publishApproval: false
+        }
+      }
+    })
+  });
+  const resultA = await resA.json();
+  assert.equal(resultA.id, 1, 'jsonrpc id preserved');
+  assert.ok(resultA.result, 'result exists');
+  assert.ok(resultA.result.structuredContent, 'structuredContent exists');
+  assert.ok(resultA.result.structuredContent.requestId, 'requestId generated');
+
+  // Test B: targetName/targetId direct parameters
+  const resB = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'test-key' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'execute_powerplatform_request',
+        arguments: {
+          request: 'Test Direct Params',
+          targetName: 'CN_AI依頼台帳',
+          targetId: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e',
+          environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb',
+          publishApproval: false
+        }
+      }
+    })
+  });
+  const resultB = await resB.json();
+  assert.ok(resultB.result.structuredContent.requestId, 'direct params accepted');
+
+  // Test C: target.id fallback (backward compatibility)
+  const resC = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'test-key' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: {
+        name: 'execute_powerplatform_request',
+        arguments: {
+          request: 'Test Fallback',
+          target: {
+            name: 'Test App',
+            id: 'fallback-app-id',
+            environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb'
+          },
+          publishApproval: false
+        }
+      }
+    })
+  });
+  const resultC = await resC.json();
+  assert.ok(resultC.result.structuredContent.requestId, 'fallback targetId accepted');
+
+  // Test G: Missing appId should return BLOCKED
+  const resG = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'test-key' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/call',
+      params: {
+        name: 'execute_powerplatform_request',
+        arguments: {
+          request: 'Test Missing AppId',
+          target: { environmentId: '4d0aab59-43ec-ecf1-a9d1-869f2517adbb' },
+          publishApproval: false
+        }
+      }
+    })
+  });
+  const resultG = await resG.json();
+  assert.ok(resultG.result.structuredContent.conclusion === 'BLOCKED' || resultG.result.isError, 'missing appId returns error or BLOCKED');
+});
