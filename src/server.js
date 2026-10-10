@@ -16,6 +16,7 @@ const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
+const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
@@ -148,7 +149,8 @@ const MCP_METHODS = Object.freeze([
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
   'execute_powerplatform_request',
-  'assess_done'
+  'assess_done',
+  'check_prohibited_operations'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -904,6 +906,58 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         }
       },
       required: [],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'check_prohibited_operations',
+    description: 'Phase 8 Prohibited Operations Engine：危険な操作（削除・本番公開・権限変更など）を10カテゴリで自動遮断します。本番デプロイ・mainブランチ変更・権限変更・削除・秘密値変更・外部共有・課金変更・Solution エクスポート・データバックアップ・環境間昇格の各操作を検査し、承認トークンの有無に応じて許可/拒否を返します。秘密値・外部共有・データエクスポートは承認の有無にかかわらず常に遮断します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          description: '実行予定の操作名（deploy_to_test, delete_app, update_permissions など）'
+        },
+        approvalToken: {
+          type: 'string',
+          description: '人間の明示承認トークン（8文字以上）'
+        },
+        environment: {
+          type: 'string',
+          description: '対象環境（本番/production/テスト等）'
+        },
+        targetBranch: {
+          type: 'string',
+          description: '対象ブランチ（main/master/dev等）'
+        },
+        targetName: {
+          type: 'string',
+          description: '削除対象名（アプリ名、Solution 名など）'
+        },
+        paramKeys: {
+          type: 'array',
+          description: '操作パラメータのキー配列（秘密値チェック用）',
+          items: { type: 'string' }
+        },
+        targetScope: {
+          type: 'string',
+          description: '共有スコープ（public/external/internal等）'
+        },
+        currentScope: {
+          type: 'string',
+          description: '現在のスコープ（internal等）'
+        },
+        sourceEnv: {
+          type: 'string',
+          description: '昇格元環境（dev/test等）'
+        },
+        targetEnv: {
+          type: 'string',
+          description: '昇格先環境（本番/production等）'
+        }
+      },
+      required: ['operation'],
       additionalProperties: false
     }
   }
@@ -1693,6 +1747,39 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       assessmentId: assessment.assessmentId,
       timestamp: assessment.timestamp,
       results: assessment.results
+    };
+  }
+
+  // Phase 8: Prohibited Operations Engine
+  if (method === 'check_prohibited_operations') {
+    const engine = new ProhibitedOperationsEngine();
+    const check = engine.check({
+      operation: params.operation,
+      approvalToken: params.approvalToken,
+      environment: params.environment,
+      targetBranch: params.targetBranch,
+      targetName: params.targetName,
+      paramKeys: params.paramKeys,
+      targetScope: params.targetScope,
+      currentScope: params.currentScope,
+      sourceEnv: params.sourceEnv,
+      targetEnv: params.targetEnv
+    });
+
+    return {
+      status: check.allowed ? 'ALLOWED' : 'BLOCKED',
+      allowed: check.allowed,
+      verdict: check.verdict,
+      blocked: check.blocked,
+      violations: check.violations,
+      checksPerformed: check.checksPerformed,
+      checksBlocked: check.checksBlocked,
+      evidence: check.evidence,
+      reasons: check.reasons,
+      requiresApprovalCategories: check.requiresApprovalCategories,
+      remediationPath: check.remediationPath,
+      timestamp: check.timestamp,
+      assessmentId: check.assessmentId
     };
   }
 
