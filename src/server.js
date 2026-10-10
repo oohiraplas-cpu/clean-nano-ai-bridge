@@ -15,6 +15,7 @@ const { PaymentMonitorService } = require('./paymentMonitorService');
 const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { PermissionsService } = require('./permissionsService');
+const { DoneEngine } = require('./doneEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
@@ -146,7 +147,8 @@ const MCP_METHODS = Object.freeze([
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
-  'execute_powerplatform_request'
+  'execute_powerplatform_request',
+  'assess_done'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -842,6 +844,66 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         approvalToken: { type: 'string', description: 'オプション：mainマージ・本番公開の人間承認トークン' }
       },
       required: ['request'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'assess_done',
+    description: 'Phase 7 DONE Engine：Power Apps操作の完了状態を12条件で自動判定します。実施内容→保存確認→公開確認→再取得確認→ランタイム確認→権限確認→画面確認→証跡5項目→監査ログ→エラーゼロの全チェックリストを実行し、完了度%と不足項目を返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        inputState: {
+          type: 'object',
+          description: 'リクエスト時の入力状態（appId, environment, branch, canonicalBranch, sha）',
+          properties: {
+            appId: { type: 'string' },
+            environment: { type: 'string' },
+            branch: { type: 'string' },
+            canonicalBranch: { type: 'string' },
+            sha: { type: 'string' }
+          }
+        },
+        runtimeState: {
+          type: 'object',
+          description: 'ランタイムから取得した実測状態（appId, environment, branch, canonicalBranch, sha）',
+          properties: {
+            appId: { type: 'string' },
+            environment: { type: 'string' },
+            branch: { type: 'string' },
+            canonicalBranch: { type: 'string' },
+            sha: { type: 'string' }
+          }
+        },
+        operationLog: {
+          type: 'array',
+          description: '操作ログ配列（save, publish, reread 操作のタイムスタンプと結果）',
+          items: {
+            type: 'object',
+            properties: {
+              operation: { type: 'string' },
+              timestamp: { type: 'string' },
+              status: { type: 'string' },
+              stateSnapshot: { type: 'object' }
+            }
+          }
+        },
+        evidence: {
+          type: 'object',
+          description: '証跡オブジェクト（correlationId, runtimeSha, response, state, publishResult, auditLog など）'
+        },
+        auditLog: {
+          type: 'array',
+          description: '監査ログエントリ配列',
+          items: { type: 'object' }
+        },
+        errorLog: {
+          type: 'array',
+          description: 'エラーログ配列',
+          items: { type: 'object' }
+        }
+      },
+      required: [],
       additionalProperties: false
     }
   }
@@ -1602,6 +1664,38 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       approvalToken: params.approvalToken
     }));
   }
+
+  // Phase 7: DONE Engine assessment
+  if (method === 'assess_done') {
+    const engine = new DoneEngine();
+    const assessment = engine.assess({
+      inputState: params.inputState,
+      runtimeState: params.runtimeState,
+      operationLog: params.operationLog,
+      runtimeResponse: params.runtimeResponse,
+      authContext: params.authContext,
+      screenEvidence: params.screenEvidence,
+      evidence: params.evidence,
+      auditLog: params.auditLog,
+      errorLog: params.errorLog
+    });
+
+    return {
+      status: assessment.done ? 'DONE' : assessment.verdict,
+      verdict: assessment.verdict,
+      done: assessment.done,
+      completionPercent: assessment.completionPercent,
+      passed: assessment.passed,
+      failed: assessment.failed,
+      next: assessment.next,
+      passCount: assessment.passCount,
+      failCount: assessment.failCount,
+      assessmentId: assessment.assessmentId,
+      timestamp: assessment.timestamp,
+      results: assessment.results
+    };
+  }
+
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }
 
