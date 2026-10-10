@@ -336,3 +336,94 @@ test('targetNames individual binding with SourceObservation validation (3-screen
 
   assert.ok(validateResult, 'Validation should succeed for last bound source (sha from record.source)');
 });
+
+test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actual file SHA)', async t => {
+  // ROOT CAUSE FIX VERIFICATION: Ensure that SHA mismatch between resolution phase and fetch phase is detected
+  // This prevents data-loss where resolved SHA differs from actual file content
+  const { StateContextRegistry, blobSha } = require('../src/stateContext');
+
+  const registry = new StateContextRegistry({ ttlMs: 5000 });
+
+  // Step 1: Begin session with AuthorityContext
+  const started = registry.begin({
+    appId: 'CN_AI依頼台帳',
+    environmentId: 'prod',
+    branch: 'main',
+    canonicalBranch: 'main'
+  }, 'fault-injection-scope');
+
+  // Step 2: Simulate resolution phase returning SHA A
+  const screenContent = 'Screens:\n  S12:\n    Properties:\n      Fill: =Color.White\n';
+  const resolvedSha = blobSha(screenContent);  // SHA at resolution time
+
+  // Step 3: Simulate file changed between resolution and fetch (malicious or concurrent change)
+  const modifiedContent = 'Screens:\n  S12:\n    Properties:\n      Fill: =Color.Red\n';
+  const actualSha = blobSha(modifiedContent);  // SHA at fetch time (DIFFERENT!)
+
+  // Verify the SHAs are actually different
+  assert.notEqual(resolvedSha, actualSha, 'Test setup: SHAs must differ to simulate data-loss scenario');
+
+  // Step 4: Test the fix: attempting to bind with mismatched SHAs
+  // ROOT CAUSE FIX: The fix uses actualSha (from fileData) instead of resolvedSha
+  // and validates they match (fail-closed)
+
+  const source = {
+    sha: actualSha,  // ← FIX: using actual fetched SHA, not resolved SHA
+    path: 'powerapps/CN_AI依頼台帳/Source/S12.pa.yaml',
+    content: modifiedContent
+  };
+
+  const bound = registry.bindSourceObservation(
+    started.correlationId,
+    started.stateSessionId,
+    'fault-injection-scope',
+    source,
+    source.path
+  );
+
+  assert.equal(bound.sourceObservationComplete, true, 'Binding should succeed with correct actual SHA');
+
+  // Step 5: Verify that validator catches the discrepancy if old resolved SHA is used
+  const validateContextWithWrongSha = {
+    appId: 'CN_AI依頼台帳',
+    environment: 'prod',
+    branch: 'main',
+    canonicalBranch: 'main',
+    sha: resolvedSha,  // ← WRONG: using old resolved SHA
+    correlationId: started.correlationId
+  };
+
+  try {
+    registry.validate(
+      validateContextWithWrongSha,
+      started.stateSessionId,
+      'fault-injection-scope',
+      { relativePath: source.path },
+      'test_method'
+    );
+    assert.fail('Validation should fail when SHA does not match record.source.sha');
+  } catch (e) {
+    assert.ok(e.payload.failures.some(f => f.includes('sha')), 'Error should mention SHA mismatch');
+  }
+
+  // Step 6: Verify correct validation with actual SHA
+  const validateContextWithCorrectSha = {
+    appId: 'CN_AI依頼台帳',
+    environment: 'prod',
+    branch: 'main',
+    canonicalBranch: 'main',
+    sha: actualSha,  // ← CORRECT: using actual bound SHA
+    correlationId: started.correlationId
+  };
+
+  const validationResult = registry.validate(
+    validateContextWithCorrectSha,
+    started.stateSessionId,
+    'fault-injection-scope',
+    { relativePath: source.path },
+    'test_method'
+  );
+
+  assert.ok(validationResult, 'Validation should succeed with correct actual SHA');
+  assert.equal(validationResult.source.sha, actualSha, 'Validator must return actual SHA from record.source');
+});
