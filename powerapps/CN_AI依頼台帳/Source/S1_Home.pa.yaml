@@ -12,8 +12,9 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
+        Set(gblEmpID, Blank());
+        Set(gblEmpID, LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId), EmployeeID));
+        If(IsBlank(gblEmpID), Clear(colAttend); Notify("社員番号を確認できません。管理者へ連絡してください", NotificationType.Error), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))));
         If(IsBlank(gblIsAdmin), Set(gblIsAdmin, Or(User().Email = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com")))
     Children:
       - Home_Title:
@@ -51,8 +52,7 @@ Screens:
             Items: =Sort(CN_社員台帳, Title).Title
             Items.Value: =Title
             OnChange: |-
-              =Set(gblEmpID, LookUp(CN_社員台帳, Title = Self.Selected.Title).EmployeeID);
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+              =false
             SelectionFill: =RGBA(0, 204, 102, 1)
             Size: =14
             Width: =Parent.Width - 32
