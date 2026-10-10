@@ -957,7 +957,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
 
-    // targetNames 指定時: 複数ファイルを一括解決
+    // targetNames 指定時: 複数ファイルを個別展開→SourceObservation検証→bindSourceObservation
     if (params.targetNames && params.targetNames.length > 0) {
       const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(params.targetNames);
 
@@ -981,25 +981,69 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         throw error;
       }
 
-      // StateContext へ全結果を保存
+      // Phase 6: 各resultについてSourceObservation検証→bindSourceObservation
+      const sourceObservations = [];
+      const bindErrors = [];
+
       if (params.stateSessionId && results.length > 0) {
-        const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-        const stateData = {
-          resolvedAt: new Date().toISOString(),
-          targetNames: params.targetNames,
-          results: results.map(r => ({
-            name: r.name,
-            path: r.path,
-            sha: r.sha,
-            branch: r.branch
-          })),
-          errors: errors
-        };
-        try {
-          stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', JSON.stringify(stateData));
-        } catch (e) {
-          // StateContext 保存失敗は警告のみ
-          console.warn('Failed to save targetNames resolution to StateContext:', e.message);
+        for (const result of results) {
+          try {
+            // SourceObservation検証: sha/path/content が必須
+            if (!result.sha || !/^[a-f0-9]{40}$/.test(result.sha)) {
+              bindErrors.push({
+                screenName: result.name,
+                reason: `Invalid blob SHA: ${result.sha}`
+              });
+              continue;
+            }
+            if (!result.path || typeof result.path !== 'string') {
+              bindErrors.push({
+                screenName: result.name,
+                reason: 'Missing path in resolved result'
+              });
+              continue;
+            }
+
+            // FileContent取得（content検証用）
+            const fileData = await powerAppsGitStore.getSourceFile(result.path);
+            if (!fileData.content || typeof fileData.content !== 'string') {
+              bindErrors.push({
+                screenName: result.name,
+                reason: 'Failed to retrieve file content'
+              });
+              continue;
+            }
+
+            // SourceObservation: {sha, path, content}
+            const source = {
+              sha: result.sha,
+              path: result.path,
+              content: fileData.content
+            };
+
+            // StateRegistry.bindSourceObservation()で原子的bind
+            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+            const bindResult = stateRegistry.bindSourceObservation(
+              params.correlationId,
+              params.stateSessionId,
+              scope,
+              source,
+              result.path
+            );
+
+            sourceObservations.push({
+              screenName: result.name,
+              relativePath: result.path,
+              fileSha: result.sha,
+              stateSessionId: bindResult.stateSessionId,
+              sourceObservationComplete: bindResult.sourceObservationComplete
+            });
+          } catch (e) {
+            bindErrors.push({
+              screenName: result.name,
+              reason: `bindSourceObservation failed: ${e.message}`
+            });
+          }
         }
       }
 
@@ -1007,11 +1051,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         status: 'ok',
         method: 'get_powerapps_source',
         result: {
-          results,
-          errors,
+          sourceObservations,
+          bindErrors,
           totalRequested: params.targetNames.length,
-          successCount: results.length,
-          errorCount: errors.length
+          successCount: sourceObservations.length,
+          errorCount: bindErrors.length
         }
       };
     }
