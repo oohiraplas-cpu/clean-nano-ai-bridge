@@ -1389,6 +1389,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateExecutePowerPlatformRequestParams(params);
     if (paramError) throw requestError(paramError);
 
+    // Normalize input: extract targetName, targetId, environmentId from multiple sources
+    const targetName = params.targetName ?? params.target?.name ?? params.target?.targetName;
+    const targetId = params.targetId ?? params.target?.appId ?? params.target?.agentId ?? params.target?.flowId ?? params.target?.listId ?? params.target?.id;
+    const environmentId = params.environmentId ?? params.target?.environmentId;
+
     const handler = new PowerPlatformRequestHandler({
       powerAppsStore,
       powerAppsGitStore,
@@ -1402,8 +1407,9 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     return withUpstreamErrorStatus(handler.executePowerPlatformRequest({
       request: params.request,
-      target: params.target,
-      environmentId: params.environmentId,
+      targetName,
+      targetId,
+      environmentId,
       requestId: params.requestId,
       publishApproval: params.publishApproval || false,
       approvalToken: params.approvalToken
