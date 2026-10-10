@@ -398,8 +398,17 @@ class PlatformOrchestrator {
   }
 
   async _createStateContext({ target, requestId, intent }) {
-    const correlationId = crypto.randomUUID();
-    const stateSessionId = this.stateRegistry ? this.stateRegistry.generateSessionId() : crypto.randomUUID();
+    // Use stateRegistry.begin() to generate session with proper context
+    const state = {
+      appId: target.appId || target.id,
+      environmentId: target.environmentId
+    };
+    const registryResponse = this.stateRegistry
+      ? this.stateRegistry.begin(state, 'powerapps')
+      : { correlationId: crypto.randomUUID(), stateSessionId: crypto.randomUUID() };
+
+    const correlationId = registryResponse.correlationId || registryResponse.context?.correlationId;
+    const stateSessionId = registryResponse.stateSessionId;
 
     return {
       requestId,
