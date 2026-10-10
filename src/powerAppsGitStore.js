@@ -116,6 +116,57 @@ class PowerAppsGitStore {
     return this._githubRequest(path);
   }
 
+  /**
+   * 自動解決: screenName から実ファイルを検索
+   * @param {string} screenName - 画面名（例: "S12_EquipmentOCR"）
+   * @returns {Promise<string|null>} 相対パス、見つからない場合は null
+   */
+  async _resolveScreenToRelativePath(screenName) {
+    if (typeof screenName !== 'string' || !screenName.trim()) return null;
+    const clean = screenName.replace(/^\/+|\/+$/g, '').trim();
+
+    // GitRoot配下で該当する .pa.yaml ファイルを検索
+    const candidates = await this._listSourceFilesInRoot();
+
+    // 完全一致: screenName.pa.yaml
+    const exact = candidates.find(f =>
+      f.replace(/\.pa\.yaml$/, '').toLowerCase() === clean.toLowerCase()
+    );
+    if (exact) return exact;
+
+    // 部分一致: ファイル名に screenName を含む
+    const partial = candidates.filter(f =>
+      f.toLowerCase().includes(clean.toLowerCase())
+    );
+    if (partial.length === 1) return partial[0];
+
+    // 複数候補は呼び出し側で判断させる
+    return null;
+  }
+
+  /**
+   * GitRoot 配下の全 .pa.yaml ファイルをリストアップ
+   * @returns {Promise<string[]>} 相対パスのリスト
+   */
+  async _listSourceFilesInRoot() {
+    try {
+      const encodedRoot = this.githubRoot.split('/').map(encodeURIComponent).join('/');
+      const response = await this._githubRequest(
+        `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/contents/${encodedRoot}?ref=${encodeURIComponent(this.githubBranch)}`
+      );
+
+      if (!Array.isArray(response)) return [];
+
+      return response
+        .filter(item => item.type === 'file' && item.name.endsWith('.pa.yaml'))
+        .map(item => item.name)
+        .sort();
+    } catch (error) {
+      // リスト取得失敗時は空配列を返す（呼び出し側でrelativePathの直接指定にフォールバック）
+      return [];
+    }
+  }
+
   async getSourceFile(relativePath) {
     const clean = String(relativePath || '').replace(/^\/+/, '');
     if (!clean) throw new Error('relativePathが必要です');

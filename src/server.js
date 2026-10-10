@@ -950,7 +950,17 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_powerapps_source') {
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
-    return withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(params.relativePath));
+
+    // screenName 指定時は自動解決して relativePath に変換
+    let resolvedPath = params.relativePath;
+    if (!resolvedPath && params.screenName) {
+      resolvedPath = await powerAppsGitStore._resolveScreenToRelativePath(params.screenName);
+      if (!resolvedPath) {
+        throw requestError(`画面「${params.screenName}」に対応するソースファイルが見つかりません。relativePathを直接指定してください`);
+      }
+    }
+
+    return withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(resolvedPath));
   }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
@@ -1595,7 +1605,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (config.enforceStateManager !== true && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
         return { ...source, stateContextComplete: false };
       }
-      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, params.relativePath);
+      // relativePath (直接指定) または screenName を記録 (StateContext保存用)
+      const sourceIdentifier = params.relativePath || params.screenName;
+      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
       return { ...source, ...bound };
     }
     if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||

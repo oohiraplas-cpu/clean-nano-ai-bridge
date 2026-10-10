@@ -55,7 +55,18 @@ function validateGetPowerAppsOperationResultParams(params) {
 }
 function validateGetPowerAppsSourceParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  if (typeof params.relativePath !== 'string' || !params.relativePath.trim()) return 'relativePathが必要です';
+  // relativePath (従来) または screenName (自動解決) のいずれかが必須
+  const hasRelativePath = typeof params.relativePath === 'string' && params.relativePath.trim();
+  const hasScreenName = typeof params.screenName === 'string' && params.screenName.trim();
+
+  if (!hasRelativePath && !hasScreenName) {
+    return 'relativePathまたはscreenNameのいずれかが必要です';
+  }
+
+  // 未対応プロパティのチェック
+  const unknownProps = unknownProperty(params, ['relativePath', 'screenName', 'branch', 'correlationId', 'stateSessionId']);
+  if (unknownProps) return unknownProps;
+
   return null;
 }
 
