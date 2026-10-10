@@ -5,6 +5,10 @@ const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
 const { TaskStore } = require('./taskStore');
+const { getCnaiVersion } = require('./cnaiVersion');
+const { CnaiCheckpointStore, CnaiWorker } = require('./cnaiWorker');
+const { STEPS: CNAI_STEPS, initialState: cnaiInitialState, currentStep: cnaiCurrentStep } = require('./cnaiAutoPipeline');
+const { planRecovery: cnaiPlanRecovery } = require('./cnaiRecoveryEngine');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
@@ -1687,6 +1691,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
   app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
+  // Public metadata only: never exposes credentials, settings, or privileged state.
+  app.get('/api/cnai/version', (req, res) => res.status(200).json(getCnaiVersion()));
+
   app.get('/api/tasks', async (req, res, next) => {
     try { return res.status(200).json(await tasksPayload(store)); } catch (error) { return next(error); }
   });
@@ -1718,6 +1725,73 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
 
   const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+
+  // Opt-in checkpoint API. Uses existing MCP authentication; it does not
+  // perform any GitHub/Azure/Power Apps side effect.
+  // File storage is suitable for single-instance development only.
+  const cnaiWorker = process.env.CNAI_CHECKPOINT_DIR
+    ? new CnaiWorker(new CnaiCheckpointStore(process.env.CNAI_CHECKPOINT_DIR))
+    : null;
+  app.get('/api/cnai/jobs/:id', mcpAuth, async (req, res, next) => {
+    if (!cnaiWorker) return res.status(503).json({ error: 'checkpoint storage not configured' });
+    try {
+      const state = await cnaiWorker.status(req.params.id);
+      return state ? res.status(200).json({ state })
+        : res.status(404).json({ error: 'checkpoint not found' });
+    } catch (error) { return next(error); }
+  });
+  app.post('/api/cnai/jobs/:id/start', mcpAuth, async (req, res, next) => {
+    if (!cnaiWorker) return res.status(503).json({ error: 'checkpoint storage not configured' });
+    try { return res.status(201).json({ state: await cnaiWorker.start(req.params.id) }); }
+    catch (error) {
+      if (error.code === 'EEXIST') return res.status(409).json({ error: 'job already exists' });
+      return next(error);
+    }
+  });
+  app.post('/api/cnai/jobs/:id/advance', mcpAuth, async (req, res, next) => {
+    if (!cnaiWorker) return res.status(503).json({ error: 'checkpoint storage not configured' });
+    const { proof, options } = req.body || {};
+    // Never accept authorization flags from a request body: authorization
+    // requires a separate server-side authority context.
+    if (!proof || typeof proof !== 'object' || Array.isArray(proof) ||
+        typeof proof.step !== 'string' || typeof proof.evidenceId !== 'string' ||
+        proof.success !== true || options !== undefined)
+      return res.status(400).json({ error: 'invalid proof or client authorization flags' });
+    try {
+      return res.status(200).json(await cnaiWorker.verifyAndAdvance(req.params.id, proof, {
+        authorized: false, humanApproved: false
+      }));
+    } catch (error) { return next(error); }
+  });
+
+
+  // Read-only CNAI orchestration planning endpoints. Authenticated using the
+  // existing MCP key; no new permissions, writes, or execution are introduced.
+  app.get('/api/cnai/pipeline/:id/plan', mcpAuth, (req, res) => {
+    const id = req.params.id;
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(id))
+      return res.status(400).json({ error: 'invalid pipeline id' });
+    const state = cnaiInitialState(id);
+    return res.status(200).json({
+      status: 'PLAN_ONLY', state, currentStep: cnaiCurrentStep(state),
+      steps: CNAI_STEPS, automaticExecutionEnabled: false
+    });
+  });
+  app.post('/api/cnai/recovery/plan', mcpAuth, (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        typeof body.code !== 'string' || body.code.length > 80 ||
+        (body.signature !== undefined &&
+         (typeof body.signature !== 'string' || body.signature.length > 200)))
+      return res.status(400).json({ error: 'invalid recovery request' });
+    const state = cnaiPlanRecovery({ id: 'preview' }, {
+      code: body.code, signature: body.signature
+    });
+    return res.status(200).json({
+      status: 'PLAN_ONLY', recovery: state, automaticExecutionEnabled: false
+    });
+  });
+
 
   // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
   // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
