@@ -17,6 +17,9 @@ const { DeploymentService } = require('./deploymentService');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
+const { ReuseEngine } = require('./reuseEngine');
+const { EvidenceCaptureEngine } = require('./evidenceCaptureEngine');
+const { DispatchEngine } = require('./dispatchEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
@@ -150,7 +153,9 @@ const MCP_METHODS = Object.freeze([
   'prepare_powerapps_execution',
   'execute_powerplatform_request',
   'assess_done',
-  'check_prohibited_operations'
+  'check_prohibited_operations',
+  'suggest_reuse_pattern',
+  'get_playbook'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -958,6 +963,53 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         }
       },
       required: ['operation'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'suggest_reuse_pattern',
+    description: 'Phase 11 Reuse Engine：過去の成功・失敗パターンから、類似操作の提案テンプレート・リスク要因・最適化案を返します。署名付きパターンマッチング（exact/similar/risk/none）で、実績のある操作手順を検索します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          description: '実行予定の操作名（publish_app, save_app等）'
+        },
+        targetId: {
+          type: 'string',
+          description: '対象リソースID（アプリID等）'
+        },
+        environment: {
+          type: 'string',
+          description: '実行環境（production/test/dev等）'
+        },
+        steps: {
+          type: 'array',
+          description: '実行予定のステップ配列',
+          items: { type: 'object' }
+        }
+      },
+      required: ['operation'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_playbook',
+    description: 'Phase 11 Reuse Engine：操作とその環境向けの標準実行手順書（playbook）を取得します。成功率・リスク要因・検証チェックポイント・実行時間推定を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          description: '操作名（publish_app, deploy_app等）'
+        },
+        environment: {
+          type: 'string',
+          description: '実行環境（production/test/dev等）'
+        }
+      },
+      required: ['operation', 'environment'],
       additionalProperties: false
     }
   }
@@ -1780,6 +1832,59 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       remediationPath: check.remediationPath,
       timestamp: check.timestamp,
       assessmentId: check.assessmentId
+    };
+  }
+
+  // Phase 11: Reuse Engine - pattern suggestion
+  if (method === 'suggest_reuse_pattern') {
+    const engine = new ReuseEngine();
+    const suggestion = engine.suggestPattern({
+      operation: params.operation,
+      targetId: params.targetId,
+      environment: params.environment,
+      steps: params.steps
+    });
+
+    return {
+      status: 'OK',
+      matchType: suggestion.matchType,
+      confidence: suggestion.confidence,
+      recommendation: suggestion.recommendation,
+      pattern: suggestion.pattern,
+      patterns: suggestion.patterns,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Phase 11: Reuse Engine - playbook retrieval
+  if (method === 'get_playbook') {
+    const engine = new ReuseEngine();
+    const playbook = engine.getPlaybook(params.operation, params.environment);
+
+    if (!playbook) {
+      return {
+        status: 'NOT_FOUND',
+        message: `No playbook found for operation: ${params.operation} in environment: ${params.environment}`,
+        operation: params.operation,
+        environment: params.environment,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      status: 'OK',
+      playbookId: playbook.playbookId,
+      operation: playbook.operation,
+      environment: playbook.environment,
+      successHistory: playbook.successHistory,
+      failureHistory: playbook.failureHistory,
+      successRate: playbook.successRate,
+      template: playbook.template,
+      riskFactors: playbook.riskFactors,
+      checkpoints: playbook.checkpoints,
+      estimatedDuration: playbook.estimatedDuration,
+      prerequisitesByFrequency: playbook.prerequisitesByFrequency,
+      timestamp: new Date().toISOString()
     };
   }
 
