@@ -1652,9 +1652,21 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
    * @param {string} scope - Authentication scope hash
    * @param {string} correlationId - Request-scoped correlation ID (generated once at request entry, never regenerated)
    */
-  async function hydratePowerAppsStateContext(scope, correlationId) {
+  // AuthorityContext: 8-field state required for executable sessions
+  // This is the ONLY context that warrants a stateSessionId.
+  // Never issue stateSessionId if ANY of these are missing or invalid.
+  // NOTE: Internal representation uses 'baseSha' for commit HEAD SHA to distinguish from file blob SHAs.
+  // External StateContext schema (STATE_CONTEXT_SCHEMA) still uses 'sha' for backward compatibility during migration.
+  const AUTHORITY_CONTEXT_FIELDS = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId'];
+
+  // SourceObservation: file-level metadata bound to an AuthorityContext
+  // These fields are validated AFTER SourceObservation is populated with actual data.
+  // fileSha is the blob SHA of the retrieved file (different from baseSha which is commit HEAD SHA)
+  const SOURCE_OBSERVATION_FIELDS = ['relativePath', 'fileSha', 'content'];
+
+  async function hydrateAuthorityContext(scope, correlationId) {
     if (!correlationId || typeof correlationId !== 'string') {
-      const error = new Error('StateContext hydration requires external correlationId');
+      const error = new Error('AuthorityContext hydration requires external correlationId');
       error.status = 400;
       error.payload = {
         status: 'state_context_invalid',
@@ -1672,17 +1684,19 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       gitState = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
     } catch (error) {
       // Git metadata failure = CANNOT issue stateSessionId
-      const fieldError = new Error('StateContext hydration failed: Git metadata unavailable');
+      const fieldError = new Error('AuthorityContext hydration failed: Git metadata unavailable');
       fieldError.status = 400;
       fieldError.payload = {
         status: 'state_context_invalid',
-        missingFields: ['branch', 'canonicalBranch', 'sha'],
+        missingFields: ['branch', 'canonicalBranch', 'baseSha'],
         reason: `Cannot issue stateSessionId without Git metadata. Root cause: ${error.message}`
       };
       throw fieldError;
     }
 
     // Strict validation: all fields must be present (no optional/partial contexts at this layer)
+    // Internal: baseSha (commit HEAD SHA from git/refs/heads/{branch})
+    // External: sha (for backward compatibility with STATE_CONTEXT_SCHEMA during migration)
     const context = {
       appId: appState.appId,
       environmentId: appState.environmentId,
@@ -1690,7 +1704,8 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       gitRoot: config.powerApps.githubRoot,
       branch: gitState.branch,
       canonicalBranch: gitState.canonicalBranch,
-      sha: gitState.sha,
+      baseSha: gitState.sha,  // INTERNAL: Commit HEAD SHA (authority for all files in this commit)
+      sha: gitState.sha,  // EXTERNAL: Backward compatible with STATE_CONTEXT_SCHEMA
       correlationId: correlationId  // NEVER regenerate; use injected value
     };
 
@@ -1702,11 +1717,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     if (!context.gitRoot) missing.push('gitRoot');
     if (!context.branch) missing.push('branch');
     if (!context.canonicalBranch) missing.push('canonicalBranch');
-    if (!context.sha || !/^[a-f0-9]{40}$/.test(context.sha)) missing.push('sha');
+    if (!context.baseSha || !/^[a-f0-9]{40}$/.test(context.baseSha)) missing.push('baseSha');
     if (!context.correlationId) missing.push('correlationId');
 
     if (missing.length > 0) {
-      const error = new Error('StateContext hydration failed: missing or invalid required fields');
+      const error = new Error('AuthorityContext hydration failed: missing or invalid required fields');
       error.status = 400;
       error.payload = {
         status: 'state_context_invalid',
@@ -1718,6 +1733,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
     return stateRegistry.begin(context, scope);
   }
+
+  // Legacy alias for backward compatibility during transition
+  const hydratePowerAppsStateContext = hydrateAuthorityContext;
 
   async function executeWithState(method, params, req) {
     try { return await executeWithStateInternal(method, params, req); }
@@ -1751,17 +1769,17 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
-      // Hydrate complete StateContext with all required fields before issuing stateSessionId
+      // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
       // Inject request-scoped correlationId (never regenerate)
       try {
-        const session = await hydratePowerAppsStateContext(scope, requestCorrelationId);
-        return { ...state, ...session, stateContextComplete: true };
+        const session = await hydrateAuthorityContext(scope, requestCorrelationId);
+        return { ...state, ...session, stateContextComplete: true, requestId: requestCorrelationId };
       } catch (error) {
         // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
         // Even in non-enforcement mode, returning incomplete context must not be misleading
         if (config.enforceStateManager === true) throw error;
         // Legacy tests and non-enforcement mode: return state without full context
-        return { ...state, stateContextComplete: false,
+        return { ...state, stateContextComplete: false, requestId: requestCorrelationId,
           stateContextUnavailable: error.payload?.missingFields
             ? `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Restart with get_powerapps_state`
             : 'Observed Power Apps state is unavailable; restart with get_powerapps_state' };
@@ -1769,31 +1787,42 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     }
 
     if (method === 'get_powerapps_source') {
+      // CRITICAL: Separate AuthorityContext (commit-level) from SourceObservation (file-level)
+      // AuthorityContext must be obtained/validated first, then use it to retrieve and validate SourceObservation
+
       let session;
-      // Only lookup existing session if caller provides both parameters
+      // Step 1: Only lookup existing session if caller provides both parameters
       if (params.correlationId !== undefined && params.stateSessionId !== undefined) {
+        // If caller provides correlationId + stateSessionId, they MUST match a registered session
+        // Mismatched pairs are FAIL-CLOSED: throw immediately, never fall through to fresh hydration
+        // This prevents cross-session or stale session attacks
         session = stateRegistry.response(stateRegistry.lookup(params.correlationId, params.stateSessionId, scope));
       }
+
+      // Step 2: Retrieve source WHILE AuthorityContext is being established/validated
+      // This allows execute() to work with whatever context is available, maintaining backward compatibility
       const source = await execute(params);
+
+      // Step 3: Establish AuthorityContext if not already present
       if (!session) {
         try {
-          // Hydrate complete StateContext before binding source
+          // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
           // Inject request-scoped correlationId (never regenerate)
-          session = await hydratePowerAppsStateContext(scope, requestCorrelationId);
-        } catch (error) {
+          session = await hydrateAuthorityContext(scope, requestCorrelationId);
+        } catch (hydrationError) {
           // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
-          if (config.enforceStateManager === true) throw error;
-          // Historical standalone reads: return source without executable context
-          return { ...source, stateContextComplete: false,
-            stateContextUnavailable: error.payload?.missingFields
-              ? `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Start with get_powerapps_state`
+          if (config.enforceStateManager === true) throw hydrationError;
+          // Non-enforcement legacy mode: return source without executable context
+          return { ...source, stateContextComplete: false, requestId: requestCorrelationId,
+            stateContextUnavailable: hydrationError.payload?.missingFields
+              ? `Observed Power Apps state is incomplete; missing: ${hydrationError.payload.missingFields.join(', ')}. Start with get_powerapps_state`
               : 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
         }
       }
 
-      // Validate that retrieved session is complete (has all required fields)
+      // Step 4: Validate that retrieved session is complete (has all required Authority fields)
       if (!session.correlationId || !session.stateSessionId) {
-        const error = new Error('StateContext session incomplete after hydration');
+        const error = new Error('AuthorityContext session incomplete after hydration');
         error.status = 400;
         error.payload = {
           status: 'state_context_invalid',
@@ -1802,18 +1831,40 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         throw error;
       }
 
-      // Preserve pre-enforcement standalone reads, but never grant unbound context
+      // Step 5: Validate SourceObservation fields are populated
+      // For single-file operations (non-targetNames), all these must be present from execute()
+      if (!params.targetNames && source && typeof source === 'object') {
+        // source.sha = file blob SHA
+        // source.path = relative path
+        // source.content = file contents
+        if (!source.sha || !/^[a-f0-9]{40}$/.test(source.sha)) {
+          // File SHA missing or invalid - cannot establish SourceObservation
+          if (config.enforceStateManager === true) {
+            const error = new Error('SourceObservation validation failed: invalid or missing fileSha');
+            error.status = 400;
+            error.payload = {
+              status: 'source_observation_invalid',
+              missingFields: ['fileSha'],
+              reason: `Retrieved source does not have valid file SHA`
+            };
+            throw error;
+          }
+        }
+      }
+
+      // Step 6: Preserve pre-enforcement standalone reads, but never grant unbound context
       // Pre-enforcement readers may accept upstream diagnostic SHAs, but cannot
       // establish registered executable State Context without full hydration.
       if (config.enforceStateManager !== true && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
-        return { ...source, stateContextComplete: false };
+        return { ...source, stateContextComplete: false, requestId: requestCorrelationId };
       }
 
+      // Step 7: Bind SourceObservation to AuthorityContext session
       // relativePath (直接指定) または screenName を記録 (StateContext保存用)
       // targetNames の場合はすべての結果をStateContextに保存
       const sourceIdentifier = params.relativePath || params.screenName || (params.targetNames ? JSON.stringify(source.result) : null);
       const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
-      return { ...source, ...bound, stateContextComplete: true };
+      return { ...source, ...bound, stateContextComplete: true, requestId: requestCorrelationId };
     }
     if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
         method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
