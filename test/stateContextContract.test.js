@@ -230,3 +230,53 @@ test('inspect_powerapps_structure: appId-only mode uses Power Apps API, ignoring
   // Both should return app-based structure (same mode)
   assert.deepEqual(liveAppOnly.data.data, withIgnoredPath.data.data);
 });
+
+test('State Registry API contract: all methods must exist and be callable', async t => {
+  const registry = new StateContextRegistry({ ttlMs: 1000, now: () => 100000 });
+
+  // Test begin()
+  const beginResult = registry.begin({ appId: APP, environmentId: ENV }, 'test');
+  assert.ok(beginResult.correlationId);
+  assert.ok(beginResult.stateSessionId);
+
+  // Test invalidateBySessionId() — must exist and be callable
+  const invalidateResult = registry.invalidateBySessionId(beginResult.stateSessionId, 'test_reason');
+  assert.ok(typeof invalidateResult === 'object');
+  assert.ok('invalidated' in invalidateResult);
+
+  // Test cleanupExpired() — must exist and be callable
+  const cleanupResult = registry.cleanupExpired();
+  assert.ok(typeof cleanupResult === 'object');
+  assert.ok('deleted' in cleanupResult);
+
+  // Verify that deprecated/non-existent methods should NOT be in API
+  const fake = new StateContextRegistry();
+  assert.equal(typeof fake.generateSessionId, 'undefined', 'generateSessionId should not exist');
+  assert.equal(typeof fake.invalidate, 'undefined', 'invalidate should not exist');
+});
+
+test('State Registry invalidateBySessionId: idempotent single-session invalidation', async t => {
+  const registry = new StateContextRegistry({ ttlMs: 1000, now: () => 100000 });
+
+  // Begin two sessions
+  const s1 = registry.begin({ appId: APP, environmentId: ENV }, 'powerapps');
+  const s2 = registry.begin({ appId: 'other-id', environmentId: ENV }, 'powerapps');
+
+  // Invalidate first session
+  const result1 = registry.invalidateBySessionId(s1.stateSessionId, 'test');
+  assert.equal(result1.invalidated, true);
+
+  // Second session must still exist
+  assert.doesNotThrow(() => {
+    registry.lookup(s2.correlationId, s2.stateSessionId, 'powerapps');
+  });
+
+  // Invalidate again — idempotent (not an error)
+  const result2 = registry.invalidateBySessionId(s1.stateSessionId, 'test');
+  assert.equal(result2.invalidated, false); // Already gone, but idempotent
+
+  // Lookup should fail
+  assert.throws(() => {
+    registry.lookup(s1.correlationId, s1.stateSessionId, 'powerapps');
+  });
+});

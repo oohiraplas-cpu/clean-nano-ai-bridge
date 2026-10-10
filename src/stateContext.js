@@ -142,6 +142,33 @@ class StateContextRegistry {
     if (failures.length) throw contextError(failures);
     return record;
   }
+
+  invalidateBySessionId(stateSessionId, reason = 'repair') {
+    // Idempotent invalidation: remove only the session with given stateSessionId, ignore others
+    if (typeof stateSessionId !== 'string' || stateSessionId.length < 8) {
+      return { invalidated: false, reason: 'stateSessionId: invalid format' };
+    }
+    for (const [correlationId, record] of this.records.entries()) {
+      if (record.stateSessionId === stateSessionId) {
+        this.records.delete(correlationId);
+        return { invalidated: true, correlationId, reason };
+      }
+    }
+    // Session not found or already expired: treated as success (idempotent)
+    return { invalidated: false, reason: 'stateSessionId: not found or already expired' };
+  }
+
+  cleanupExpired() {
+    // Remove only expired sessions
+    let deleted = 0;
+    for (const [correlationId, record] of this.records.entries()) {
+      if (this.now() >= record.expiresAt) {
+        this.records.delete(correlationId);
+        deleted++;
+      }
+    }
+    return { deleted };
+  }
 }
 
 module.exports = { STATE_CONTEXT_SCHEMA, REQUIRED_STATE_FIELDS, StateContextRegistry, contextError, blobSha };
