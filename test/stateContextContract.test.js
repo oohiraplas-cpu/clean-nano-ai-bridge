@@ -22,10 +22,20 @@ async function fixture(t, options = {}) {
       return { content: options.runtimeContent ?? CONTENT };
     } })
   };
-  const gitStore = { canonicalBranch: 'main', getSourceFile: async (file) => {
-    assert.ok([PATH, 'S1_Home.pa.yaml'].includes(file));
-    return { ...source };
-  } };
+  const gitStore = {
+    canonicalBranch: 'main',
+    getSourceFile: async (file) => {
+      assert.ok([PATH, 'S1_Home.pa.yaml'].includes(file));
+      return { ...source };
+    },
+    getSourceFileMetadata: async (gitRoot) => {
+      return {
+        branch: 'main',
+        canonicalBranch: 'main',
+        sha: blobSha(CONTENT)
+      };
+    }
+  };
   const config = getConfig({});
   config.enforceStateManager = options.enforce !== false;
   config.stateContextRegistry = { ttlMs: 1000, now: () => now };
