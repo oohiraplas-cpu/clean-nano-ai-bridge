@@ -6,6 +6,7 @@ const cors = require('cors');
 const { getConfig } = require('./config');
 const { TaskStore } = require('./taskStore');
 const { getCnaiVersion } = require('./cnaiVersion');
+const { CnaiCheckpointStore, CnaiWorker } = require('./cnaiWorker');
 const { STEPS: CNAI_STEPS, initialState: cnaiInitialState, currentStep: cnaiCurrentStep } = require('./cnaiAutoPipeline');
 const { planRecovery: cnaiPlanRecovery } = require('./cnaiRecoveryEngine');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
@@ -1638,6 +1639,45 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
 
   const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+
+  // Opt-in checkpoint API. Uses existing MCP authentication; it does not
+  // perform any GitHub/Azure/Power Apps side effect.
+  // File storage is suitable for single-instance development only.
+  const cnaiWorker = process.env.CNAI_CHECKPOINT_DIR
+    ? new CnaiWorker(new CnaiCheckpointStore(process.env.CNAI_CHECKPOINT_DIR))
+    : null;
+  app.get('/api/cnai/jobs/:id', mcpAuth, async (req, res, next) => {
+    if (!cnaiWorker) return res.status(503).json({ error: 'checkpoint storage not configured' });
+    try {
+      const state = await cnaiWorker.status(req.params.id);
+      return state ? res.status(200).json({ state })
+        : res.status(404).json({ error: 'checkpoint not found' });
+    } catch (error) { return next(error); }
+  });
+  app.post('/api/cnai/jobs/:id/start', mcpAuth, async (req, res, next) => {
+    if (!cnaiWorker) return res.status(503).json({ error: 'checkpoint storage not configured' });
+    try { return res.status(201).json({ state: await cnaiWorker.start(req.params.id) }); }
+    catch (error) {
+      if (error.code === 'EEXIST') return res.status(409).json({ error: 'job already exists' });
+      return next(error);
+    }
+  });
+  app.post('/api/cnai/jobs/:id/advance', mcpAuth, async (req, res, next) => {
+    if (!cnaiWorker) return res.status(503).json({ error: 'checkpoint storage not configured' });
+    const { proof, options } = req.body || {};
+    // Never accept authorization flags from a request body: authorization
+    // requires a separate server-side authority context.
+    if (!proof || typeof proof !== 'object' || Array.isArray(proof) ||
+        typeof proof.step !== 'string' || typeof proof.evidenceId !== 'string' ||
+        proof.success !== true || options !== undefined)
+      return res.status(400).json({ error: 'invalid proof or client authorization flags' });
+    try {
+      return res.status(200).json(await cnaiWorker.verifyAndAdvance(req.params.id, proof, {
+        authorized: false, humanApproved: false
+      }));
+    } catch (error) { return next(error); }
+  });
+
 
   // Read-only CNAI orchestration planning endpoints. Authenticated using the
   // existing MCP key; no new permissions, writes, or execution are introduced.
