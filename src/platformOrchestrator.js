@@ -657,7 +657,7 @@ class PlatformOrchestrator {
       // Step 5: 古いStateContext/session/cacheを破棄
       if (this.stateRegistry && stateContext.stateSessionId) {
         try {
-          this.stateRegistry.invalidate(stateContext.stateSessionId);
+          const result = this.stateRegistry.invalidateBySessionId(stateContext.stateSessionId, 'auto_repair');
           repairLog(5, `古いStateContext破棄: ${stateContext.stateSessionId}`, true);
         } catch (err) {
           repairLog(5, `古いStateContext破棄失敗: ${err.message}`, false);
