@@ -1646,31 +1646,55 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
   /**
    * Hydrate a complete StateContext with all required fields.
-   * Called once per execution to ensure stateSessionId is only issued with complete context.
+   * Fail-Closed: NEVER issues stateSessionId if ANY required field is missing/invalid.
    * Required fields: appId, environmentId, repository, gitRoot, branch, canonicalBranch, sha, correlationId
+   *
+   * @param {string} scope - Authentication scope hash
+   * @param {string} correlationId - Request-scoped correlation ID (generated once at request entry, never regenerated)
    */
-  async function hydratePowerAppsStateContext(scope) {
+  async function hydratePowerAppsStateContext(scope, correlationId) {
+    if (!correlationId || typeof correlationId !== 'string') {
+      const error = new Error('StateContext hydration requires external correlationId');
+      error.status = 400;
+      error.payload = {
+        status: 'state_context_invalid',
+        missingFields: ['correlationId'],
+        reason: 'correlationId must be generated once at request entry and injected into hydration'
+      };
+      throw error;
+    }
+
     const appState = await powerAppsStore.getAppState();
 
+    // CRITICAL: Fail-Closed - Git metadata is REQUIRED; do NOT continue if unavailable
     let gitState = null;
     try {
       gitState = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
     } catch (error) {
-      // Git access unavailable - continue with partial context
+      // Git metadata failure = CANNOT issue stateSessionId
+      const fieldError = new Error('StateContext hydration failed: Git metadata unavailable');
+      fieldError.status = 400;
+      fieldError.payload = {
+        status: 'state_context_invalid',
+        missingFields: ['branch', 'canonicalBranch', 'sha'],
+        reason: `Cannot issue stateSessionId without Git metadata. Root cause: ${error.message}`
+      };
+      throw fieldError;
     }
 
+    // Strict validation: all fields must be present (no optional/partial contexts at this layer)
     const context = {
       appId: appState.appId,
       environmentId: appState.environmentId,
       repository: config.powerApps.githubRepo,
       gitRoot: config.powerApps.githubRoot,
-      branch: gitState?.branch,
-      canonicalBranch: gitState?.canonicalBranch,
-      sha: gitState?.sha,
-      correlationId: crypto.randomUUID()
+      branch: gitState.branch,
+      canonicalBranch: gitState.canonicalBranch,
+      sha: gitState.sha,
+      correlationId: correlationId  // NEVER regenerate; use injected value
     };
 
-    // Validate all required fields are present
+    // Validate all required fields are present and in correct format BEFORE issuing session
     const missing = [];
     if (!context.appId) missing.push('appId');
     if (!context.environmentId) missing.push('environmentId');
@@ -1682,7 +1706,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     if (!context.correlationId) missing.push('correlationId');
 
     if (missing.length > 0) {
-      const error = new Error('StateContext hydration failed: missing required fields');
+      const error = new Error('StateContext hydration failed: missing or invalid required fields');
       error.status = 400;
       error.payload = {
         status: 'state_context_invalid',
@@ -1714,60 +1738,82 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   }
 
   async function executeWithStateInternal(method, params, req) {
+    // CRITICAL: Generate correlationId ONCE at request entry (not per-method)
+    // This ID scopes all stateful operations within the request: resolve_app_target, get_powerapps_state, hydration, source binding
+    // Never regenerate correlationId in child functions (hydratePowerAppsStateContext, bind, etc.)
+    const requestCorrelationId = crypto.randomUUID();
+
     // Scope to authenticated transport + MCP session when present. The explicit,
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
     const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
+
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
       // Hydrate complete StateContext with all required fields before issuing stateSessionId
+      // Inject request-scoped correlationId (never regenerate)
       try {
-        const session = await hydratePowerAppsStateContext(scope);
-        return { ...state, ...session };
+        const session = await hydratePowerAppsStateContext(scope, requestCorrelationId);
+        return { ...state, ...session, stateContextComplete: true };
       } catch (error) {
+        // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
+        // Even in non-enforcement mode, returning incomplete context must not be misleading
         if (config.enforceStateManager === true) throw error;
         // Legacy tests and non-enforcement mode: return state without full context
         return { ...state, stateContextComplete: false,
           stateContextUnavailable: error.payload?.missingFields
-            ? `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Start with get_powerapps_state`
-            : 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
+            ? `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Restart with get_powerapps_state`
+            : 'Observed Power Apps state is unavailable; restart with get_powerapps_state' };
       }
     }
+
     if (method === 'get_powerapps_source') {
       let session;
-      if (params.correlationId !== undefined || params.stateSessionId !== undefined) {
+      // Only lookup existing session if caller provides both parameters
+      if (params.correlationId !== undefined && params.stateSessionId !== undefined) {
         session = stateRegistry.response(stateRegistry.lookup(params.correlationId, params.stateSessionId, scope));
       }
       const source = await execute(params);
       if (!session) {
         try {
-          // Hydrate complete StateContext with all required fields before binding source
-          session = await hydratePowerAppsStateContext(scope);
+          // Hydrate complete StateContext before binding source
+          // Inject request-scoped correlationId (never regenerate)
+          session = await hydratePowerAppsStateContext(scope, requestCorrelationId);
         } catch (error) {
+          // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
           if (config.enforceStateManager === true) throw error;
-          // Historical standalone reads remain available if app-state lookup
-          // fails; this response deliberately carries no executable context.
-          if (error.payload?.missingFields) {
-            return { ...source, stateContextComplete: false,
-              stateContextUnavailable: `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Start with get_powerapps_state` };
-          }
+          // Historical standalone reads: return source without executable context
           return { ...source, stateContextComplete: false,
-            stateContextUnavailable: 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
+            stateContextUnavailable: error.payload?.missingFields
+              ? `Observed Power Apps state is incomplete; missing: ${error.payload.missingFields.join(', ')}. Start with get_powerapps_state`
+              : 'Observed Power Apps state is unavailable; start with get_powerapps_state' };
         }
       }
-      // Preserve pre-enforcement standalone reads, but never grant an unbound
-      // context permission to run the guarded tools.
-      // Pre-enforcement readers historically accept upstream diagnostic SHAs.
-      // Such reads cannot establish a registered, executable State Context.
+
+      // Validate that retrieved session is complete (has all required fields)
+      if (!session.correlationId || !session.stateSessionId) {
+        const error = new Error('StateContext session incomplete after hydration');
+        error.status = 400;
+        error.payload = {
+          status: 'state_context_invalid',
+          reason: 'Session returned from registry does not contain required fields'
+        };
+        throw error;
+      }
+
+      // Preserve pre-enforcement standalone reads, but never grant unbound context
+      // Pre-enforcement readers may accept upstream diagnostic SHAs, but cannot
+      // establish registered executable State Context without full hydration.
       if (config.enforceStateManager !== true && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
         return { ...source, stateContextComplete: false };
       }
+
       // relativePath (直接指定) または screenName を記録 (StateContext保存用)
       // targetNames の場合はすべての結果をStateContextに保存
       const sourceIdentifier = params.relativePath || params.screenName || (params.targetNames ? JSON.stringify(source.result) : null);
       const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
-      return { ...source, ...bound };
+      return { ...source, ...bound, stateContextComplete: true };
     }
     if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
         method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
