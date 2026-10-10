@@ -55,16 +55,28 @@ function validateGetPowerAppsOperationResultParams(params) {
 }
 function validateGetPowerAppsSourceParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  // relativePath (従来) または screenName (自動解決) のいずれかが必須
+  // relativePath (従来) または screenName または targetNames のいずれかが必須
   const hasRelativePath = typeof params.relativePath === 'string' && params.relativePath.trim();
   const hasScreenName = typeof params.screenName === 'string' && params.screenName.trim();
+  const hasTargetNames = Array.isArray(params.targetNames) && params.targetNames.length > 0 &&
+                         params.targetNames.every(name => typeof name === 'string' && name.trim());
 
-  if (!hasRelativePath && !hasScreenName) {
-    return 'relativePathまたはscreenNameのいずれかが必要です';
+  if (!hasRelativePath && !hasScreenName && !hasTargetNames) {
+    return 'relativePathまたはscreenNameまたはtargetNamesのいずれかが必要です';
+  }
+
+  // targetNames の場合は個別検証
+  if (hasTargetNames) {
+    if (params.targetNames.length > 50) return 'targetNamesは50件以内である必要があります';
+    for (let i = 0; i < params.targetNames.length; i++) {
+      if (typeof params.targetNames[i] !== 'string' || !params.targetNames[i].trim()) {
+        return `targetNames[${i}]は空でない文字列である必要があります`;
+      }
+    }
   }
 
   // 未対応プロパティのチェック
-  const unknownProps = unknownProperty(params, ['relativePath', 'screenName', 'branch', 'correlationId', 'stateSessionId']);
+  const unknownProps = unknownProperty(params, ['relativePath', 'screenName', 'targetNames', 'branch', 'correlationId', 'stateSessionId']);
   if (unknownProps) return unknownProps;
 
   return null;

@@ -951,16 +951,101 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
 
-    // screenName 指定時は自動解決して relativePath に変換
+    // targetNames 指定時: 複数ファイルを一括解決
+    if (params.targetNames && params.targetNames.length > 0) {
+      const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(params.targetNames);
+
+      if (errors.length > 0 && results.length === 0) {
+        // すべて失敗した場合、最初のエラーを返す
+        const err = errors[0];
+        const statusMap = {
+          'AUTH_CONFIGURATION': 503,
+          'FILE_NOT_FOUND': 404,
+          'AMBIGUOUS_PATH': 400,
+          'BRANCH_MISMATCH': 409,
+          'GITHUB_API_ERROR': 502
+        };
+        const error = new Error(err.reason);
+        error.status = statusMap[err.error] || 400;
+        error.payload = {
+          status: err.error,
+          targetNames: params.targetNames,
+          failedCount: errors.length
+        };
+        throw error;
+      }
+
+      // StateContext へ全結果を保存
+      if (params.stateSessionId && results.length > 0) {
+        const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+        const stateData = {
+          resolvedAt: new Date().toISOString(),
+          targetNames: params.targetNames,
+          results: results.map(r => ({
+            name: r.name,
+            path: r.path,
+            sha: r.sha,
+            branch: r.branch
+          })),
+          errors: errors
+        };
+        try {
+          stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', JSON.stringify(stateData));
+        } catch (e) {
+          // StateContext 保存失敗は警告のみ
+          console.warn('Failed to save targetNames resolution to StateContext:', e.message);
+        }
+      }
+
+      return {
+        status: 'ok',
+        method: 'get_powerapps_source',
+        result: {
+          results,
+          errors,
+          totalRequested: params.targetNames.length,
+          successCount: results.length,
+          errorCount: errors.length
+        }
+      };
+    }
+
+    // relativePath または screenName 指定時: 単一ファイル取得
     let resolvedPath = params.relativePath;
     if (!resolvedPath && params.screenName) {
-      resolvedPath = await powerAppsGitStore._resolveScreenToRelativePath(params.screenName);
-      if (!resolvedPath) {
-        throw requestError(`画面「${params.screenName}」に対応するソースファイルが見つかりません。relativePathを直接指定してください`);
+      const resolved = await powerAppsGitStore._resolveScreenToRelativePath(params.screenName);
+      if (resolved.error) {
+        const statusMap = {
+          'AUTH_CONFIGURATION': 503,
+          'FILE_NOT_FOUND': 404,
+          'AMBIGUOUS_PATH': 400,
+          'BRANCH_MISMATCH': 409
+        };
+        const error = new Error(resolved.reason);
+        error.status = statusMap[resolved.error] || 400;
+        error.payload = {
+          status: resolved.error,
+          screenName: params.screenName
+        };
+        throw error;
+      }
+      resolvedPath = resolved.path;
+    }
+
+    const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
+
+    // StateContext へ単一ファイル情報を保存
+    if (params.stateSessionId) {
+      const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+      const sourceIdentifier = params.relativePath || params.screenName || resolvedPath;
+      try {
+        stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', sourceIdentifier);
+      } catch (e) {
+        console.warn('Failed to save source to StateContext:', e.message);
       }
     }
 
-    return withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(resolvedPath));
+    return fileResult;
   }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);

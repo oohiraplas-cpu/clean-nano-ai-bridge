@@ -79,7 +79,12 @@ class PowerAppsGitStore {
       ['POWERAPPS_GITHUB_BRANCH', this.githubBranch]
     ];
     const missing = required.filter(([, value]) => !value).map(([name]) => name);
-    if (missing.length) throw new Error(`GitHub設定が不足しています: ${missing.join(', ')}`);
+    if (missing.length) {
+      const error = new Error(`GitHub設定が不足しています: ${missing.join(', ')}`);
+      error.status = 502;
+      error.payload = { status: 'AUTH_CONFIGURATION', missingConfiguration: missing };
+      throw error;
+    }
   }
 
   _sourcePath(relativePath) {
@@ -117,36 +122,100 @@ class PowerAppsGitStore {
   }
 
   /**
-   * 自動解決: screenName から実ファイルを検索
+   * 自動解決: screenName から実ファイルを検索（完全一致のみ）
    * @param {string} screenName - 画面名（例: "S12_EquipmentOCR"）
-   * @returns {Promise<string|null>} 相対パス、見つからない場合は null
+   * @returns {Promise<{path: string, sha: string, branch: string}|{error: string, reason: string}>}
    */
   async _resolveScreenToRelativePath(screenName) {
-    if (typeof screenName !== 'string' || !screenName.trim()) return null;
+    if (typeof screenName !== 'string' || !screenName.trim()) {
+      return { error: 'INVALID_INPUT', reason: 'screenName is required (non-empty string)' };
+    }
     const clean = screenName.replace(/^\/+|\/+$/g, '').trim();
+
+    // GitHub API 呼び出し前にトークン確認
+    if (!this.githubToken) {
+      return {
+        error: 'AUTH_CONFIGURATION',
+        reason: 'POWERAPPS_GITHUB_TOKEN is not configured. Cannot auto-resolve screen names.'
+      };
+    }
 
     // GitRoot配下で該当する .pa.yaml ファイルを検索
     const candidates = await this._listSourceFilesInRoot();
+    if (candidates.error) {
+      return candidates; // GitHub API エラーが既に分類されている
+    }
 
-    // 完全一致: screenName.pa.yaml
+    // 完全一致のみ: screenName.pa.yaml
     const exact = candidates.find(f =>
       f.replace(/\.pa\.yaml$/, '').toLowerCase() === clean.toLowerCase()
     );
-    if (exact) return exact;
+    if (exact) {
+      // 見つかったファイルの SHA を取得
+      try {
+        const fileData = await this.getSourceFile(exact);
+        return {
+          path: exact,
+          sha: fileData.sha,
+          branch: fileData.branch
+        };
+      } catch (error) {
+        return {
+          error: 'FILE_NOT_FOUND',
+          reason: `Found file ${exact} but could not retrieve its content: ${error.message}`
+        };
+      }
+    }
 
-    // 部分一致: ファイル名に screenName を含む
-    const partial = candidates.filter(f =>
+    // 複数候補が見つかった場合
+    const partialCandidates = candidates.filter(f =>
       f.toLowerCase().includes(clean.toLowerCase())
     );
-    if (partial.length === 1) return partial[0];
+    if (partialCandidates.length > 1) {
+      return {
+        error: 'AMBIGUOUS_PATH',
+        reason: `Multiple files match "${clean}": ${partialCandidates.join(', ')}`
+      };
+    }
 
-    // 複数候補は呼び出し側で判断させる
-    return null;
+    // 見つからない場合
+    return {
+      error: 'FILE_NOT_FOUND',
+      reason: `No exact match found for screen name "${screenName}" in Git root "${this.githubRoot}"`
+    };
+  }
+
+  /**
+   * 複数の画面名を一括解決
+   * @param {string[]} targetNames - 画面名配列
+   * @returns {Promise<{results: Array, errors: Array}>}
+   */
+  async resolveTargetNamesToFiles(targetNames) {
+    if (!Array.isArray(targetNames) || targetNames.length === 0) {
+      return {
+        results: [],
+        errors: [{ name: null, error: 'INVALID_INPUT', reason: 'targetNames must be a non-empty array' }]
+      };
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (const name of targetNames) {
+      const resolved = await this._resolveScreenToRelativePath(name);
+      if (resolved.error) {
+        errors.push({ name, ...resolved });
+      } else {
+        results.push({ name, ...resolved });
+      }
+    }
+
+    return { results, errors };
   }
 
   /**
    * GitRoot 配下の全 .pa.yaml ファイルをリストアップ
-   * @returns {Promise<string[]>} 相対パスのリスト
+   * @returns {Promise<string[]|{error: string, reason: string}>} 相対パスのリストまたはエラーオブジェクト
    */
   async _listSourceFilesInRoot() {
     try {
@@ -162,8 +231,27 @@ class PowerAppsGitStore {
         .map(item => item.name)
         .sort();
     } catch (error) {
-      // リスト取得失敗時は空配列を返す（呼び出し側でrelativePathの直接指定にフォールバック）
-      return [];
+      const errorMsg = String(error?.message || error);
+
+      // GitHub API エラーを分類
+      if (errorMsg.includes('404')) {
+        return {
+          error: 'FILE_NOT_FOUND',
+          reason: `GitHub root path not found: ${this.githubRoot} (branch: ${this.githubBranch})`
+        };
+      }
+
+      if (errorMsg.includes('401') || errorMsg.includes('403')) {
+        return {
+          error: 'AUTH_CONFIGURATION',
+          reason: `GitHub API authentication failed: ${errorMsg.slice(0, 100)}`
+        };
+      }
+
+      return {
+        error: 'GITHUB_API_ERROR',
+        reason: `Failed to list source files: ${errorMsg.slice(0, 150)}`
+      };
     }
   }
 
