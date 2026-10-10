@@ -61,6 +61,7 @@ const {
   validateGenerateUIControlStateParams,
   validatePrepareExecutionPackageParams
 } = require('./bridgeExtensionsValidation');
+const { PowerPlatformRequestHandler, validateExecutePowerPlatformRequestParams } = require('./powerPlatformRequestHandler');
 const { UserProtectionService } = require('./userProtectionService');
 const {
   getBridgeCapabilities,
@@ -144,7 +145,8 @@ const MCP_METHODS = Object.freeze([
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
-  'prepare_powerapps_execution'
+  'prepare_powerapps_execution',
+  'execute_powerplatform_request'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -818,6 +820,24 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['appName'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'execute_powerplatform_request',
+    description: 'Power Platform 統合実行基盤：ユーザー短文1回から、PowerApps・SharePoint・PowerAutomate・Copilot Studio・GitHub・Azure の全製品を協調制御し、対象特定→接続診断→接続修復→既存資産取得→変更計画→実装→テスト→保存→再取得検証→Git/PR/CI→環境反映→公開承認→公開→監査→ロールバック管理の全工程を自動実行します。本番公開・mainマージ・権限変更・削除・外部共有・追加課金のみ人間承認が必須です。',
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        request: { type: 'string', description: 'ユーザーからの短文指示（目的・対象・内容を含む、通常3〜100文字）' },
+        target: { type: 'object', description: 'オプション：対象の明示指定（appName, environmentId等）' },
+        environmentId: { type: 'string', description: 'オプション：環境ID（省略時は正本Environmentを自動選択）' },
+        requestId: { type: 'string', description: 'オプション：冪等キー用requestId（省略時は自動生成）' },
+        publishApproval: { type: 'boolean', description: 'true=公開を含める、false/未指定=保存までで停止（公開時はAPPROVAL_REQUIRED）' },
+        approvalToken: { type: 'string', description: 'オプション：mainマージ・本番公開の人間承認トークン' }
+      },
+      required: ['request'],
+      additionalProperties: false
+    }
   }
 ]);
 
@@ -1364,6 +1384,30 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     }
 
     return contract;
+  }
+  if (method === 'execute_powerplatform_request') {
+    const paramError = validateExecutePowerPlatformRequestParams(params);
+    if (paramError) throw requestError(paramError);
+
+    const handler = new PowerPlatformRequestHandler({
+      powerAppsStore,
+      powerAppsGitStore,
+      sharePointReader,
+      powerAutomateRunner,
+      stateRegistry,
+      deploymentService: bridgeServices.deployment,
+      permissionsService: bridgeServices.permissions,
+      config
+    });
+
+    return withUpstreamErrorStatus(handler.executePowerPlatformRequest({
+      request: params.request,
+      target: params.target,
+      environmentId: params.environmentId,
+      requestId: params.requestId,
+      publishApproval: params.publishApproval || false,
+      approvalToken: params.approvalToken
+    }));
   }
   throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
 }
