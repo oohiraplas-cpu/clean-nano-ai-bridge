@@ -20,9 +20,9 @@ const CONFIG = { mode: 'pac', appId: APP, environmentId: ENV, canonicalBranch: '
 function registered() {
   let now = 100;
   const registry = new StateContextRegistry({ now: () => now, ttlMs: 1000 });
-  const started = registry.begin({ appId: APP, environmentId: ENV }, 'session-a');
+  const started = registry.begin({ appId: APP, environmentId: ENV, branch: 'main', canonicalBranch: 'main' }, 'session-a');
   const bound = registry.bind(started.correlationId, started.stateSessionId, 'session-a', {
-    path: FILE, content: SOURCE, sha: blobSha(SOURCE), branch: 'main', canonicalBranch: 'main'
+    path: FILE, content: SOURCE, sha: blobSha(SOURCE)
   }, FILE);
   function options(context = bound.stateContext, scope = 'session-a') {
     return { stateContext: context, assertStateContext: () => registry.validate(context, bound.stateSessionId, scope, { targetFile: FILE }, 'compare_powerapps_with_git') };

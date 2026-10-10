@@ -981,25 +981,72 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         throw error;
       }
 
-      // StateContext へ全結果を保存
-      if (params.stateSessionId && results.length > 0) {
-        const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-        const stateData = {
-          resolvedAt: new Date().toISOString(),
-          targetNames: params.targetNames,
-          results: results.map(r => ({
-            name: r.name,
-            path: r.path,
-            sha: r.sha,
-            branch: r.branch
-          })),
-          errors: errors
+      // FIXED: Do NOT validate branch/baseSha at SourceObservation level
+      // These are AuthorityContext fields, validated separately before stateSessionId issuance
+      // Validate each result's SourceObservation fields: relativePath, fileSha, content
+      const sourceObservations = [];
+      const validationErrors = [];
+
+      for (const result of results) {
+        const obs = {
+          screenName: result.name,
+          relativePath: result.path,
+          fileSha: result.sha,
+          content: result.content
         };
-        try {
-          stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', JSON.stringify(stateData));
-        } catch (e) {
-          // StateContext 保存失敗は警告のみ
-          console.warn('Failed to save targetNames resolution to StateContext:', e.message);
+
+        // Validate SourceObservation fields only (NOT branch/canonicalBranch/baseSha)
+        if (!obs.relativePath || typeof obs.relativePath !== 'string') {
+          validationErrors.push({ screenName: result.name, reason: 'missing relativePath' });
+          continue;
+        }
+        if (!obs.fileSha || !/^[a-f0-9]{40}$/.test(obs.fileSha)) {
+          validationErrors.push({ screenName: result.name, reason: 'invalid fileSha' });
+          continue;
+        }
+        if (!obs.content || typeof obs.content !== 'string') {
+          validationErrors.push({ screenName: result.name, reason: 'missing content' });
+          continue;
+        }
+
+        sourceObservations.push(obs);
+      }
+
+      // Fail-Closed: if ANY result fails validation, reject entire targetNames batch
+      if (validationErrors.length > 0 && sourceObservations.length === 0) {
+        const error = new Error('SourceObservation validation failed for all targetNames');
+        error.status = 400;
+        error.payload = {
+          status: 'source_observation_invalid',
+          targetNames: params.targetNames,
+          validationErrors,
+          reason: 'No valid SourceObservations in targetNames resolution'
+        };
+        throw error;
+      }
+
+      // If some succeeded but some failed, warn but continue with successful ones
+      if (validationErrors.length > 0) {
+        console.warn('SourceObservation validation partial failure:', validationErrors);
+      }
+
+      // Bind each SourceObservation individually to session (if provided)
+      // Do NOT include branch/baseSha - those are AuthorityContext only
+      if (params.stateSessionId && sourceObservations.length > 0) {
+        const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+        for (const obs of sourceObservations) {
+          try {
+            // stateRegistry.bindSourceObservation: targetNames-specific binding for multiple files
+            // source object: { sha, path, content } (SourceObservation fields only, NOT branch/baseSha)
+            const sourceObj = {
+              sha: obs.fileSha,
+              path: obs.relativePath,
+              content: obs.content
+            };
+            stateRegistry.bindSourceObservation(params.correlationId, params.stateSessionId, scope, sourceObj, obs.relativePath);
+          } catch (e) {
+            console.warn(`Failed to bind targetName ${obs.screenName} to StateContext:`, e.message);
+          }
         }
       }
 
@@ -1007,11 +1054,16 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         status: 'ok',
         method: 'get_powerapps_source',
         result: {
-          results,
-          errors,
+          sourceObservations: sourceObservations.map(o => ({
+            screenName: o.screenName,
+            relativePath: o.relativePath,
+            fileSha: o.fileSha
+          })),
+          sourceObservationComplete: sourceObservations.length === results.length && validationErrors.length === 0,
+          validationErrors: validationErrors.length > 0 ? validationErrors : undefined,
           totalRequested: params.targetNames.length,
-          successCount: results.length,
-          errorCount: errors.length
+          successCount: sourceObservations.length,
+          errorCount: errors.length + validationErrors.length
         }
       };
     }
@@ -1857,10 +1909,13 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
       // Step 5: Validate SourceObservation fields are populated
       // For single-file operations (non-targetNames), all these must be present from execute()
+      // CRITICAL: Do NOT validate branch/baseSha here - those are AuthorityContext fields
+      // SourceObservation validation is file-level only: relativePath, fileSha, content
       if (!params.targetNames && source && typeof source === 'object') {
-        // source.sha = file blob SHA
-        // source.path = relative path
-        // source.content = file contents
+        // source.sha = file blob SHA (SourceObservation)
+        // source.path = relative path (SourceObservation)
+        // source.content = file contents (SourceObservation)
+        // Do NOT validate source.branch, source.canonicalBranch, source.baseSha - those are AuthorityContext
         if (!source.sha || !/^[a-f0-9]{40}$/.test(source.sha)) {
           // File SHA missing or invalid - cannot establish SourceObservation
           if (config.enforceStateManager === true) {
@@ -1884,10 +1939,15 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       }
 
       // Step 7: Bind SourceObservation to AuthorityContext session
-      // relativePath (直接指定) または screenName を記録 (StateContext保存用)
-      // targetNames の場合はすべての結果をStateContextに保存
-      const sourceIdentifier = params.relativePath || params.screenName || (params.targetNames ? JSON.stringify(source.result) : null);
-      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
+      // Bind ONLY SourceObservation fields (relativePath, fileSha, content)
+      // Do NOT re-validate or pass branch/baseSha - those are AuthorityContext, already validated before stateSessionId
+      const sourceIdentifier = params.relativePath || params.screenName || null;
+      const sourceForBind = {
+        sha: source.sha,
+        path: source.path,
+        content: source.content
+      };
+      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, sourceForBind, sourceIdentifier);
       const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
 
       return {
