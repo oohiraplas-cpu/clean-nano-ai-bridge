@@ -1708,3 +1708,27 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
   const resultG = await resG.json();
   assert.ok(resultG.result.structuredContent.conclusion === 'BLOCKED' || resultG.result.isError, 'missing appId returns error or BLOCKED');
 });
+
+
+test('CNAI v3 selects active work, then high-priority work, never demo ahead of real work', async (t) => {
+  const server = await createTestServer([
+    { id: 'demo-001', status: '未着手', source: 'local-demo' },
+    { id: 'low', status: '未着手', priority: 'low' },
+    { id: 'high', status: '未着手', priority: 'high' },
+    { id: 'blocked', status: '人間承認待ち', priority: 'critical' }
+  ]);
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/api/next`);
+  assert.equal((await response.json()).task.id, 'high');
+});
+
+test('CNAI v3 resumes running work before new tasks without bypassing approval', async (t) => {
+  const server = await createTestServer([
+    { id: 'new', status: '未着手', priority: 'critical' },
+    { id: 'running', status: '実行中', priority: 'low' },
+    { id: 'approval', status: '人間承認待ち', priority: 'critical' }
+  ]);
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/api/next`);
+  assert.equal((await response.json()).task.id, 'running');
+});
