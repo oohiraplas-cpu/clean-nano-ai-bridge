@@ -133,12 +133,15 @@ class StateContextRegistry {
     const record = this.lookup(correlationId, stateSessionId, scope);
     const failures = [];
 
-    for (const field of ['sha', 'path']) {
-      if (typeof source[field] !== 'string' || !source[field].length) failures.push(`${field}: missing from observed source`);
-    }
+    // Phase 6: Validate path and content first
+    if (typeof source.path !== 'string' || !source.path.length) failures.push('path: missing from observed source');
     if (typeof source.content !== 'string') failures.push('content: missing from observed source');
+    if (failures.length) throw contextError(failures);
+
+    // Then validate sha against content (after content is confirmed present)
+    if (typeof source.sha !== 'string' || !source.sha.length) failures.push('sha: missing from observed source');
     if (!/^[a-f0-9]{40}$/.test(source.sha || '')) failures.push('sha: invalid observed blob SHA');
-    if (typeof source.content === 'string' && blobSha(source.content) !== source.sha) failures.push('sha: observed content does not match blob SHA');
+    if (blobSha(source.content) !== source.sha) failures.push('sha: observed content does not match blob SHA');
     if (failures.length) throw contextError(failures);
 
     // Allow rebinding to different paths (targetNames scenario with multiple files)
