@@ -59,7 +59,21 @@ class TaskStore {
 
   async next() {
     const tasks = await this.read();
-    return tasks.find((task) => !NEXT_EXCLUDED_STATUSES.has(task.status)) || null;
+    // Preserve approval and retry safety gates. Prefer resumed work and high-priority
+    // user tasks; demo fixtures must never starve real work.
+    const eligible = tasks.filter((task) =>
+      !NEXT_EXCLUDED_STATUSES.has(task.status) &&
+      task.status !== 'エラー' && task.status !== '判断待ち');
+    const real = eligible.filter((task) => task.source !== 'local-demo');
+    const candidates = real.length ? real : eligible;
+    const priority = { critical: 4, urgent: 4, high: 3, normal: 2, low: 1 };
+    return candidates
+      .map((task, index) => ({ task, index }))
+      .sort((a, b) =>
+        Number(b.task.status === '実行中') - Number(a.task.status === '実行中') ||
+        (priority[String(b.task.priority || 'normal').toLowerCase()] || 2) -
+        (priority[String(a.task.priority || 'normal').toLowerCase()] || 2) ||
+        a.index - b.index)[0]?.task || null;
   }
 }
 
