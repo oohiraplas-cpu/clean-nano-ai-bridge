@@ -19,6 +19,7 @@ const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
 const { ReuseEngine } = require('./reuseEngine');
 const { EvidenceCaptureEngine } = require('./evidenceCaptureEngine');
+const { RuntimeEvidenceEngine } = require('./runtimeEvidenceEngine');
 const { DispatchEngine } = require('./dispatchEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
@@ -155,7 +156,19 @@ const MCP_METHODS = Object.freeze([
   'assess_done',
   'check_prohibited_operations',
   'suggest_reuse_pattern',
-  'get_playbook'
+  'get_playbook',
+  'capture_app_startup',
+  'capture_user_interaction',
+  'capture_data_binding',
+  'capture_formula_execution',
+  'capture_connection',
+  'capture_error_event',
+  'capture_state_transition',
+  'capture_performance',
+  'capture_behavior_verification',
+  'capture_integration',
+  'generate_runtime_report',
+  'export_evidence'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -1010,6 +1023,206 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         }
       },
       required: ['operation', 'environment'],
+      additionalProperties: false
+    }
+  },
+  // Phase 12: Runtime Evidence Engine
+  {
+    name: 'capture_app_startup',
+    description: 'Phase 12：アプリ起動時の初期化状態をキャプチャします。起動時間・画面読み込み・接続初期化を記録します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string', description: 'セッション関連ID' },
+        appId: { type: 'string', description: 'アプリID' },
+        startupTime: { type: 'number', description: 'ミリ秒単位の起動時間' },
+        environment: { type: 'string', description: '実行環境' },
+        screenLoaded: { type: 'boolean', description: 'UI画面読み込み完了' },
+        connectionsInitialized: { type: 'boolean', description: '接続初期化完了' }
+      },
+      required: ['appId', 'startupTime'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_user_interaction',
+    description: 'Phase 12：ユーザー操作（クリック・入力・選択）をキャプチャします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        screenName: { type: 'string' },
+        controlName: { type: 'string' },
+        interactionType: { type: 'string', enum: ['click', 'input', 'navigation', 'selection'] },
+        inputValue: { type: 'string' }
+      },
+      required: ['appId', 'controlName', 'interactionType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_data_binding',
+    description: 'Phase 12：データバインディング検証。UI要素と実際のデータが一致しているか確認します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        controlName: { type: 'string' },
+        dataSourceName: { type: 'string' },
+        expectedValue: {},
+        actualValue: {}
+      },
+      required: ['appId', 'controlName', 'expectedValue', 'actualValue'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_formula_execution',
+    description: 'Phase 12：PowerFx式実行結果をキャプチャ。入出力値の検証を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        formulaName: { type: 'string' },
+        inputParameters: { type: 'object' },
+        expectedOutput: {},
+        actualOutput: {}
+      },
+      required: ['appId', 'formulaName', 'expectedOutput', 'actualOutput'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_connection',
+    description: 'Phase 12：接続状態とAPI呼び出しをキャプチャします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        connectionName: { type: 'string' },
+        status: { type: 'string', enum: ['connected', 'error', 'timeout'] },
+        responseTime: { type: 'number' },
+        errorInfo: { type: 'string' }
+      },
+      required: ['appId', 'connectionName', 'status'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_error_event',
+    description: 'Phase 12：ランタイムエラーをキャプチャ。重大度（error/warning/fatal）と処理状態を記録します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        errorMessage: { type: 'string' },
+        severity: { type: 'string', enum: ['error', 'warning', 'fatal'] },
+        handled: { type: 'boolean' }
+      },
+      required: ['appId', 'errorMessage', 'severity'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_state_transition',
+    description: 'Phase 12：状態遷移・画面遷移をキャプチャします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        transitionType: { type: 'string', enum: ['navigation', 'overlay', 'modal', 'dialog'] },
+        fromScreen: { type: 'string' },
+        toScreen: { type: 'string' },
+        transitionTime: { type: 'number' }
+      },
+      required: ['appId', 'transitionType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_performance',
+    description: 'Phase 12：操作パフォーマンスをキャプチャ。実行時間と閾値比較を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        operationName: { type: 'string' },
+        duration: { type: 'number', description: 'ミリ秒単位' },
+        renderTime: { type: 'number' },
+        apiCallTime: { type: 'number' }
+      },
+      required: ['appId', 'operationName', 'duration'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_behavior_verification',
+    description: 'Phase 12：ユーザー可視動作を検証。期待値と観測値の比較を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        scenario: { type: 'string', description: '動作シナリオ' },
+        expectedBehavior: { type: 'string' },
+        observedBehavior: { type: 'string' },
+        verified: { type: 'boolean' }
+      },
+      required: ['appId', 'scenario', 'expectedBehavior', 'observedBehavior'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_integration',
+    description: 'Phase 12：クロスアプリ・クロスサービス連携を検証します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        integrationType: { type: 'string', enum: ['sharepoint_sync', 'power_automate', 'cross_app', 'external_api'] },
+        sourceSystem: { type: 'string' },
+        targetSystem: { type: 'string' },
+        status: { type: 'string', enum: ['success', 'partial', 'failed'] }
+      },
+      required: ['appId', 'integrationType', 'status'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'generate_runtime_report',
+    description: 'Phase 12：ランタイムレポート生成。エビデンス集約・完全性検証・準備度採点を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: {
+          type: 'string',
+          description: 'セッション関連ID'
+        }
+      },
+      required: ['correlationId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'export_evidence',
+    description: 'Phase 12：完全なランタイムエビデンス・ヘルスステータスをエクスポートします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: {
+          type: 'string',
+          description: 'セッション関連ID'
+        }
+      },
+      required: ['correlationId'],
       additionalProperties: false
     }
   }
@@ -1884,6 +2097,213 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       checkpoints: playbook.checkpoints,
       estimatedDuration: playbook.estimatedDuration,
       prerequisitesByFrequency: playbook.prerequisitesByFrequency,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Phase 12: Runtime Evidence Engine
+  if (method === 'capture_app_startup') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureAppStartup({
+      appId: params.appId,
+      appName: params.appName,
+      startupTime: params.startupTime,
+      screenLoadTime: params.screenLoadTime,
+      connectionInitStatus: params.connectionInitStatus,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'App startup event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_user_interaction') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureUserInteraction({
+      userId: params.userId,
+      interactionType: params.interactionType,
+      elementId: params.elementId,
+      elementLabel: params.elementLabel,
+      timestamp: params.timestamp,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'User interaction event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_data_binding') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureDataBinding({
+      bindingId: params.bindingId,
+      uiElement: params.uiElement,
+      expectedValue: params.expectedValue,
+      actualValue: params.actualValue,
+      isBound: params.isBound,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Data binding validation captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_formula_execution') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureFormulaExecution({
+      formulaId: params.formulaId,
+      formulaText: params.formulaText,
+      inputData: params.inputData,
+      outputResult: params.outputResult,
+      executionTime: params.executionTime,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Formula execution captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_connection') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureConnection({
+      connectionId: params.connectionId,
+      connectionName: params.connectionName,
+      status: params.status,
+      latency: params.latency,
+      dataExchangedBytes: params.dataExchangedBytes,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Connection event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_error_event') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureErrorEvent({
+      errorCode: params.errorCode,
+      errorMessage: params.errorMessage,
+      stackTrace: params.stackTrace,
+      handled: params.handled,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Error event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_state_transition') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureStateTransition({
+      componentId: params.componentId,
+      previousState: params.previousState,
+      newState: params.newState,
+      transitionTime: params.transitionTime,
+      trigger: params.trigger,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'State transition captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_performance') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.capturePerformance({
+      operationName: params.operationName,
+      startTime: params.startTime,
+      endTime: params.endTime,
+      resourcesUsed: params.resourcesUsed,
+      warnings: params.warnings,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Performance data captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_behavior_verification') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureBehaviorVerification({
+      scenario: params.scenario,
+      expectedBehavior: params.expectedBehavior,
+      observedBehavior: params.observedBehavior,
+      matches: params.matches,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Behavior verification captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_integration') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureIntegration({
+      sourceSystem: params.sourceSystem,
+      targetSystem: params.targetSystem,
+      dataTransferred: params.dataTransferred,
+      status: params.status,
+      duration: params.duration,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Integration event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'generate_runtime_report') {
+    const engine = new RuntimeEvidenceEngine();
+    const report = engine.generateRuntimeReport();
+    return {
+      status: 'OK',
+      message: 'Runtime report generated',
+      reportId: report.reportId,
+      generatedAt: report.generatedAt,
+      timeline: report.timeline,
+      categories: report.categories,
+      integrityVerified: report.integrityVerified,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  if (method === 'export_evidence') {
+    const engine = new RuntimeEvidenceEngine();
+    const exported = engine.exportEvidence();
+    return {
+      status: 'OK',
+      message: 'Evidence export completed',
+      exportTimestamp: exported.exportTimestamp,
+      totalRecords: exported.totalRecords,
+      runtimeReport: exported.runtimeReport,
       timestamp: new Date().toISOString()
     };
   }
