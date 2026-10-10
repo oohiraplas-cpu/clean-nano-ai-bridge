@@ -1084,12 +1084,27 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
 
-    // StateContext へ単一ファイル情報を保存
-    if (params.stateSessionId) {
+    // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
+    if (params.stateSessionId && params.correlationId) {
       const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-      const sourceIdentifier = params.relativePath || params.screenName || resolvedPath;
       try {
-        stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', sourceIdentifier);
+        // Compute blob SHA for content validation
+        const blobShaFunc = require('./stateContext').blobSha;
+        const fileSha = blobShaFunc(fileResult.content);
+
+        const source = {
+          sha: fileSha,
+          path: resolvedPath,
+          content: fileResult.content
+        };
+
+        stateRegistry.bindSourceObservation(
+          params.correlationId,
+          params.stateSessionId,
+          scope,
+          source,
+          resolvedPath
+        );
       } catch (e) {
         console.warn('Failed to save source to StateContext:', e.message);
       }
@@ -1928,10 +1943,30 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       }
 
       // Step 7: Bind SourceObservation to AuthorityContext session
-      // relativePath (直接指定) または screenName を記録 (StateContext保存用)
-      // targetNames の場合はすべての結果をStateContextに保存
-      const sourceIdentifier = params.relativePath || params.screenName || (params.targetNames ? JSON.stringify(source.result) : null);
-      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
+      // Phase 6: Use bindSourceObservation for file-level validation only
+      let bound = stateRegistry.response(stateRegistry.lookup(session.correlationId, session.stateSessionId, scope));
+
+      if (!params.targetNames && source && source.sha && source.path && source.content) {
+        try {
+          // Single-file binding: use bindSourceObservation
+          const sourceObs = {
+            sha: source.sha,
+            path: source.path,
+            content: source.content
+          };
+          bound = stateRegistry.bindSourceObservation(
+            session.correlationId,
+            session.stateSessionId,
+            scope,
+            sourceObs,
+            source.path
+          );
+        } catch (e) {
+          console.warn('bindSourceObservation failed in compare_powerapps_with_git:', e.message);
+          // Continue with current state if binding fails (backward compatibility)
+        }
+      }
+
       const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
 
       return {
