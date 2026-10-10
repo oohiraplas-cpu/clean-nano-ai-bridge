@@ -50,22 +50,50 @@ class StateContextRegistry {
 
   begin(state, scope) {
     const appId = state.appId;
-    const environment = state.environmentId;
+    const environment = state.environmentId;  // Map input environmentId to internal environment field
     const missing = ['appId', 'environment'].filter((field) => typeof ({ appId, environment })[field] !== 'string' || !({ appId, environment })[field].trim());
     if (missing.length) throw contextError(missing.map((f) => `${f}: missing from observed app state`), 400);
     for (const [id, record] of this.records) if (this.now() >= record.expiresAt) this.records.delete(id);
     if (this.records.size >= this.maxEntries) throw contextError(['registry: capacity exceeded'], 503);
-    const correlationId = crypto.randomUUID();
+    const correlationId = state.correlationId || crypto.randomUUID();
     const stateSessionId = crypto.randomUUID();
-    const context = { appId, environment, correlationId };
+    // Store full context including extended AuthorityContext fields
+    // Internal schema: appId, environment (for backward compat), plus all AuthorityContext fields
+    const context = { ...state, appId, environment, correlationId };
     this.records.set(correlationId, { context, scope, stateSessionId, expiresAt: this.now() + this.ttlMs, source: null });
     return this.response(this.records.get(correlationId));
   }
 
   response(record) {
-    return { correlationId: record.context.correlationId, stateSessionId: record.stateSessionId,
-      stateContext: { ...record.context }, stateContextComplete: Boolean(record.source),
-      stateContextExpiresAt: new Date(record.expiresAt).toISOString() };
+    // Return BOTH legacy stateContext (backward compat) and new authorityContext (8-field structure)
+    // stateContext: filtered to STATE_CONTEXT_SCHEMA.required for backward compatibility
+    const stateContextFields = REQUIRED_STATE_FIELDS.reduce((acc, field) => {
+      if (record.context[field] !== undefined) acc[field] = record.context[field];
+      return acc;
+    }, {});
+
+    // authorityContext: full 8-field structure for executable sessions
+    const authorityContextFields = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId'];
+    const authorityContext = authorityContextFields.reduce((acc, field) => {
+      if (record.context[field] !== undefined) acc[field] = record.context[field];
+      return acc;
+    }, {});
+
+    // Check completeness of authorityContext (not based on source binding)
+    const authorityContextComplete = authorityContextFields.every(f => record.context[f] !== undefined);
+    const sourceObservationComplete = Boolean(record.source);
+
+    return {
+      correlationId: record.context.correlationId,
+      stateSessionId: record.stateSessionId,
+      stateContext: stateContextFields,
+      authorityContext,
+      authorityContextComplete,
+      sourceObservationComplete,
+      // Backward compatibility: stateContextComplete means source was bound
+      stateContextComplete: sourceObservationComplete,
+      stateContextExpiresAt: new Date(record.expiresAt).toISOString()
+    };
   }
 
   lookup(correlationId, stateSessionId, scope) {

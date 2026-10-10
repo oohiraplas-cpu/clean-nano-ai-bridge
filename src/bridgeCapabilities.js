@@ -58,7 +58,7 @@ function getBridgeCapabilities(MCP_PUBLIC_TOOLS, {
   schemaVersion = '2025-10-10',
   deploymentSha = null,
   executionPackageVersion = '1.0.0',
-  supportedStateContextFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId']
+  supportedStateContextFields = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId']
 } = {}) {
   const capabilities = {
     bridge: {
