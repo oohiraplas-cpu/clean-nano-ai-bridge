@@ -60,11 +60,11 @@ async function fixture(t, options = {}) {
   return { rpc, chain, url, state, source, expire: () => { now += 1001; } };
 }
 
-test('tools/list publishes the shared schemas and preserves all 54 tool names', async t => {
+test('tools/list publishes the shared schemas and preserves all 55 tool names', async t => {
   const f = await fixture(t);
   const res = await fetch(f.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
   const tools = (await res.json()).result.tools;
-  assert.equal(tools.length, 54);
+  assert.equal(tools.length, 55);
   assert.deepEqual(tools.map(x => x.name), MCP_PUBLIC_TOOLS.map(x => x.name));
   for (const name of ['validate_powerapps_source', 'compare_powerapps_with_git']) {
     const schema = tools.find(x => x.name === name).inputSchema;
