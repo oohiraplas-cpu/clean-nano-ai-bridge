@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
 const { TaskStore } = require('./taskStore');
+const { getCnaiVersion } = require('./cnaiVersion');
 const { STEPS: CNAI_STEPS, initialState: cnaiInitialState, currentStep: cnaiCurrentStep } = require('./cnaiAutoPipeline');
 const { planRecovery: cnaiPlanRecovery } = require('./cnaiRecoveryEngine');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
@@ -1602,6 +1603,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   app.use(express.json({ limit: '256kb' }));
 
   app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+
+  // Public metadata only: never exposes credentials, settings, or privileged state.
+  app.get('/api/cnai/version', (req, res) => res.status(200).json(getCnaiVersion()));
 
   app.get('/api/tasks', async (req, res, next) => {
     try { return res.status(200).json(await tasksPayload(store)); } catch (error) { return next(error); }
