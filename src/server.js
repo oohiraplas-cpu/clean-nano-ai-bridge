@@ -227,15 +227,21 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'get_powerapps_source',
-    description: '既存Power Appsソースの指定ファイルを取得します。',
+    description: '既存Power Appsソースの指定ファイルを取得します。relativePath / screenName / targetNames のいずれかを指定。',
     inputSchema: {
       type: 'object',
       properties: {
-        relativePath: { type: 'string', description: '取得するソースファイルの相対パス' },
-        correlationId: { type: 'string', description: 'get_powerapps_stateが返したcorrelationId' },
-        stateSessionId: { type: 'string', description: '同じ実行単位のstateSessionId' }
+        relativePath: { type: 'string', description: '取得するソースファイルの相対パス（オプション）' },
+        screenName: { type: 'string', description: 'Power Apps画面名。Git正本から自動解決します（オプション）' },
+        targetNames: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '複数の画面名を一括解決（targetNamesが指定された場合、他は無視）（オプション）',
+          maxItems: 50
+        },
+        correlationId: { type: 'string', description: 'get_powerapps_stateが返したcorrelationId（オプション）' },
+        stateSessionId: { type: 'string', description: '同じ実行単位のstateSessionId。解決結果をStateContextへ保存（オプション）' }
       },
-      required: ['relativePath'],
       additionalProperties: false
     }
   },
