@@ -355,9 +355,11 @@ class CompleteBridgeServer {
       throw new Error('Components required for initialization');
     }
 
-    // Register components
+    // Register only non-undefined components
     for (const [name, component] of Object.entries(components)) {
-      this.factory.registerComponent(name, component);
+      if (component) {
+        this.factory.registerComponent(name, component);
+      }
     }
 
     // Set configuration
