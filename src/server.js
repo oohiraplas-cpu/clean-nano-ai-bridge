@@ -957,7 +957,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
 
-    // targetNames 指定時: 複数ファイルを一括解決
+    // targetNames 指定時: 複数ファイルを個別展開→SourceObservation検証→bindSourceObservation
     if (params.targetNames && params.targetNames.length > 0) {
       const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(params.targetNames);
 
@@ -981,25 +981,84 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         throw error;
       }
 
-      // StateContext へ全結果を保存
-      if (params.stateSessionId && results.length > 0) {
-        const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-        const stateData = {
-          resolvedAt: new Date().toISOString(),
-          targetNames: params.targetNames,
-          results: results.map(r => ({
-            name: r.name,
-            path: r.path,
-            sha: r.sha,
-            branch: r.branch
-          })),
-          errors: errors
+      // Phase 6: 各resultについてSourceObservation検証→bindSourceObservation
+      // Fail-Closed: stateSessionId必須（Phase 6 Architecture）
+      const sourceObservations = [];
+      const bindErrors = [];
+
+      if (!params.stateSessionId && results.length > 0) {
+        // Fail-Closed: stateSessionId missing
+        const error = new Error('Phase 6: stateSessionId required for targetNames SourceObservation binding');
+        error.status = 400;
+        error.payload = {
+          status: 'state_context_invalid',
+          reason: 'stateSessionId required for targetNames binding',
+          targetNames: params.targetNames
         };
-        try {
-          stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', JSON.stringify(stateData));
-        } catch (e) {
-          // StateContext 保存失敗は警告のみ
-          console.warn('Failed to save targetNames resolution to StateContext:', e.message);
+        throw error;
+      }
+
+      if (params.stateSessionId && results.length > 0) {
+        for (const result of results) {
+          try {
+            // Phase 6: Retrieve source first, then validate SourceObservation fields
+            if (!result.path || typeof result.path !== 'string') {
+              bindErrors.push({
+                screenName: result.name,
+                reason: 'Missing path in resolved result'
+              });
+              continue;
+            }
+
+            // FileContent取得（content検証用）
+            const fileData = await powerAppsGitStore.getSourceFile(result.path);
+            if (!fileData.content || typeof fileData.content !== 'string') {
+              bindErrors.push({
+                screenName: result.name,
+                reason: 'Failed to retrieve file content'
+              });
+              continue;
+            }
+
+            // SourceObservation検証: sha/path/content が必須（source取得後に検証）
+            if (!result.sha || !/^[a-f0-9]{40}$/.test(result.sha)) {
+              bindErrors.push({
+                screenName: result.name,
+                reason: `Invalid blob SHA: ${result.sha}`
+              });
+              continue;
+            }
+
+            // SourceObservation: {sha, path, content}
+            const source = {
+              sha: result.sha,
+              path: result.path,
+              content: fileData.content
+            };
+
+            // StateRegistry.bindSourceObservation()で原子的bind
+            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+            const bindResult = stateRegistry.bindSourceObservation(
+              params.correlationId,
+              params.stateSessionId,
+              scope,
+              source,
+              result.path
+            );
+
+            sourceObservations.push({
+              screenName: result.name,
+              relativePath: result.path,
+              fileSha: result.sha,
+              stateSessionId: bindResult.stateSessionId,
+              sourceObservationComplete: bindResult.sourceObservationComplete
+            });
+          } catch (e) {
+            bindErrors.push({
+              screenName: result.name,
+              reason: `bindSourceObservation failed: ${e.message}`
+            });
+          }
         }
       }
 
@@ -1007,11 +1066,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         status: 'ok',
         method: 'get_powerapps_source',
         result: {
-          results,
-          errors,
+          sourceObservations,
+          bindErrors,
           totalRequested: params.targetNames.length,
-          successCount: results.length,
-          errorCount: errors.length
+          successCount: sourceObservations.length,
+          errorCount: bindErrors.length
         }
       };
     }
@@ -1040,12 +1099,27 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
 
-    // StateContext へ単一ファイル情報を保存
-    if (params.stateSessionId) {
+    // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
+    if (params.stateSessionId && params.correlationId) {
       const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-      const sourceIdentifier = params.relativePath || params.screenName || resolvedPath;
       try {
-        stateRegistry.bind(params.correlationId || crypto.randomUUID(), params.stateSessionId, scope, 'github_canonical', sourceIdentifier);
+        // Compute blob SHA for content validation
+        const blobShaFunc = require('./stateContext').blobSha;
+        const fileSha = blobShaFunc(fileResult.content);
+
+        const source = {
+          sha: fileSha,
+          path: resolvedPath,
+          content: fileResult.content
+        };
+
+        stateRegistry.bindSourceObservation(
+          params.correlationId,
+          params.stateSessionId,
+          scope,
+          source,
+          resolvedPath
+        );
       } catch (e) {
         console.warn('Failed to save source to StateContext:', e.message);
       }
@@ -1884,10 +1958,30 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       }
 
       // Step 7: Bind SourceObservation to AuthorityContext session
-      // relativePath (直接指定) または screenName を記録 (StateContext保存用)
-      // targetNames の場合はすべての結果をStateContextに保存
-      const sourceIdentifier = params.relativePath || params.screenName || (params.targetNames ? JSON.stringify(source.result) : null);
-      const bound = stateRegistry.bind(session.correlationId, session.stateSessionId, scope, source, sourceIdentifier);
+      // Phase 6: Use bindSourceObservation for file-level validation only
+      let bound = stateRegistry.response(stateRegistry.lookup(session.correlationId, session.stateSessionId, scope));
+
+      if (!params.targetNames && source && source.sha && source.path && source.content) {
+        try {
+          // Single-file binding: use bindSourceObservation
+          const sourceObs = {
+            sha: source.sha,
+            path: source.path,
+            content: source.content
+          };
+          bound = stateRegistry.bindSourceObservation(
+            session.correlationId,
+            session.stateSessionId,
+            scope,
+            sourceObs,
+            source.path
+          );
+        } catch (e) {
+          console.warn('bindSourceObservation failed in compare_powerapps_with_git:', e.message);
+          // Continue with current state if binding fails (backward compatibility)
+        }
+      }
+
       const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
 
       return {

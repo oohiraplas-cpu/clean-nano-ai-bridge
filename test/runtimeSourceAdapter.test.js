@@ -248,3 +248,91 @@ test('PAC worker fails closed without explicit identity and dedicated profile', 
     assert.throws(() => pacWorkerEnvironment(config), error => error.payload?.status === 'source_unavailable');
   }
 });
+
+test('targetNames individual binding with SourceObservation validation (3-screen scenario)', async t => {
+  const { StateContextRegistry, blobSha } = require('../src/stateContext');
+
+  // Test data for 3 screens
+  const screens = {
+    'S12_EquipmentOCR': 'Screens:\n  S12_EquipmentOCR:\n    Properties:\n      Fill: =Color.White\n',
+    'S18_OcrReadPreview': 'Screens:\n  S18_OcrReadPreview:\n    Properties:\n      Fill: =Color.Blue\n',
+    'S19_OcrFinalPreview': 'Screens:\n  S19_OcrFinalPreview:\n    Properties:\n      Fill: =Color.Green\n'
+  };
+
+  const screenNames = Object.keys(screens);
+
+  // Setup StateContextRegistry
+  let now = 100;
+  const registry = new StateContextRegistry({ now: () => now, ttlMs: 5000 });
+
+  // Begin session with AuthorityContext
+  const started = registry.begin({
+    appId: APP,
+    environmentId: ENV,
+    branch: 'main',
+    canonicalBranch: 'main'
+  }, 'session-3screens');
+
+  // Phase 6: bindSourceObservation for each screen individually
+  const observations = [];
+  for (const screenName of screenNames) {
+    const source = {
+      sha: blobSha(screens[screenName]),
+      path: `powerapps/CN_AI依頼台帳/Source/${screenName}.pa.yaml`,
+      content: screens[screenName]
+    };
+
+    const bound = registry.bindSourceObservation(
+      started.correlationId,
+      started.stateSessionId,
+      'session-3screens',
+      source,
+      source.path
+    );
+
+    observations.push({
+      screenName,
+      relativePath: source.path,
+      fileSha: source.sha,
+      sourceObservationComplete: bound.sourceObservationComplete
+    });
+  }
+
+  // Verify all 3 screens bound successfully
+  assert.equal(observations.length, 3);
+  assert.equal(observations[0].screenName, 'S12_EquipmentOCR');
+  assert.equal(observations[1].screenName, 'S18_OcrReadPreview');
+  assert.equal(observations[2].screenName, 'S19_OcrFinalPreview');
+
+  // Verify sourceObservationComplete for all
+  for (const obs of observations) {
+    assert.equal(obs.sourceObservationComplete, true, `sourceObservationComplete failed for ${obs.screenName}`);
+  }
+
+  // Test session reuse: lookup by stateSessionId should find all 3
+  const record = registry.lookupBySessionId(started.stateSessionId, 'session-3screens', APP);
+  assert.ok(record, 'Session not found for reuse');
+  assert.equal(record.source.path, `powerapps/CN_AI依頼台帳/Source/S19_OcrFinalPreview.pa.yaml`, 'Last bound source should be S19_OcrFinalPreview');
+
+  // Verify validate() finds the correct SHA from record.source (Phase 6 architecture)
+  // record.source.sha comes from SourceObservation, not record.context
+  const lastObs = observations[observations.length - 1];
+  const validateContext = {
+    appId: APP,
+    environment: ENV,
+    branch: 'main',
+    canonicalBranch: 'main',
+    sha: lastObs.fileSha,
+    correlationId: started.correlationId
+  };
+
+  const validateResult = registry.validate(
+    validateContext,
+    started.stateSessionId,
+    'session-3screens',
+    { relativePath: lastObs.relativePath },
+    'get_powerapps_source'
+  );
+
+  assert.ok(validateResult, 'Validation should succeed for last bound source (sha from record.source)');
+});

@@ -124,6 +124,35 @@ class StateContextRegistry {
     return this.response(record);
   }
 
+  bindSourceObservation(correlationId, stateSessionId, scope, source, relativePath) {
+    // Phase 6: targetNames-specific binding for multiple SourceObservations without re-validating AuthorityContext
+    // AuthorityContext fields (branch, canonicalBranch) were validated BEFORE stateSessionId was issued
+    // SourceObservation binding ONLY validates file-level fields: sha, path, content
+    // Do NOT re-validate or require branch/canonicalBranch from source object
+    // Support multiple files bound to same session (last one is stored in record.source for backward compat)
+    const record = this.lookup(correlationId, stateSessionId, scope);
+    const failures = [];
+
+    // Phase 6: Validate path and content first
+    if (typeof source.path !== 'string' || !source.path.length) failures.push('path: missing from observed source');
+    if (typeof source.content !== 'string') failures.push('content: missing from observed source');
+    if (failures.length) throw contextError(failures);
+
+    // Then validate sha against content (after content is confirmed present)
+    if (typeof source.sha !== 'string' || !source.sha.length) failures.push('sha: missing from observed source');
+    if (!/^[a-f0-9]{40}$/.test(source.sha || '')) failures.push('sha: invalid observed blob SHA');
+    if (blobSha(source.content) !== source.sha) failures.push('sha: observed content does not match blob SHA');
+    if (failures.length) throw contextError(failures);
+
+    // Allow rebinding to different paths (targetNames scenario with multiple files)
+    // Only reject if trying to bind the SAME path with different SHA
+    if (record.source && record.source.path === source.path && record.source.sha !== source.sha) {
+      throw contextError(['path: already bound with different SHA']);
+    }
+    record.source = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
+    return this.response(record);
+  }
+
   lookupBySessionId(stateSessionId, scope, appId) {
     // Dedicated API for inspect_powerapps_structure stateSessionId-only lookup
     if (typeof stateSessionId !== 'string' || stateSessionId.length < 8) {
@@ -152,7 +181,9 @@ class StateContextRegistry {
   validate(context, stateSessionId, scope, params, method) {
     const failures = [];
     if (!context || typeof context !== 'object' || Array.isArray(context)) context = {};
-    for (const field of REQUIRED_STATE_FIELDS) {
+    // Phase 6: sha is in SourceObservation, not AuthorityContext; exclude from context validation
+    const contextRequiredFields = REQUIRED_STATE_FIELDS.filter(f => f !== 'sha');
+    for (const field of contextRequiredFields) {
       if (typeof context[field] !== 'string' || !context[field].trim()) failures.push(`${field}: missing or invalid`);
     }
     if (context.sha && !/^[a-f0-9]{40}$/.test(context.sha)) failures.push('sha: must be 40-character hex string');
@@ -160,8 +191,11 @@ class StateContextRegistry {
     if (failures.length) throw contextError(failures, 400);
     const record = this.lookup(context.correlationId, stateSessionId, scope);
     if (!record.source) throw contextError(['stateContext: source not acquired']);
-    for (const field of REQUIRED_STATE_FIELDS) if (context[field] !== record.context[field]) failures.push(`${field}: mismatch with registered context`);
-    if (context.branch !== context.canonicalBranch) failures.push('branch: non-canonical source');
+    // Phase 6: sha is in SourceObservation, not AuthorityContext; check it separately
+    const fieldsToCompare = REQUIRED_STATE_FIELDS.filter(f => f !== 'sha');
+    for (const field of fieldsToCompare) if (context[field] !== record.context[field]) failures.push(`${field}: mismatch with registered context`);
+    if (context.sha !== record.source.sha) failures.push('sha: mismatch with registered source');
+    if (record.context.branch !== record.context.canonicalBranch) failures.push('branch: non-canonical source');
     const suppliedPath = method === 'compare_powerapps_with_git' ? params.targetFile : params.relativePath;
     if (suppliedPath !== undefined && suppliedPath !== record.source.path && suppliedPath !== record.source.requestedPath) failures.push('relativePath/targetFile: mismatch with registered file');
     if (params.expectedBranch !== undefined && params.expectedBranch !== context.branch) failures.push('expectedBranch: mismatch');
