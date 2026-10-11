@@ -14,11 +14,23 @@ const {
 
 test('BridgeServerFactory', async (t) => {
   await t.test('initializes with default config', () => {
-    const factory = new BridgeServerFactory();
+    // 既定値の検証なので、実行環境の PORT / HOST / NODE_ENV の影響を受けないよう一時的に退避する
+    const saved = { PORT: process.env.PORT, HOST: process.env.HOST, NODE_ENV: process.env.NODE_ENV };
+    delete process.env.PORT;
+    delete process.env.HOST;
+    delete process.env.NODE_ENV;
+    try {
+      const factory = new BridgeServerFactory();
 
-    assert.strictEqual(factory.serverConfig.port, 3000);
-    assert.strictEqual(factory.serverConfig.host, '0.0.0.0');
-    assert.strictEqual(factory.serverConfig.environment, 'development');
+      assert.strictEqual(factory.serverConfig.port, 3000);
+      assert.strictEqual(factory.serverConfig.host, '0.0.0.0');
+      assert.strictEqual(factory.serverConfig.environment, 'development');
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   await t.test('sets custom configuration', () => {
