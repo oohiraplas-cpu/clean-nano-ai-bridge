@@ -1545,6 +1545,47 @@ test('MCP public Power Apps write tools expose complete required stateContext sc
     assert.deepEqual(stateSchema.required, requiredFields);
     assert.deepEqual(Object.keys(stateSchema.properties).sort(), allFields.sort());
   }
+
+  const publish = MCP_PUBLIC_TOOLS.find((entry) => entry.name === 'publish_powerapps_app');
+  assert.ok(publish.inputSchema.required.includes('stateSessionId'), 'publish must require stateSessionId');
+  assert.equal(publish.inputSchema.properties.stateSessionId.type, 'string');
+  assert.equal(publish.inputSchema.properties.stateSessionId.minLength, 1);
+});
+
+test('StateContext Registry: publish binding rejects wrong scope and changed source context', () => {
+  const { StateContextRegistry, blobSha } = require('../src/stateContext');
+  const registry = new StateContextRegistry({ ttlMs: 300000 });
+  const scope = 'publish-test';
+  const begin = registry.begin({
+    appId: 'app-1', environmentId: 'env-1',
+    branch: 'main', canonicalBranch: 'main',
+    repository: 'owner/repo', gitRoot: 'powerapps/app'
+  }, scope);
+  const sourceContent = 'publish test source';
+  const sourceSha = blobSha(sourceContent);
+  registry.bind(begin.correlationId, begin.stateSessionId, scope, {
+    path: 'Screen.pa.yaml', content: sourceContent, sha: sourceSha,
+    branch: 'main', canonicalBranch: 'main'
+  }, 'Screen.pa.yaml');
+  const validContext = { ...begin.stateContext, branch: 'main', canonicalBranch: 'main', sha: sourceSha };
+
+  assert.throws(
+    () => registry.assertPublishBound(validContext, begin.stateSessionId, 'different-scope'),
+    /stateSessionId: missing or session mismatch/
+  );
+  assert.throws(
+    () => registry.assertPublishBound({ ...validContext, sha: blobSha('changed source') }, begin.stateSessionId, scope),
+    /sha: source observation mismatch/
+  );
+  assert.throws(
+    () => registry.assertPublishBound({ ...validContext, appId: 'other-app' }, begin.stateSessionId, scope),
+    /appId: session mismatch/
+  );
+  assert.throws(
+    () => registry.assertPublishBound({ ...validContext, environment: 'other-env' }, begin.stateSessionId, scope),
+    /environment: session mismatch/
+  );
+  assert.equal(registry.assertPublishBound(validContext, begin.stateSessionId, scope).source.sha, sourceSha);
 });
 
 test('StateContext Registry: lookupBySessionId API', () => {
