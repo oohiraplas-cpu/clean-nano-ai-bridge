@@ -144,16 +144,65 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =56
             HoverFill: =RGBA(245, 245, 245, 1)
-            OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
+            OnSelect: =Set(gblTimeTreeOpen, !Coalesce(gblTimeTreeOpen, false))
             PressedFill: =RGBA(224, 224, 224, 1)
             Size: =16
-            Text: ="カレンダーを見る"
+            Text: ="Time tree"
             Width: =Parent.Width - 32
             X: =16
             Y: =510
+      - Home_TimeTreeDemolition:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            BorderColor: =RGBA(80, 200, 110, 1)
+            Color: =RGBA(160, 255, 185, 1)
+            Fill: =RGBA(12, 35, 23, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            OnSelect: =Set(gblCalType, "解体"); Set(gblTimeTreeOpen, false); Navigate(S2_Calendar, ScreenTransition.None)
+            Size: =11
+            Text: ="剣 解体"
+            Visible: =Coalesce(gblTimeTreeOpen, false)
+            Width: =(Parent.Width - 40) / 3
+            X: =16 + 0 * ((Parent.Width - 40) / 3 + 4)
+            Y: =568
+      - Home_TimeTreeEquipment:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            BorderColor: =RGBA(80, 200, 110, 1)
+            Color: =RGBA(160, 255, 185, 1)
+            Fill: =RGBA(12, 35, 23, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            OnSelect: =Set(gblCalType, "設備"); Set(gblTimeTreeOpen, false); Navigate(S2_Calendar, ScreenTransition.None)
+            Size: =11
+            Text: ="⚙ 設備"
+            Visible: =Coalesce(gblTimeTreeOpen, false)
+            Width: =(Parent.Width - 40) / 3
+            X: =16 + 1 * ((Parent.Width - 40) / 3 + 4)
+            Y: =568
+      - Home_TimeTreeOperations:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =1
+            BorderColor: =RGBA(80, 200, 110, 1)
+            Color: =RGBA(160, 255, 185, 1)
+            Fill: =RGBA(12, 35, 23, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            OnSelect: =Set(gblCalType, "運営"); Set(gblTimeTreeOpen, false); Navigate(S2_Calendar, ScreenTransition.None)
+            Size: =11
+            Text: ="運営・経理"
+            Visible: =Coalesce(gblTimeTreeOpen, false) && gblIsAdmin
+            Width: =(Parent.Width - 40) / 3
+            X: =16 + 2 * ((Parent.Width - 40) / 3 + 4)
+            Y: =568
       - Home_BtnEquipment:
           Control: Classic/Button@2.2.0
           Properties:
+            Visible: =!Coalesce(gblTimeTreeOpen, false)
             BorderThickness: =0
             Color: =RGBA(10, 10, 10, 1)
             Fill: =RGBA(255, 255, 255, 1)
