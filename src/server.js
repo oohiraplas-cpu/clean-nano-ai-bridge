@@ -85,6 +85,7 @@ const {
   inspectPowerAppsStructure
 } = require('./bridgeEnhancedFeatures');
 const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+const { discoverPowerAppsStructure, resolveAppTargetById } = require('./powerAppsDiscovery');
 const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError, blobSha } = require('./stateContext');
 const {
@@ -147,7 +148,7 @@ const MCP_METHODS = Object.freeze([
   'get_permissions', 'update_permissions',
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
-  'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
+  'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
@@ -756,12 +757,28 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     }
   },
   {
-    name: 'resolve_app_target',
-    description: 'アプリ名（例: CN_AI依頼台帳。別名・部分一致可）から、App ID・Environment・正本Branch・gitRootを実環境から解決します。取得できなかった項目は推測せずunconfirmedで返します。曖昧な場合は候補を返します。読み取り専用。',
+    name: 'discover_powerapps_structure',
+    description: 'App ID と Environment ID のみで対象Power Appsアプリを解決し、画面一覧・遷移マップ・欠落遷移先・未参照画面・コントロール一覧を読み取り専用で返します。登録済みソースrootのみを対象とし、推測しません。書込みは行いません。',
     inputSchema: {
       type: 'object',
-      properties: { query: { type: 'string', description: 'アプリ名または別名（例: CN_AI依頼台帳）' } },
-      required: ['query'],
+      properties: {
+        appId: { type: 'string', description: '対象Power AppsアプリID（GUID）' },
+        environmentId: { type: 'string', description: '対象Environment ID' }
+      },
+      required: ['appId', 'environmentId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'resolve_app_target',
+    description: 'アプリ名（例: CN_AI依頼台帳。別名・部分一致可）、またはApp IDとEnvironment IDから、App ID・Environment・正本Branch・gitRootを実環境から解決します。取得できなかった項目は推測せずunconfirmedで返します。曖昧な場合は候補を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'アプリ名または別名（例: CN_AI依頼台帳）' },
+        appId: { type: 'string', description: 'App ID（GUID）。environmentIdと併用' },
+        environmentId: { type: 'string', description: 'Environment ID。appIdと併用' }
+      },
       additionalProperties: false
     }
   },
@@ -1722,6 +1739,17 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       runId: params.runId
     });
   }
+  if (method === 'discover_powerapps_structure') {
+    return discoverPowerAppsStructure({
+      appId: params.appId,
+      environmentId: params.environmentId,
+      getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+      githubRequest: (path) => powerAppsGitStore.githubRequest(path),
+      owner: powerAppsGitStore.githubOwner,
+      repo: powerAppsGitStore.githubRepo,
+      branch: powerAppsGitStore.canonicalBranch
+    });
+  }
   if (method === 'inspect_powerapps_structure') {
     // StateContextなし: params.appIdで実アプリ情報解析（Power Apps API経由）
     // StateContextあり: executeWithStateInternal が処理
@@ -1757,6 +1785,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_executive_policy') return withUpstreamErrorStatus(Promise.resolve().then(() => getExecutivePolicy(params)), 400);
   if (method === 'get_executive_brief') return withUpstreamErrorStatus(getExecutiveBrief({ ...params, sharePointReader }), 400);
   if (method === 'resolve_app_target') {
+    // App ID + Environment ID による動的解決（固定値・単一アプリ前提を使わない）
+    if (params.appId !== undefined || params.environmentId !== undefined) {
+      return resolveAppTargetById({
+        appId: params.appId,
+        environmentId: params.environmentId,
+        getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+        canonicalBranch: powerAppsGitStore.canonicalBranch
+      });
+    }
+    if (typeof params.query !== 'string' || !params.query.trim()) {
+      throw requestError('queryまたはappId/environmentIdが必要です');
+    }
     return getResolver(powerAppsStore, powerAppsGitStore).resolve(params.query);
   }
   if (method === 'list_power_apps') {
