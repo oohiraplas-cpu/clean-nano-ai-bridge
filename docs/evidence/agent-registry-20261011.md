@@ -21,7 +21,7 @@ CommanderAI / ResearchAI / DesignAI / ImplementationAI / TestAI / AuditAI / Rele
 - src/agentRegistry.js（新規）
 - src/bridgeCapabilities.js（分類器のexport追加、`get_agent_registry` を読み取り専用に分類）
 - src/server.js（`get_agent_registry` をMCP_METHODS / MCP_PUBLIC_TOOLS / dispatchに追加）
-- test/agentRegistry.test.js（新規・27件）
+- test/agentRegistry.test.js（新規・18件）
 - test/stateContextContract.test.js（公開ツール数 72→73 に更新）
 
 ## テスト結果（CI同等環境変数）
