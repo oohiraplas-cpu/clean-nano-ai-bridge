@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
+const { runtimeConfigurationStatus } = require('./azureRuntimeDiagnostics');
+const { azureRuntimeArmDiagnostics } = require('./azureRuntimeArmDiagnostics');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
@@ -187,7 +189,8 @@ const MCP_METHODS = Object.freeze([
   'create_execution_request',
   'get_execution_queue',
   'get_execution_status',
-  'get_checkpoint'
+  'get_checkpoint',
+  'get_azure_runtime_diagnostics'
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
@@ -1363,7 +1366,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       additionalProperties: false
     },
     annotations: { readOnlyHint: true, destructiveHint: false }
-  }
+  },
+  {
+    name: 'get_azure_runtime_diagnostics',
+    description: 'Runtime設定キーの存在を確認し、既存App Service Managed Identityで許可された場合のみAzure ARMから割当状態と設定キーの存在を取得します。秘密値・ID非表示。権限不足はblocked。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
 ]);
 
 async function tasksPayload(store) {
@@ -1451,6 +1459,16 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'get_azure_runtime_diagnostics') {
+    // The shared MCP middleware authenticates configured keys. Deny this sensitive
+    // diagnostic outright if MCP authentication was not configured.
+    if (typeof config.mcpApiKey !== 'string' || !config.mcpApiKey.trim())
+      return { status: 'blocked', reason: 'mcp_auth_not_configured' };
+    if (params && (typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length)) {
+      throw requestError('get_azure_runtime_diagnostics does not accept parameters');
+    }
+    return azureRuntimeArmDiagnostics(process.env);
+  }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
