@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
+const { runtimeConfigurationStatus } = require('./azureRuntimeDiagnostics');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
@@ -149,7 +150,7 @@ function apiKeyMiddleware(getKey) {
 
 const MCP_METHODS = Object.freeze([
   'get_executive_policy', 'get_executive_brief',
-  'health_check', 'get_tasks', 'get_next_task',
+  'health_check', 'get_azure_runtime_diagnostics', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
@@ -208,6 +209,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_azure_runtime_diagnostics',
+    description: 'Runtime Source Adapter設定キーの存在のみを確認します。Azure実設定・認証状態は未検証として返し、値や秘密情報は返しません。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -1451,6 +1457,12 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'get_azure_runtime_diagnostics') {
+    if (params && (typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length)) {
+      throw requestError('get_azure_runtime_diagnostics does not accept parameters');
+    }
+    return runtimeConfigurationStatus(process.env);
+  }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
