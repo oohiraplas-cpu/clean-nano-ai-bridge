@@ -6,6 +6,7 @@ const cors = require('cors');
 const { getConfig } = require('./config');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
+const { ApprovalLedger } = require('./approvalLedger');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -190,7 +191,8 @@ const MCP_METHODS = Object.freeze([
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
-const executionQueue = new ExecutionQueue();
+// 承認台帳は未設定（fail closed）。SharePoint承認台帳の列名・サイトが実環境で確認されるまで、承認は得られない。
+const executionQueue = new ExecutionQueue({ ledger: new ApprovalLedger() });
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },

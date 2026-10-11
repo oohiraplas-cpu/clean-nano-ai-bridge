@@ -3,7 +3,8 @@
  *
  * エージェントへの実行依頼を受け付け、優先順位付きで管理する。
  * - 依頼は Agent Registry に登録されたエージェントと、その allowedTools の範囲に限定する。
- * - 人間承認が必要なステップは「人間承認待ち」で止め、承認なしには進めない（自動承認なし）。
+ * - 人間承認が必要なステップは、SharePoint 承認台帳で人間の承認を確認してから進む。
+ *   承認フラグ（approvedByHuman など）による承認は存在しない。承認が確認できなければ「人間承認待ち」で止まる。
  * - チェックポイントは完了したステップ数で保持し、停止後はそこから再開する。
  * - 本モジュールは実行器ではない。ツールを呼び出さず、状態遷移と記録のみを扱う（外部APIには触れない）。
  */
@@ -46,9 +47,14 @@ function validateExecutionRequest(input, agents = AGENT_DEFINITIONS) {
 }
 
 class ExecutionQueue {
-  constructor({ agents = AGENT_DEFINITIONS, now = () => new Date() } = {}) {
+  /**
+   * @param {object} options
+   * @param {object} [options.ledger] - ApprovalLedger（承認台帳）。未指定なら承認は得られない（fail closed）。
+   */
+  constructor({ agents = AGENT_DEFINITIONS, now = () => new Date(), ledger = null } = {}) {
     this.agents = agents;
     this.now = now;
+    this.ledger = ledger;
     this.requests = new Map();
     this.sequence = 0;
   }
@@ -99,26 +105,11 @@ class ExecutionQueue {
   }
 
   /**
-   * 人間が承認したステップを記録する（承認は人間のみ。AIは呼び出さない）。
-   * 承認後は待機中に戻り、再開可能になる。
-   */
-  approveStep(requestId, stepIndex, approvedByHuman) {
-    if (approvedByHuman !== true) throw requestError('承認は人間による明示的な承認（approvedByHuman: true）が必要です');
-    const request = this.find(requestId);
-    const step = request.steps[stepIndex];
-    if (!step) throw requestError('対象のstepが見つかりません');
-    if (!step.approvalRequired) throw requestError('このstepは承認対象ではありません');
-    step.approved = true;
-    this.touch(request);
-    if (request.status === '人間承認待ち' && this.nextPendingApproval(request) === null) request.status = '待機中';
-    return this.snapshot(request);
-  }
-
-  /**
-   * 次のステップを1件進める。承認が必要な未承認ステップに達したら「人間承認待ち」で止める。
+   * 次のステップを1件進める。承認が必要なステップは、承認台帳で人間の承認を確認してから進む。
+   * 承認が見つからない・検証できない場合は「人間承認待ち」で止まる（フラグによる承認は存在しない）。
    * 成功したステップはチェックポイントに記録する。
    */
-  advance(requestId) {
+  async advance(requestId) {
     const request = this.find(requestId);
     if (TERMINAL_STATUSES.includes(request.status)) throw requestError(`終了済みの依頼です（${request.status}）`);
     const next = request.steps.find((step) => step.status === '未着手');
@@ -128,9 +119,17 @@ class ExecutionQueue {
       return this.snapshot(request);
     }
     if (next.approvalRequired && !next.approved) {
-      request.status = '人間承認待ち';
-      this.touch(request);
-      return this.snapshot(request);
+      const check = this.ledger
+        ? await this.ledger.check({ requestId: request.id, stepIndex: next.index, tool: next.tool })
+        : { approved: false, reason: 'ledger_not_configured' };
+      if (!check.approved) {
+        request.status = '人間承認待ち';
+        request.approvalReason = check.reason;
+        this.touch(request);
+        return this.snapshot(request);
+      }
+      next.approved = true;
+      request.approvalReason = null;
     }
     request.status = '実行中';
     next.status = '完了';
@@ -189,6 +188,7 @@ class ExecutionQueue {
       priority: request.priority,
       status: request.status,
       stopReason: request.stopReason || null,
+      approvalReason: request.approvalReason || null,
       createdAt: request.createdAt,
       updatedAt: request.updatedAt,
       steps: request.steps.map((step) => ({ ...step })),
