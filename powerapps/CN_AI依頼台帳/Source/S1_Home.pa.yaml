@@ -15,7 +15,7 @@ Screens:
         Set(gblEmpID, Blank());
         Set(gblIdentityVerified, false);
         Set(gblCurrentEmployee, LookUp(CN_社員台帳, Lower(Trim(EntraObjectId)) = Lower(Trim(Text(User().EntraObjectId)))));
-        If(!IsBlank(gblCurrentEmployee.EmployeeID), Set(gblEmpID, gblCurrentEmployee.EmployeeID); Set(gblIdentityVerified, true));
+        If(!IsBlank(User().EntraObjectId) && CountRows(Filter(CN_社員台帳, Lower(Trim(EntraObjectId)) = Lower(Trim(Text(User().EntraObjectId))))) = 1 && !IsBlank(gblCurrentEmployee.EmployeeID), Set(gblEmpID, gblCurrentEmployee.EmployeeID); Set(gblIdentityVerified, true));
         If(gblIdentityVerified, ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
     Children:
       - S1_Title:
