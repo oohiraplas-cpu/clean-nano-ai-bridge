@@ -68,6 +68,34 @@ class SharePointReader {
     return match.id;
   }
 
+  // SharePointサイト内のリスト一覧を読み取り専用で取得する。列や項目の変更は行わない。
+  // params: { siteId?, searchTerm?, top? }
+  async listLists(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) {
+      throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    }
+    const top = Math.min(Math.max(Number.parseInt(params.top, 10) || 200, 1), 200);
+    const searchTerm = typeof params.searchTerm === 'string' ? params.searchTerm.trim().toLocaleLowerCase() : '';
+    const data = await this._graphFetch(`/sites/${targetSiteId}/lists?$select=id,displayName,webUrl,list&$top=${top}`);
+    const lists = (data.value || []).map((item) => ({
+      id: item.id,
+      displayName: item.displayName,
+      webUrl: item.webUrl || null,
+      template: item.list?.template || null,
+      hidden: item.list?.hidden === true
+    })).filter((item) => !searchTerm || String(item.displayName || '').toLocaleLowerCase().includes(searchTerm));
+    return {
+      status: 'ok',
+      siteId: targetSiteId,
+      count: lists.length,
+      lists,
+      hasMore: Boolean(data['@odata.nextLink']),
+      note: data['@odata.nextLink'] ? '結果は先頭ページです。必要に応じて検索語を指定して絞り込んでください。' : undefined
+    };
+  }
+
   async ensureColumns(params = {}) {
     this._assertConfig();
     const targetSiteId = params.siteId || this.defaultSiteId;
