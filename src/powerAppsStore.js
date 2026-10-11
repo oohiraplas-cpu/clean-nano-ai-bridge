@@ -285,6 +285,27 @@ class PowerAppsStore {
     }));
   }
 
+  // 対象のApp ID・Environment IDを引数で指定して読み取る（単一アプリ固定の this.appId を使わない）。
+  async getAppInfoForEnvironment({ appId, environmentId }) {
+    const missing = [];
+    if (!this.tenantId) missing.push('POWERAPPS_TENANT_ID/AZURE_TENANT_ID');
+    if (!this.clientId) missing.push('POWERAPPS_CLIENT_ID/AZURE_CLIENT_ID');
+    if (!this.clientSecret) missing.push('POWERAPPS_CLIENT_SECRET/AZURE_CLIENT_SECRET');
+    if (missing.length) {
+      const error = new Error(`Bridge設定が不足しています: ${missing.join(', ')}`);
+      error.upstream = { step: 'Bridge環境変数の読み込み', httpStatus: null, errorCode: 'ConfigMissing', errorMessage: error.message };
+      throw error;
+    }
+    const path = `/providers/Microsoft.PowerApps/scopes/admin/environments/${encodeURIComponent(environmentId)}/apps/${encodeURIComponent(appId)}?api-version=2016-11-01`;
+    const data = await this._managementFetch(path);
+    return {
+      appId,
+      environmentId,
+      displayName: data.properties?.displayName || 'Unknown',
+      publisher: data.properties?.publisher || 'Unknown'
+    };
+  }
+
   async getAppInfo() {
     const missing = [];
     if (!this.tenantId) missing.push('POWERAPPS_TENANT_ID/AZURE_TENANT_ID');

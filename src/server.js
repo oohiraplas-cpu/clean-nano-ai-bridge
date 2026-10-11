@@ -85,6 +85,7 @@ const {
   inspectPowerAppsStructure
 } = require('./bridgeEnhancedFeatures');
 const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+const { discoverPowerAppsStructure } = require('./powerAppsDiscovery');
 const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError, blobSha } = require('./stateContext');
 const {
@@ -147,7 +148,7 @@ const MCP_METHODS = Object.freeze([
   'get_permissions', 'update_permissions',
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
-  'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure',
+  'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
@@ -752,6 +753,19 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         stateSessionId: { type: 'string', description: 'Git保存ソース解析時の実行session ID（stateContextと併用時のみ有効）' },
         relativePath: { type: 'string', description: 'Git解析対象ファイルの相対パス（stateContextと併用時のみ有効）' }
       },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'discover_powerapps_structure',
+    description: 'App ID と Environment ID のみで対象Power Appsアプリを解決し、画面一覧・遷移マップ・欠落遷移先・未参照画面・コントロール一覧を読み取り専用で返します。登録済みソースrootのみを対象とし、推測しません。書込みは行いません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', description: '対象Power AppsアプリID（GUID）' },
+        environmentId: { type: 'string', description: '対象Environment ID' }
+      },
+      required: ['appId', 'environmentId'],
       additionalProperties: false
     }
   },
@@ -1720,6 +1734,17 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return getPowerAutomateRunResult({
       powerAutomateRunner,
       runId: params.runId
+    });
+  }
+  if (method === 'discover_powerapps_structure') {
+    return discoverPowerAppsStructure({
+      appId: params.appId,
+      environmentId: params.environmentId,
+      getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+      githubRequest: (path) => powerAppsGitStore.githubRequest(path),
+      owner: powerAppsGitStore.githubOwner,
+      repo: powerAppsGitStore.githubRepo,
+      branch: powerAppsGitStore.canonicalBranch
     });
   }
   if (method === 'inspect_powerapps_structure') {
