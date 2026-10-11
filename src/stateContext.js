@@ -153,6 +153,19 @@ class StateContextRegistry {
     return this.response(record);
   }
 
+  assertPublishBound(context, stateSessionId, scope) {
+    const record = this.lookup(context?.correlationId, stateSessionId, scope);
+    if (!record.source) throw contextError(['publish: source observation not bound']);
+    const failures = [];
+    for (const field of ['appId', 'environment', 'branch', 'canonicalBranch']) {
+      if (context[field] !== record.context[field]) failures.push(field + ': session mismatch');
+    }
+    if (context.sha !== record.source.sha) failures.push('sha: source observation mismatch');
+    if (record.context.branch !== record.context.canonicalBranch) failures.push('branch: non-canonical');
+    if (failures.length) throw contextError(failures);
+    return record;
+  }
+
   lookupBySessionId(stateSessionId, scope, appId) {
     // Dedicated API for inspect_powerapps_structure stateSessionId-only lookup
     if (typeof stateSessionId !== 'string' || stateSessionId.length < 8) {
