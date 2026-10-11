@@ -15,6 +15,12 @@ async function azureRuntimeArmDiagnostics(env = process.env, fetchImpl = globalT
   const local = runtimeConfigurationStatus(env);
   const resourceId = env.AZURE_RUNTIME_DIAGNOSTIC_RESOURCE_ID;
   if (typeof resourceId !== 'string' || !RESOURCE_PATTERN.test(resourceId)) return blocked('target_not_configured', local);
+  if (resourceId.split('/').pop().toLowerCase() !== 'clean-nano-ai-bridge' ||
+      (typeof env.WEBSITE_SITE_NAME === 'string' && env.WEBSITE_SITE_NAME.toLowerCase() !== 'clean-nano-ai-bridge'))
+    return blocked('target_mismatch', local);
+  const clientId = env.POWERAPPS_RUNTIME_MI_CLIENT_ID;
+  if (clientId != null && clientId !== '' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId))
+    return blocked('invalid_managed_identity_client_id', local);
   // App Service managed identity endpoint only. Never fall back to service principal, CLI, or IMDS.
   const endpoint = env.IDENTITY_ENDPOINT;
   const header = env.IDENTITY_HEADER;
@@ -25,6 +31,7 @@ async function azureRuntimeArmDiagnostics(env = process.env, fetchImpl = globalT
     const tokenUrl = new URL(endpoint);
     tokenUrl.searchParams.set('api-version', '2019-08-01');
     tokenUrl.searchParams.set('resource', RESOURCE + '/');
+    if (clientId) tokenUrl.searchParams.set('client_id', clientId);
     const tokenResponse = await fetchImpl(tokenUrl.toString(), {
       method: 'GET', headers: { 'X-IDENTITY-HEADER': header }, signal: AbortSignal.timeout(5000)
     });
