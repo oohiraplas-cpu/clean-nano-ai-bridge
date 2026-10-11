@@ -209,6 +209,7 @@ jobs:
             echo "✓ retry_count >= 3 correctly triggered 停止 status"
           else
             echo "✗ FAILED: retry_count >= 3 did not trigger 停止 status"
+            exit 1
           fi
 
       # ステップ 18: approval_required → 人間承認待ち
@@ -225,6 +226,7 @@ jobs:
             echo "✓ approval_required correctly triggered 人間承認待ち status"
           else
             echo "✗ FAILED: approval_required did not trigger 人間承認待ち status"
+            exit 1
           fi
 
       # ステップ 19: userActionRequired → ユーザー操作待ち
@@ -241,6 +243,7 @@ jobs:
             echo "✓ userActionRequired correctly triggered ユーザー操作待ち status"
           else
             echo "✗ FAILED: userActionRequired did not trigger ユーザー操作待ち status"
+            exit 1
           fi
 
       # ステップ 20: サーバーログ出力
