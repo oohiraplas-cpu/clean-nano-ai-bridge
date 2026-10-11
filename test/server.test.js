@@ -1427,7 +1427,7 @@ test('save_powerapps_app / publish_powerapps_app: State Lock未成立・branch�
   assert.equal(saveRefused.structuredContent.status, 'branch_mismatch');
   const publishRefused = await rpc(server, 'publish_powerapps_app', { branch: FALLBACK_BRANCH });
   assert.equal(publishRefused.isError, true);
-  assert.equal(publishRefused.structuredContent.status, 'branch_mismatch');
+  assert.equal(publishRefused.structuredContent.status, 'state_context_invalid');
   assert.equal((await legacy(server, 'publish_powerapps_app', { branch: FALLBACK_BRANCH })).httpStatus, 409);
   assert.equal(sideEffects(), 0, '拒否時は同期も公開も実行しない');
 
@@ -1437,8 +1437,8 @@ test('save_powerapps_app / publish_powerapps_app: State Lock未成立・branch�
   assert.equal(saveUnlocked.isError, true, 'branch未指定はState Lock未成立として拒否');
   assert.equal(saveUnlocked.structuredContent.status, 'branch_mismatch');
   const publishOk = await rpc(server, 'publish_powerapps_app', { branch: 'main' });
-  assert.equal(publishOk.isError, false);
-  assert.equal(publishOk.structuredContent.status, 'ok');
+  assert.equal(publishOk.isError, true, 'source-bound sessionなしの公開は拒否');
+  assert.equal(publishOk.structuredContent.status, 'state_context_invalid');
   assert.equal((await rpc(server, 'publish_powerapps_app', { branch: '' })).isError, true);
 });
 
