@@ -66,7 +66,7 @@ paths:
       operationId: invokeMcpBridge
       description: |
         ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。
-        method は health_check・get_tasks・get_next_task・create_task・update_task_status・
+        method は health_check・get_azure_runtime_diagnostics（設定キーの存在のみ、秘密値非表示）・get_tasks・get_next_task・create_task・update_task_status・
         get_task_result、Power Apps取得・ソース編集・保存・公開メソッド、
         get_sharepoint_list、list_sharepoint_lists、get_sharepoint_columns、run_power_automate_flow のいずれかを指定します。
         health_check・get_tasks・get_next_task はそれぞれ GET /health・GET /api/tasks・
@@ -174,7 +174,7 @@ components:
       properties:
         method:
           type: string
-          enum: [health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, list_sharepoint_lists, create_sharepoint_list, create_sharepoint_list_item, update_sharepoint_list_item, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions, compare_powerapps_with_git]
+          enum: [health_check, get_azure_runtime_diagnostics, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, list_sharepoint_lists, create_sharepoint_list, create_sharepoint_list_item, update_sharepoint_list_item, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions, compare_powerapps_with_git]
           description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:
