@@ -1369,7 +1369,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'get_azure_runtime_diagnostics',
-    description: 'Runtime Source Adapter設定キーの存在のみを確認します。Azure実設定・認証状態は未検証として返し、値や秘密情報は返しません。',
+    description: 'Runtime設定キーの存在を確認し、既存App Service Managed Identityで許可された場合のみAzure ARMから割当状態と設定キーの存在を取得します。秘密値・ID非表示。権限不足はblocked。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
 ]);
