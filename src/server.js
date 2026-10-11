@@ -184,7 +184,6 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
 });
 
 const MCP_PUBLIC_TOOLS = Object.freeze([
-  { name: 'get_capability_registry', description: '実環境検証と登録を区別する能力Registryと不足MCP一覧を取得。CNAI未接続を明示し、未検証ツールの同期を拒否します。読み取り専用。', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
@@ -1228,7 +1227,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['correlationId'],
       additionalProperties: false
     }
-  }
+  },
+  { name: 'get_capability_registry', description: '実環境検証と登録を区別する能力Registryと不足MCP一覧を取得。CNAI未接続を明示し、未検証ツールの同期を拒否します。読み取り専用。', inputSchema: { type: 'object', properties: {}, additionalProperties: false } }
 ]);
 
 async function tasksPayload(store) {
