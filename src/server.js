@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
 const { getAgentRegistry } = require('./agentRegistry');
+const { ExecutionQueue } = require('./executionQueue');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -181,8 +182,15 @@ const MCP_METHODS = Object.freeze([
   'capture_integration',
   'generate_runtime_report',
   'export_evidence',
-  'get_agent_registry'
+  'get_agent_registry',
+  'create_execution_request',
+  'get_execution_queue',
+  'get_execution_status',
+  'get_checkpoint'
 ]);
+
+// 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
+const executionQueue = new ExecutionQueue();
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
@@ -1260,6 +1268,57 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     name: 'get_agent_registry',
     description: 'Bridgeに登録されたAIエージェント（CommanderAI・ResearchAI・DesignAI・ImplementationAI・TestAI・AuditAI・ReleaseAI・RecoveryAI・ProfitAI・CollectionAI・OptimizationAI）の役割、使用可能ツール、人間承認が必要な操作、Capability Registryを返します。Tool Registryとの整合性も検証します。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'create_execution_request',
+    description: 'AIエージェントへの実行依頼をキューに登録します。依頼はAgent Registryに登録されたエージェントの使用可能ツールの範囲に限られます。人間承認が必要なステップを含む場合は「人間承認待ち」で登録され、人間が承認するまで進みません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agentId: { type: 'string', description: '依頼先エージェントID（例：ImplementationAI）' },
+        priority: { type: 'string', description: '優先度：high / normal / low（省略時 normal）' },
+        steps: {
+          type: 'array',
+          description: '実行するステップの配列（最大50件）',
+          items: {
+            type: 'object',
+            properties: { tool: { type: 'string', description: '使用するツール名' } },
+            required: ['tool'],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ['agentId', 'steps'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_execution_queue',
+    description: '実行待ちの依頼を、優先順位（high→normal→low）と登録順で返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_execution_status',
+    description: '実行依頼1件の状態（ステップごとの状態、承認状況を含む）を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string', description: '実行依頼ID' } },
+      required: ['requestId'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_checkpoint',
+    description: '実行依頼のチェックポイント（完了ステップ数、最後に完了したツール）を返します。停止後の再開位置の確認に使います。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string', description: '実行依頼ID' } },
+      required: ['requestId'],
+      additionalProperties: false
+    },
     annotations: { readOnlyHint: true, destructiveHint: false }
   }
 ]);
@@ -2356,6 +2415,20 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
   if (method === 'get_agent_registry') {
     return getAgentRegistry({ publicTools: MCP_PUBLIC_TOOLS });
+  }
+  if (method === 'create_execution_request') {
+    return executionQueue.createRequest(params);
+  }
+  if (method === 'get_execution_queue') {
+    return { queue: executionQueue.getQueue() };
+  }
+  if (method === 'get_execution_status') {
+    if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    return executionQueue.getStatus(params.requestId);
+  }
+  if (method === 'get_checkpoint') {
+    if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    return executionQueue.getCheckpoint(params.requestId);
   }
 
   if (method === 'export_evidence') {

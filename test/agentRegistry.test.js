@@ -89,5 +89,6 @@ test('get_agent_registry は MCP_METHODS と MCP_PUBLIC_TOOLS の両方に登録
   const tool = MCP_PUBLIC_TOOLS.find((entry) => entry.name === 'get_agent_registry');
   assert.ok(tool, 'public tool として公開');
   assert.equal(tool.annotations.readOnlyHint, true);
-  assert.equal(MCP_PUBLIC_TOOLS[MCP_PUBLIC_TOOLS.length - 1].name, 'get_agent_registry', '末尾に追加');
+  const names = MCP_PUBLIC_TOOLS.map((entry) => entry.name);
+  assert.ok(names.indexOf('get_agent_registry') < names.indexOf('create_execution_request'), '実行キュー系より前に追加');
 });
