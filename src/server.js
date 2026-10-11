@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
 const { runtimeConfigurationStatus } = require('./azureRuntimeDiagnostics');
+const { azureRuntimeArmDiagnostics } = require('./azureRuntimeArmDiagnostics');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
@@ -1462,7 +1463,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (params && (typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length)) {
       throw requestError('get_azure_runtime_diagnostics does not accept parameters');
     }
-    return runtimeConfigurationStatus(process.env);
+    return azureRuntimeArmDiagnostics(process.env);
   }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
