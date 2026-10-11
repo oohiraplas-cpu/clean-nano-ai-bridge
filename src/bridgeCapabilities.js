@@ -166,7 +166,8 @@ function isReadOnlyTool(toolName) {
     'get_sharepoint_columns',
     'get_permissions',
     'get_deployment_logs',
-    'check_dependencies'
+    'check_dependencies',
+    'get_agent_registry'
   ].includes(toolName);
 }
 
@@ -457,5 +458,8 @@ module.exports = {
   getBridgeCapabilities,
   checkDependencies,
   comparePowerAppsWithGit,
-  validatePowerAppsSource
+  validatePowerAppsSource,
+  categorizeTool,
+  isReadOnlyTool,
+  requiresApprovalTool
 };
