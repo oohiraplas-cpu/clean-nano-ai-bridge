@@ -76,6 +76,7 @@ const {
   validatePowerAppsSource,
   createCommonResponse
 } = require('./bridgeCapabilities');
+const { getAgentRegistry } = require('./agentRegistry');
 const {
   getExecutivePolicy,
   getExecutiveBrief,
@@ -157,7 +158,7 @@ const MCP_METHODS = Object.freeze([
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
   'get_permissions', 'update_permissions',
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
-  'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
+  'get_bridge_capabilities', 'get_agent_registry', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
   'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
   'check_payment_status',
@@ -685,6 +686,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'get_bridge_capabilities',
     description: 'BridgeのVersion、MCP仕様対応状況、公開ツール一覧、制約情報、セキュリティ設定を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_agent_registry',
+    description: 'Agent Registry（CommanderAI・ResearchAI等11役割）の定義、許可ツール、capability、リスク水準、承認ルールを返します。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -1711,6 +1717,9 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGenerateUIControlStateParams(params);
     if (paramError) throw requestError(paramError);
     return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
+  }
+  if (method === 'get_agent_registry') {
+    return getAgentRegistry(MCP_PUBLIC_TOOLS);
   }
   if (method === 'get_bridge_capabilities') {
     return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18' });
