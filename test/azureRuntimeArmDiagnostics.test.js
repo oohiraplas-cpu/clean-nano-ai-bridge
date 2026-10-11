@@ -40,3 +40,29 @@ test('reject unsafe identity endpoints and targets', async () => {
   const result=await azureRuntimeArmDiagnostics({...env,IDENTITY_ENDPOINT:'https://evil.example/token'},async()=>{throw Error('must not call');});
   assert.equal(result.arm.status,'blocked');
 });
+
+test('rejects other App Service and mismatched runtime site name', async () => {
+  const never = async () => { throw Error('unexpected network call'); };
+  assert.equal((await azureRuntimeArmDiagnostics({...env,AZURE_RUNTIME_DIAGNOSTIC_RESOURCE_ID:id.replace('clean-nano-ai-bridge','other-app')},never)).arm.reason,'target_mismatch');
+  assert.equal((await azureRuntimeArmDiagnostics({...env,WEBSITE_SITE_NAME:'other-app'},never)).arm.reason,'target_mismatch');
+});
+test('valid existing user assigned identity is selected without returning its ID', async () => {
+  const clientId='12345678-1234-1234-1234-123456789abc';
+  let tokenUrl;
+  let n=0;
+  const fetcher=async(url)=>{
+    n++;
+    if(n===1){tokenUrl=new URL(url);return {ok:true,json:async()=>({access_token:'token'})};}
+    if(n===2)return {ok:true,json:async()=>({identity:{type:'UserAssigned'}})};
+    return {ok:true,json:async()=>({properties:{}})};
+  };
+  const result=await azureRuntimeArmDiagnostics({...env,POWERAPPS_RUNTIME_MI_CLIENT_ID:clientId},fetcher);
+  assert.equal(tokenUrl.searchParams.get('client_id'),clientId);
+  assert.equal(result.arm.status,'observed');
+  assert.equal(JSON.stringify(result).includes(clientId),false);
+  assert.deepEqual(result.arm.managedIdentity,{systemAssigned:false,userAssigned:true});
+});
+test('invalid identity client ID blocks before network call', async () => {
+  const result=await azureRuntimeArmDiagnostics({...env,POWERAPPS_RUNTIME_MI_CLIENT_ID:'unsafe'},async()=>{throw Error('unexpected network');});
+  assert.equal(result.arm.reason,'invalid_managed_identity_client_id');
+});
