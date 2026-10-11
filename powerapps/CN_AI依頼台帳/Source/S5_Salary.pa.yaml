@@ -27,33 +27,33 @@ Screens:
             Width: =Parent.Width - 140
             X: =70
             Y: =16
-      - btn_month_prev:
+      - S5_Prev:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =50
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverFill: =RGBA(0, 230, 115, 1)
             OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＜"
             Width: =50
             X: =16
             Y: =16
-      - btn_month_next:
+      - S5_Next:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =50
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverFill: =RGBA(0, 230, 115, 1)
             OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＞"
             Width: =50
@@ -79,12 +79,12 @@ Screens:
             Visible: =IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
-            Y: =720
+            Y: =510
       - S5_Card:
           Control: Rectangle@2.3.0
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
-            Height: =520
+            Height: =330
             Visible: =!IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
@@ -169,63 +169,6 @@ Screens:
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
             Y: =214
-      - S5_WorkTimeCap:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =30
-            Text: ="実作業時間"
-            Width: =(Parent.Width - 64) / 2
-            X: =32
-            Y: =248
-      - S5_WorkTimeVal:
-          Control: Label@2.5.1
-          Properties:
-            Align: =Align.Right
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =30
-            Text: =Text(Sum(colAttend, Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60, "0.0") & "時間"
-            Width: =(Parent.Width - 64) / 2
-            X: =16 + (Parent.Width - 32) / 2
-            Y: =248
-      - S5_OvertimeCap:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =30
-            Text: ="残業時間"
-            Width: =(Parent.Width - 64) / 2
-            X: =32
-            Y: =282
-      - S5_OvertimeVal:
-          Control: Label@2.5.1
-          Properties:
-            Align: =Align.Right
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =30
-            Text: =Text(Sum(Filter(colAttend, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60, "0.0") & "時間"
-            Width: =(Parent.Width - 64) / 2
-            X: =16 + (Parent.Width - 32) / 2
-            Y: =282
-      - S5_OvertimePayCap:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =30
-            Text: ="残業手当"
-            Width: =(Parent.Width - 64) / 2
-            X: =32
-            Y: =316
-      - S5_OvertimePayVal:
-          Control: Label@2.5.1
-          Properties:
-            Align: =Align.Right
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =30
-            Text: =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text((Sum(Filter(colAttend, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60) * Coalesce(m.'残業単価（1時間）', 0), "¥#,##0"))
-            Width: =(Parent.Width - 64) / 2
-            X: =16 + (Parent.Width - 32) / 2
-            Y: =316
       - S5_TaxCap:
           Control: Label@2.5.1
           Properties:
@@ -234,7 +177,7 @@ Screens:
             Text: ="税金控除"
             Width: =(Parent.Width - 64) / 2
             X: =32
-            Y: =350
+            Y: =256
       - S5_TaxVal:
           Control: Label@2.5.1
           Properties:
@@ -245,7 +188,7 @@ Screens:
               =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, "−" & Text(Coalesce(m.税金控除, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
-            Y: =350
+            Y: =256
       - S5_InsCap:
           Control: Label@2.5.1
           Properties:
@@ -254,7 +197,7 @@ Screens:
             Text: ="保険控除"
             Width: =(Parent.Width - 64) / 2
             X: =32
-            Y: =384
+            Y: =290
       - S5_InsVal:
           Control: Label@2.5.1
           Properties:
@@ -265,7 +208,7 @@ Screens:
               =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, "−" & Text(Coalesce(m.保険控除, 0), "¥#,##0"))
             Width: =(Parent.Width - 64) / 2
             X: =16 + (Parent.Width - 32) / 2
-            Y: =384
+            Y: =290
       - S5_NetCap:
           Control: Label@2.5.1
           Properties:
@@ -274,7 +217,7 @@ Screens:
             Text: ="差引支給見込み"
             Width: =Parent.Width - 64
             X: =32
-            Y: =426
+            Y: =340
       - S5_Net:
           Control: Label@2.5.1
           Properties:
@@ -284,46 +227,20 @@ Screens:
             Height: =50
             Size: =26
             Text: |-
-              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(Coalesce(m.基本給, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0) + (Sum(Filter(colAttend, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes, 0)))) / 60) * Coalesce(m.'残業単価（1時間）', 0) - Coalesce(m.税金控除, 0) - Coalesce(m.保険控除, 0), "¥#,##0"))
+              =With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID)}, Text(Coalesce(m.基本給, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) * Coalesce(m.日勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) + CountRows(Filter(colAttend, WorkStatus.Value = "早出")) * Coalesce(m.早出手当, 0) - Coalesce(m.税金控除, 0) - Coalesce(m.保険控除, 0), "¥#,##0"))
             Width: =Parent.Width - 64
             X: =32
-            Y: =456
-      - S5_YearCap:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(0, 204, 102, 1)
-            FontWeight: =FontWeight.Bold
-            Height: =30
-            Text: ="年間給与履歴・法定帳票準備"
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =506
-      - S5_YearSummary:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(255, 255, 255, 1)
-            Height: =105
-            Size: =12
-            Text: |-
-              =With({y: Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= Date(Year(gblMonth),1,1), StartAt < Date(Year(gblMonth)+1,1,1))},
-                "年間出勤記録 " & CountRows(y) & "件" & Char(10) &
-                "年間実作業 " & Text(Sum(y, Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes,0)))) / 60, "0.0") & "h" & Char(10) &
-                "年間残業 " & Text(Sum(Filter(y, WorkStatus.Value = "残業"), Coalesce(ConfirmedWorkMinutes, Max(0, DateDiff(StartAt, EndAt, TimeUnit.Minutes) - Coalesce(BreakMinutes,0)))) / 60, "0.0") & "h" & Char(10) &
-                "帳票基盤：賃金台帳・源泉徴収簿・源泉徴収票（専用台帳接続待ち）"
-              )
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =538
+            Y: =370
       - S5_Note:
           Control: Label@2.5.1
           Properties:
             Color: =RGBA(120, 120, 120, 1)
             Height: =70
             Size: =11
-            Text: ="※作業時間は確定勤務分を優先し、未確定時は開始〜終了−休憩で算出します。残業は残業単価（1時間）を使用。税・保険は社員マスタ登録値を使用する見込み計算です。"
+            Text: ="※残業 " & CountRows(Filter(colAttend, WorkStatus.Value = "残業")) & "日分は単価の列がないため金額に含めていません。表示は見込みで、正式な給与計算ではありません。"
             Width: =Parent.Width - 32
             X: =16
-            Y: =650
+            Y: =440
       - S5_NavBar:
           Control: Rectangle@2.3.0
           Properties:
@@ -331,18 +248,18 @@ Screens:
             Height: =70
             Width: =Parent.Width
             Y: =Parent.Height - 70
-      - btn_nav_home:
+      - S5_Nav1:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S1_Home, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -352,18 +269,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
             Y: =Parent.Height - 70
-      - btn_nav_calendar:
+      - S5_Nav2:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -373,18 +290,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
             Y: =Parent.Height - 70
-      - btn_nav_register:
+      - S5_Nav3:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -394,18 +311,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
             Y: =Parent.Height - 70
-      - btn_nav_summary:
+      - S5_Nav4:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S4_Summary, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -415,18 +332,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
             Y: =Parent.Height - 70
-      - btn_nav_settings:
+      - S5_Nav5:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
