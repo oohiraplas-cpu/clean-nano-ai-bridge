@@ -50,6 +50,13 @@ function getConfig(env = process.env) {
       listId: env.SHAREPOINT_LIST_ID || '',
       employeeLedgerListId: env.SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID || ''
     },
+    // Approval Ledger: IDs and internal column names must be verified from the real SharePoint list.
+    // Missing or malformed configuration intentionally leaves approval checks fail-closed.
+    approvalLedger: {
+      siteId: env.SHAREPOINT_APPROVAL_SITE_ID || '',
+      listId: env.SHAREPOINT_APPROVAL_LIST_ID || '',
+      fieldMap: parsePowerAutomateFlows(env.SHAREPOINT_APPROVAL_FIELD_MAP)
+    },
     powerApps: {
       tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
       clientId: env.POWERAPPS_CLIENT_ID || env.AZURE_CLIENT_ID || '',
