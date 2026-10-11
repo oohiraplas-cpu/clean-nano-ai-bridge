@@ -394,27 +394,19 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   const response = await fetch(`${server.baseUrl}/mcp/tools/list`, { headers: { 'x-api-key': 'mcp-secret' } });
   assert.equal(response.status, 200);
   const body = await response.json();
-  // 既存18ツールは名前と順序を維持したまま、先頭に並ぶ（後方互換）。
-  assert.deepEqual(body.tools.map((tool) => tool.name).slice(0, 18), [
-    'health_check',
-    'get_tasks',
-    'get_next_task',
-    'create_task',
-    'update_task_status',
-    'get_task_result',
-    'get_powerapps_app',
-    'get_powerapps_state',
-    'get_powerapps_source',
-    'update_powerapps_app',
-    'save_powerapps_app',
-    'publish_powerapps_app',
-    'get_sharepoint_list',
-    'get_sharepoint_columns',
-    'ensure_sharepoint_columns',
-    'run_power_automate_flow',
-    'create_employee_ledger_entry',
-    'update_employee_ledger_entry'
+  // 既存の主要ツール順序を維持し、新規SharePoint調査・作成・編集ツールも公開する。
+  const toolNames = body.tools.map((tool) => tool.name);
+  assert.deepEqual(toolNames.slice(0, 12), [
+    'health_check', 'get_tasks', 'get_next_task', 'create_task', 'update_task_status',
+    'get_task_result', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source',
+    'update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'
   ]);
+  for (const name of [
+    'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list',
+    'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns',
+    'ensure_sharepoint_columns', 'run_power_automate_flow', 'create_employee_ledger_entry',
+    'update_employee_ledger_entry'
+  ]) assert.ok(toolNames.includes(name), `missing tool: ${name}`);
   for (const tool of body.tools) {
     assert.equal(typeof tool.description, 'string');
     assert.equal(tool.inputSchema.type, 'object');
@@ -979,7 +971,9 @@ test('MCP_METHODSとMCP_PUBLIC_TOOLSの登録が一致し、新29ツール（拡
   assert.equal(new Set(publicNames).size, publicNames.length, '重複登録なし');
   for (const name of [...NEW_TOOL_NAMES, 'get_powerapps_operation_result', 'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source', 'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state']) assert.ok(publicNames.includes(name), name);
   assert.equal(publicNames.length, MCP_PUBLIC_TOOLS.length);
-  assert.deepEqual(publicNames.slice(0, 18), LEGACY_18_TOOL_NAMES, '既存18ツールは名前・順序とも不変');
+  const originalCoreTools = LEGACY_18_TOOL_NAMES.slice(0, 12);
+  assert.deepEqual(publicNames.slice(0, 12), originalCoreTools, '既存の主要12ツールは名前・順序とも不変');
+  for (const name of LEGACY_18_TOOL_NAMES.slice(12)) assert.ok(publicNames.includes(name), `既存ツールが欠落: ${name}`);
 });
 
 test('tools/list（REST・JSON-RPC）に新9ツールが含まれ、inputSchemaはadditionalProperties:falseで厳密', async (t) => {
@@ -1710,4 +1704,68 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
   });
   const resultG = await resG.json();
   assert.ok(resultG.result.structuredContent.conclusion === 'BLOCKED' || resultG.result.isError, 'missing appId returns error or BLOCKED');
+});
+
+
+test('list_sharepoint_listsはサイト内SharePointリストのGUIDと表示名を読み取り専用で返す', async (t) => {
+  const calls = [];
+  const mockFetch = async (url, options = {}) => {
+    calls.push({ url: String(url), method: options.method || 'GET' });
+    if (String(url).includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (String(url).includes('/sites/test-site/lists?')) {
+      return new Response(JSON.stringify({ value: [
+        { id: 'list-guid-123', displayName: 'CN_承認管理台帳', webUrl: 'https://example.sharepoint.com/lists/approvals', list: { template: 'genericList', hidden: false } },
+        { id: 'list-guid-456', displayName: 'CN_社員台帳', list: { template: 'genericList', hidden: false } }
+      ] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ error: 'unexpected url' }), { status: 404 });
+  };
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret', fetchImpl: mockFetch });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 7, method: 'tools/call',
+      params: { name: 'list_sharepoint_lists', arguments: { siteId: 'test-site', searchTerm: '承認' } }
+    })
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.result.isError, false);
+  assert.equal(body.result.structuredContent.status, 'ok');
+  assert.equal(body.result.structuredContent.count, 1);
+  assert.equal(body.result.structuredContent.lists[0].id, 'list-guid-123');
+  assert.equal(body.result.structuredContent.lists[0].displayName, 'CN_承認管理台帳');
+  assert.ok(calls.every((call) => call.method === 'GET' || call.url.includes('/oauth2/v2.0/token')));
+  assert.equal(calls.some((call) => call.method === 'POST' && !call.url.includes('/oauth2/v2.0/token')), false);
+});
+
+
+test('SharePointの新規作成・編集ツールは人間承認なしでは書き込まない', async (t) => {
+  const graphWrites = [];
+  const mockFetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (!String(url).includes('/oauth2/v2.0/token') && ['POST', 'PATCH', 'DELETE'].includes(method)) graphWrites.push({ url: String(url), method });
+    if (String(url).includes('/oauth2/v2.0/token')) return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    return new Response(JSON.stringify({ value: [] }), { status: 200 });
+  };
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret', fetchImpl: mockFetch });
+  t.after(() => server.close());
+  for (const [name, args] of [
+    ['create_sharepoint_list', { siteId: 'test-site', displayName: 'CN_Test' }],
+    ['create_sharepoint_list_item', { siteId: 'test-site', listId: 'list-id', fields: { Title: 'test' } }],
+    ['update_sharepoint_list_item', { siteId: 'test-site', listId: 'list-id', itemId: 'item-id', fields: { Title: 'edited' } }]
+  ]) {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: name, method: 'tools/call', params: { name, arguments: { ...args, approvedByHuman: false } } })
+    });
+    const body = await response.json();
+    assert.equal(body.result.isError, true, `${name} should reject missing human approval`);
+  }
+  assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
 });

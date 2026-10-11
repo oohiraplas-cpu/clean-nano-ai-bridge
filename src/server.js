@@ -154,7 +154,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
+  'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
@@ -347,6 +347,47 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       },
       additionalProperties: false
     }
+  },
+  {
+    name: 'list_sharepoint_lists',
+    description: '指定SharePointサイト内のリスト一覧（リストGUID・表示名・URL・テンプレート）を読み取り専用で取得します。項目や設定は変更しません。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePointサイトID（省略時は既定サイト）' },
+        searchTerm: { type: 'string', description: 'リスト表示名の部分一致フィルター（任意）' },
+        top: { type: 'integer', minimum: 1, maximum: 200, description: '最大取得件数（既定200）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'create_sharepoint_list',
+    description: 'SharePointサイトに新しい汎用リストを作成します。既存リストの重複を事前確認し、人間承認（approvedByHuman:true）が必須です。削除は行いません。',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: { type: 'object', properties: {
+      siteId: { type: 'string' }, displayName: { type: 'string', minLength: 1, maxLength: 255 },
+      approvedByHuman: { type: 'boolean', description: 'このリストの作成を人間が明示承認した場合のみtrue' }
+    }, required: ['siteId','displayName','approvedByHuman'], additionalProperties: false }
+  },
+  {
+    name: 'create_sharepoint_list_item',
+    description: '既存SharePointリストに1件追加します。fieldsのキーは実環境で確認済みの列内部名を指定し、人間承認（approvedByHuman:true）が必須です。',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: { type: 'object', properties: {
+      siteId: { type: 'string' }, listId: { type: 'string' }, fields: { type: 'object', minProperties: 1 },
+      approvedByHuman: { type: 'boolean' }
+    }, required: ['siteId','listId','fields','approvedByHuman'], additionalProperties: false }
+  },
+  {
+    name: 'update_sharepoint_list_item',
+    description: '既存SharePointリスト項目を部分編集します。fieldsのキーは実環境で確認済みの列内部名を指定し、人間承認（approvedByHuman:true）が必須です。削除は行いません。',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: { type: 'object', properties: {
+      siteId: { type: 'string' }, listId: { type: 'string' }, itemId: { type: 'string' }, fields: { type: 'object', minProperties: 1 },
+      approvedByHuman: { type: 'boolean' }
+    }, required: ['siteId','listId','itemId','fields','approvedByHuman'], additionalProperties: false }
   },
   {
     name: 'get_sharepoint_columns',
@@ -1661,6 +1702,36 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(sharePointReader.listItems(params));
   }
+  if (method === 'list_sharepoint_lists') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    const unknown = Object.keys(params).filter((key) => !['siteId', 'searchTerm', 'top'].includes(key));
+    if (unknown.length) throw requestError(`未対応のプロパティです: ${unknown.join(', ')}`);
+    if (params.siteId !== undefined && (typeof params.siteId !== 'string' || !params.siteId.trim())) throw requestError('siteIdは空でない文字列である必要があります');
+    if (params.searchTerm !== undefined && (typeof params.searchTerm !== 'string' || params.searchTerm.length > 200)) throw requestError('searchTermは200文字以内の文字列である必要があります');
+    if (params.top !== undefined && (!Number.isInteger(params.top) || params.top < 1 || params.top > 200)) throw requestError('topは1から200の整数である必要があります');
+    return withUpstreamErrorStatus(sharePointReader.listLists(params));
+  }
+  if (method === 'create_sharepoint_list') {
+    if (params.approvedByHuman !== true) throw requestError('SharePointへの書き込みにはapprovedByHuman:trueが必須です');
+    if (typeof params.siteId !== 'string' || !params.siteId.trim()) throw requestError('siteIdは必須です');
+    if (typeof params.displayName !== 'string' || !params.displayName.trim() || params.displayName.length > 255) throw requestError('displayNameは1〜255文字で指定してください');
+    const existing = await sharePointReader.listLists({ siteId: params.siteId, searchTerm: params.displayName, top: 200 });
+    if (existing.lists.some((item) => item.displayName.toLocaleLowerCase() === params.displayName.trim().toLocaleLowerCase())) {
+      throw requestError('同名リストが既に存在します。重複作成を中止しました。');
+    }
+    return withUpstreamErrorStatus(sharePointWriter.createList(params.siteId, params.displayName, 'genericList'));
+  }
+  if (method === 'create_sharepoint_list_item' || method === 'update_sharepoint_list_item') {
+    if (params.approvedByHuman !== true) throw requestError('SharePointへの書き込みにはapprovedByHuman:trueが必須です');
+    for (const key of ['siteId','listId', ...(method === 'update_sharepoint_list_item' ? ['itemId'] : [])]) {
+      if (typeof params[key] !== 'string' || !params[key].trim()) throw requestError(`${key}は必須です`);
+    }
+    if (!params.fields || typeof params.fields !== 'object' || Array.isArray(params.fields) || Object.keys(params.fields).length === 0) throw requestError('fieldsは1件以上の列内部名と値を持つオブジェクトで指定してください');
+    if (JSON.stringify(params.fields).length > 50000) throw requestError('fieldsのJSONは50000文字以内にしてください');
+    return withUpstreamErrorStatus(method === 'create_sharepoint_list_item'
+      ? sharePointWriter.createItemFields(params.siteId, params.listId, params.fields)
+      : sharePointWriter.updateItemFields(params.siteId, params.listId, params.itemId, params.fields));
+  }
   if (method === 'get_sharepoint_columns') {
     const paramError = validateGetSharePointColumnsParams(params);
     if (paramError) throw requestError(paramError);
@@ -2518,6 +2589,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
   const powerAppsGitStore = injectedPowerAppsGitStore || new PowerAppsGitStore(config.powerApps);
   const sharePointReader = injectedSharePointReader || new SharePointReader(config.sharepoint);
+  const sharePointWriter = new SharePointListWriter(config.sharepoint);
   const powerAutomateRunner = injectedPowerAutomateRunner || new PowerAutomateRunner(config.powerAutomate);
   const employeeLedgerWriter = injectedEmployeeLedgerWriter
     || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
