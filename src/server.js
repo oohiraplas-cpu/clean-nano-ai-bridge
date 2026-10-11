@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const { getCapabilityRegistry } = require('./capabilityRegistry');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -134,6 +135,7 @@ function apiKeyMiddleware(getKey) {
 }
 
 const MCP_METHODS = Object.freeze([
+  'get_capability_registry',
   'get_executive_policy', 'get_executive_brief',
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
@@ -182,6 +184,7 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
 });
 
 const MCP_PUBLIC_TOOLS = Object.freeze([
+  { name: 'get_capability_registry', description: '実環境検証と登録を区別する能力Registryと不足MCP一覧を取得。CNAI未接続を明示し、未検証ツールの同期を拒否します。読み取り専用。', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
@@ -1683,6 +1686,9 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGenerateUIControlStateParams(params);
     if (paramError) throw requestError(paramError);
     return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
+  }
+  if (method === 'get_capability_registry') {
+    return getCapabilityRegistry(MCP_PUBLIC_TOOLS, process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null);
   }
   if (method === 'get_bridge_capabilities') {
     return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18' });
