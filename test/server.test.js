@@ -394,27 +394,19 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   const response = await fetch(`${server.baseUrl}/mcp/tools/list`, { headers: { 'x-api-key': 'mcp-secret' } });
   assert.equal(response.status, 200);
   const body = await response.json();
-  // 既存18ツールは名前と順序を維持したまま、先頭に並ぶ（後方互換）。
-  assert.deepEqual(body.tools.map((tool) => tool.name).slice(0, 18), [
-    'health_check',
-    'get_tasks',
-    'get_next_task',
-    'create_task',
-    'update_task_status',
-    'get_task_result',
-    'get_powerapps_app',
-    'get_powerapps_state',
-    'get_powerapps_source',
-    'update_powerapps_app',
-    'save_powerapps_app',
-    'publish_powerapps_app',
-    'get_sharepoint_list',
-    'get_sharepoint_columns',
-    'ensure_sharepoint_columns',
-    'run_power_automate_flow',
-    'create_employee_ledger_entry',
-    'update_employee_ledger_entry'
+  // 既存の主要ツール順序を維持し、新規SharePoint調査・作成・編集ツールも公開する。
+  const toolNames = body.tools.map((tool) => tool.name);
+  assert.deepEqual(toolNames.slice(0, 12), [
+    'health_check', 'get_tasks', 'get_next_task', 'create_task', 'update_task_status',
+    'get_task_result', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source',
+    'update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'
   ]);
+  for (const name of [
+    'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list',
+    'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns',
+    'ensure_sharepoint_columns', 'run_power_automate_flow', 'create_employee_ledger_entry',
+    'update_employee_ledger_entry'
+  ]) assert.ok(toolNames.includes(name), `missing tool: ${name}`);
   for (const tool of body.tools) {
     assert.equal(typeof tool.description, 'string');
     assert.equal(tool.inputSchema.type, 'object');
