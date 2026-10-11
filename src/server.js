@@ -154,7 +154,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'list_sharepoint_lists', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
+  'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
