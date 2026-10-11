@@ -176,7 +176,7 @@ test('deploy_to_test: ブランチ先頭コミットが解決できない場合�
 // ---- verify_deployment ----
 
 test('verify_deployment: health・バージョンが正常ならverifiedで、デプロイを確認済みとして履歴に残す', async () => {
-  const run = { id: 77, status: 'completed', conclusion: 'success', created_at: '2026-10-05T00:00:05.000Z' };
+  const run = { id: 77, head_sha: SHA, status: 'completed', conclusion: 'success', created_at: '2026-10-05T00:00:05.000Z' };
   const { service, historyPath } = await createService({
     routes: [okCommit, okDispatch, healthyTest, [isRuns, () => json({ workflow_runs: [run] })]]
   });
@@ -239,7 +239,7 @@ test('verify_deployment: バージョン不一致・version未報告はfailed', 
 });
 
 test('verify_deployment: デプロイ実行中・run未発見は確認できないためincomplete（成功扱いにしない）', async () => {
-  for (const runs of [[{ id: 1, status: 'in_progress', conclusion: null, created_at: '2026-10-05T00:00:05.000Z' }], []]) {
+  for (const runs of [[{ id: 1, head_sha: SHA, status: 'in_progress', conclusion: null, created_at: '2026-10-05T00:00:05.000Z' }], []]) {
     const { service, historyPath } = await createService({
       routes: [okCommit, okDispatch, healthyTest, [isRuns, () => json({ workflow_runs: runs })]]
     });
@@ -252,8 +252,25 @@ test('verify_deployment: デプロイ実行中・run未発見は確認できな�
   }
 });
 
+test('verify_deployment: workflow runのhead_shaが要求SHAと不一致・欠落ならverifiedにしない', async () => {
+  for (const run of [
+    { id: 91, head_sha: OLD_SHA, status: 'completed', conclusion: 'success', created_at: '2026-10-05T00:00:05.000Z' },
+    { id: 92, status: 'completed', conclusion: 'success', created_at: '2026-10-05T00:00:05.000Z' }
+  ]) {
+    const { service, historyPath } = await createService({
+      routes: [okCommit, okDispatch, healthyTest, [isRuns, () => json({ workflow_runs: [run] })]]
+    });
+    const deployed = await service.deployToTest({ branch: 'main', ref: SHA });
+    const result = await service.verifyDeployment({ deploymentId: deployed.deploymentId });
+    assert.equal(result.status, 'incomplete');
+    assert.equal(result.verified, false);
+    assert.equal(result.checks.find((c) => c.name === 'deployment_result').status, 'skipped');
+    assert.equal((await readHistory(historyPath)).length, 1, 'SHA未照合ではverified履歴を作らない');
+  }
+});
+
 test('verify_deployment: デプロイ結果が失敗(conclusion=failure)ならfailed', async () => {
-  const run = { id: 5, status: 'completed', conclusion: 'failure', created_at: '2026-10-05T00:00:05.000Z' };
+  const run = { id: 5, head_sha: SHA, status: 'completed', conclusion: 'failure', created_at: '2026-10-05T00:00:05.000Z' };
   const { service } = await createService({ routes: [okCommit, okDispatch, healthyTest, [isRuns, () => json({ workflow_runs: [run] })]] });
   const deployed = await service.deployToTest({ branch: 'main' });
   const result = await service.verifyDeployment({ deploymentId: deployed.deploymentId });
@@ -345,7 +362,7 @@ test('get_deployment_logs: 上流404/409/429/500は502で詳細を保持、設�
 /** deploy → verify(verified) まで済ませ、復旧元として使えるdeploymentIdを返す。 */
 async function seedVerifiedDeployment(context, sha = SHA) {
   const deployed = await context.service.deployToTest({ branch: 'main', ref: sha });
-  const run = { id: 1, status: 'completed', conclusion: 'success', created_at: '2026-10-05T00:00:05.000Z' };
+  const run = { id: 1, head_sha: sha, status: 'completed', conclusion: 'success', created_at: '2026-10-05T00:00:05.000Z' };
   context.runs.splice(0, context.runs.length, run);
   const verified = await context.service.verifyDeployment({ deploymentId: deployed.deploymentId });
   assert.equal(verified.status, 'verified');
