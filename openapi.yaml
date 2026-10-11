@@ -66,7 +66,7 @@ paths:
       operationId: invokeMcpBridge
       description: |
         ChatGPT / Claude Code / CN_総合秘書AI が共通で使うMCP風エントリポイント。
-        method は health_check・get_azure_runtime_diagnostics（設定キーの存在のみ、秘密値非表示）・get_tasks・get_next_task・create_task・update_task_status・
+        method は health_check・get_azure_runtime_diagnostics（Bridgeローカルの設定キー存在、および既存Managed Identityで許可された場合のみAzure ARMから割当状態・設定キー存在を取得。値・IDは非表示、権限不足はblocked）・get_tasks・get_next_task・create_task・update_task_status・
         get_task_result、Power Apps取得・ソース編集・保存・公開メソッド、
         get_sharepoint_list、list_sharepoint_lists、get_sharepoint_columns、run_power_automate_flow のいずれかを指定します。
         health_check・get_tasks・get_next_task はそれぞれ GET /health・GET /api/tasks・
