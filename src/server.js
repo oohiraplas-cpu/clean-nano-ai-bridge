@@ -305,9 +305,10 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
-        stateContext: STATE_CONTEXT_SCHEMA
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 1, description: 'source-bound session ID' }
       },
-      required: ['stateContext'],
+      required: ['stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -1568,6 +1569,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    // Fail closed: publish only from the same server-registered, source-bound session.
+    const publishRecord = stateRegistry.assertPublishBound(params.stateContext, params.stateSessionId, scope);
+    const liveState = await withUpstreamErrorStatus(powerAppsStore.getAppState());
+    if (liveState.appId !== publishRecord.context.appId ||
+        liveState.environmentId !== publishRecord.context.environment) {
+      throw contextError(['publish: live app/environment mismatch']);
+    }
+    const liveSource = await withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(publishRecord.source.path));
+    if (liveSource.sha !== publishRecord.source.sha || liveSource.content !== publishRecord.source.content) {
+      throw contextError(['publish: source changed since binding']);
+    }
+    stateRegistry.assertPublishBound(params.stateContext, params.stateSessionId, scope);
     await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
     return withUpstreamErrorStatus(powerAppsStore.publishApp());
   }
