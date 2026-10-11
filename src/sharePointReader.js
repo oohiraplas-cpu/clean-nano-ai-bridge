@@ -166,6 +166,30 @@ class SharePointReader {
       columns: schema.columns
     };
   }
+
+  // 承認台帳の照合用：項目の fields（内部名キーの生データ）を読み取り専用で全件取得する。
+  // 件数が上限（APPROVAL_FETCH_MAX_PAGES × 200件）を超える場合は例外にする。
+  // 一部だけで承認を判定しないため、上限超過は呼び出し側で「読めない」＝承認なしとして扱われる。
+  async fetchListFields(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) throw new Error('SharePoint設定が不足しています: siteId');
+    const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
+    if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
+
+    const maxPages = Math.max(1, Number.parseInt(params.maxPages, 10) || 10);
+    const rows = [];
+    let path = `/sites/${targetSiteId}/lists/${targetListId}/items?expand=fields&$top=200`;
+    for (let page = 0; path; page += 1) {
+      if (page >= maxPages) throw new Error('承認台帳の件数が読み取り上限を超えました');
+      const data = await this._graphFetch(path);
+      for (const item of data.value || []) rows.push(item.fields || {});
+      const next = data['@odata.nextLink'];
+      if (next && !next.startsWith(this.graphBaseUrl)) throw new Error('想定外のページ送り先です');
+      path = next ? next.slice(this.graphBaseUrl.length) : null;
+    }
+    return rows;
+  }
 }
 
 module.exports = { SharePointReader };

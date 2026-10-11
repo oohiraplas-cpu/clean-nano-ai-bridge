@@ -50,6 +50,22 @@ function getConfig(env = process.env) {
       listId: env.SHAREPOINT_LIST_ID || '',
       employeeLedgerListId: env.SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID || ''
     },
+    // 承認台帳（実行キューの人間承認確認）。すべて環境変数で指定し、既定値は持たない（fail closed）。
+    // 列の内部名は実環境で確認した値だけを設定する。未設定の項目があれば承認は得られない。
+    approvalLedger: {
+      siteId: env.APPROVAL_LEDGER_SITE_ID || '',
+      listId: env.APPROVAL_LEDGER_LIST_ID || '',
+      listName: env.APPROVAL_LEDGER_LIST_NAME || '',
+      fieldMap: {
+        requestId: env.APPROVAL_LEDGER_COL_REQUEST_ID || '',
+        stepIndex: env.APPROVAL_LEDGER_COL_STEP_INDEX || '',
+        tool: env.APPROVAL_LEDGER_COL_TOOL || '',
+        status: env.APPROVAL_LEDGER_COL_STATUS || '',
+        approver: env.APPROVAL_LEDGER_COL_APPROVER || '',
+        approvedAt: env.APPROVAL_LEDGER_COL_APPROVED_AT || '',
+        revoked: env.APPROVAL_LEDGER_COL_REVOKED || ''
+      }
+    },
     powerApps: {
       tenantId: env.POWERAPPS_TENANT_ID || env.AZURE_TENANT_ID || '',
       clientId: env.POWERAPPS_CLIENT_ID || env.AZURE_CLIENT_ID || '',
