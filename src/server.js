@@ -154,7 +154,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
+  'get_sharepoint_list', 'list_sharepoint_lists', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
@@ -344,6 +344,20 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         listName: { type: 'string', description: 'listId未指定時に表示名で検索するためのリスト名' },
         siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' },
         top: { type: 'number', description: '取得件数の上限（既定50、最大200）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_sharepoint_lists',
+    description: '指定SharePointサイト内のリスト一覧（リストGUID・表示名・URL・テンプレート）を読み取り専用で取得します。項目や設定は変更しません。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePointサイトID（省略時は既定サイト）' },
+        searchTerm: { type: 'string', description: 'リスト表示名の部分一致フィルター（任意）' },
+        top: { type: 'integer', minimum: 1, maximum: 200, description: '最大取得件数（既定200）' }
       },
       additionalProperties: false
     }
@@ -1660,6 +1674,15 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetSharePointListParams(params);
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(sharePointReader.listItems(params));
+  }
+  if (method === 'list_sharepoint_lists') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    const unknown = Object.keys(params).filter((key) => !['siteId', 'searchTerm', 'top'].includes(key));
+    if (unknown.length) throw requestError(`未対応のプロパティです: ${unknown.join(', ')}`);
+    if (params.siteId !== undefined && (typeof params.siteId !== 'string' || !params.siteId.trim())) throw requestError('siteIdは空でない文字列である必要があります');
+    if (params.searchTerm !== undefined && (typeof params.searchTerm !== 'string' || params.searchTerm.length > 200)) throw requestError('searchTermは200文字以内の文字列である必要があります');
+    if (params.top !== undefined && (!Number.isInteger(params.top) || params.top < 1 || params.top > 200)) throw requestError('topは1から200の整数である必要があります');
+    return withUpstreamErrorStatus(sharePointReader.listLists(params));
   }
   if (method === 'get_sharepoint_columns') {
     const paramError = validateGetSharePointColumnsParams(params);
