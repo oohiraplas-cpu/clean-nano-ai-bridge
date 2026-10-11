@@ -1,3 +1,4 @@
+const { SharePointApprovalStore, ScopedApprovalExecutor, sharePointItemOperation } = require('./scopedApprovalExecution');
 require('dotenv').config();
 
 const crypto = require('node:crypto');
@@ -932,11 +933,27 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'execute_powerplatform_request',
-    description: 'Power Platform 統合実行基盤：ユーザー短文1回から、PowerApps・SharePoint・PowerAutomate・Copilot Studio・GitHub・Azure の全製品を協調制御し、対象特定→接続診断→接続修復→既存資産取得→変更計画→実装→テスト→保存→再取得検証→Git/PR/CI→環境反映→公開承認→公開→監査→ロールバック管理の全工程を自動実行します。本番公開・mainマージ・権限変更・削除・外部共有・追加課金のみ人間承認が必須です。',
+    description: '承認台帳に紐付く既存SharePoint項目の編集を一度だけ実行します。approvedOperationが必要です。その他の統合実行は未接続として拒否します。',
     annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: {
       type: 'object',
       properties: {
+        approvedOperation: {
+          type: 'object',
+          properties: {
+            approvalId: { type: 'string' }, requestId: { type: 'string' },
+            tool: { type: 'string', enum: ['update_sharepoint_list_item'] },
+            targetId: { type: 'string' }, environmentId: { type: 'string' },
+            commitSha: { type: 'string', description: '検証済みBridge実行コミットSHA' },
+            diffHash: { type: 'string', description: '正規化した操作内容のSHA-256' },
+            params: { type: 'object', properties: {
+              targetKey: { type: 'string' }, itemId: { type: 'string' },
+              expectedETag: { type: 'string' }, fields: { type: 'object' }
+            }, required: ['targetKey', 'itemId', 'expectedETag', 'fields'], additionalProperties: false }
+          },
+          required: ['approvalId', 'requestId', 'tool', 'targetId', 'environmentId', 'commitSha', 'diffHash', 'params'],
+          additionalProperties: false
+        },
         request: { type: 'string', description: 'ユーザーからの短文指示（目的・対象・内容を含む、通常3〜100文字）' },
         target: { type: 'object', description: 'オプション：対象の明示指定（appName, environmentId等）' },
         environmentId: { type: 'string', description: 'オプション：環境ID（省略時は正本Environmentを自動選択）' },
@@ -2595,6 +2612,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
   const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
   const bridgeServices = createBridgeServices(config, powerAppsStore, powerAppsGitStore, injectedBridgeServices);
+  const approvalStore = new SharePointApprovalStore(sharePointReader, config.scopedApproval || {});
+  const approvedExecutor = new ScopedApprovalExecutor({ store: approvalStore,
+    commitSha: config.deploymentSha,
+    operations: { update_sharepoint_list_item: sharePointItemOperation(approvalStore, config.scopedApproval || {}) }
+  });
   const stateRegistry = new StateContextRegistry(config.stateContextRegistry);
   const app = express();
   app.disable('x-powered-by');
@@ -2743,6 +2765,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   const hydratePowerAppsStateContext = hydrateAuthorityContext;
 
   async function executeWithState(method, params, req) {
+    if (method === 'execute_powerplatform_request' && params?.approvedOperation) {
+      return approvedExecutor.execute(params.approvedOperation);
+    }
+
     try { return await executeWithStateInternal(method, params, req); }
     catch (error) {
       if (method === 'compare_powerapps_with_git') {

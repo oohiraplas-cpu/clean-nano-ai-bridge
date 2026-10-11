@@ -102,7 +102,6 @@ class PowerPlatformRequestHandler {
    */
   async executePowerPlatformRequest(input) {
     const requestId = input.requestId || crypto.randomUUID();
-    const startTime = Date.now();
 
     // ユーザー入力回数: 1
     this.efficiencyMetrics.record(requestId, 'userInputs', 1);
@@ -133,54 +132,19 @@ class PowerPlatformRequestHandler {
       );
     }
 
-    // Step 4: Orchestrator実行
-    try {
-      const result = await this.orchestrator.executePowerPlatformRequest({
-        request: input.request,
-        targetName: input.targetName,
-        targetId: input.targetId,
-        environmentId: input.environmentId,
-        requestId,
-        approvalToken: input.approvalToken,
-        publishApproval: input.publishApproval || false
-      });
-
-      // Step 5: 監査ログ記録
-      const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
-      this.efficiencyMetrics.record(requestId, 'elapsedSeconds', elapsedSeconds);
-
-      this.auditLog.log({
-        requestId,
-        timestamp: new Date().toISOString(),
-        actor: 'system',
-        action: 'execute_powerplatform_request',
-        resource: input.targetName || input.targetId || 'unknown',
-        resourceType: 'powerplatform',
-        changes: result.executionPlan?.changes || 0,
-        status: result.conclusion === 'DONE' || result.conclusion === 'SAVED' ? 'success' : 'failure',
-        result: result.conclusion,
-        errors: result.unresolved
-      });
-
-      // Step 6: 効率指標追加
-      result.efficiency = {
-        ...result.efficiency,
-        ...this.efficiencyMetrics.aggregate(requestId)
-      };
-
-      return result;
-    } catch (error) {
-      this.auditLog.log({
-        requestId,
-        timestamp: new Date().toISOString(),
-        actor: 'system',
-        action: 'execute_powerplatform_request',
-        status: 'failure',
-        errors: [error.message]
-      });
-
-      return this._returnBlocked(`実行エラー: ${error.message}`, [error.message], requestId);
-    }
+    // The legacy orchestrator accepts caller-supplied approvalToken/publishApproval.
+    // It must not perform writes until a server-side SharePoint scope check and
+    // durable single-use approval reservation are integrated. No client flag can
+    // enable this route. Existing individual read-only MCP tools remain available.
+    const reason = 'scoped_approval_executor_not_configured';
+    this.auditLog.log({ requestId, timestamp: new Date().toISOString(),
+      actor: 'system', action: 'execute_powerplatform_request',
+      resource: input.targetId || 'unknown', status: 'failure', errors: [reason] });
+    return {
+      ...this._returnBlocked('承認台帳と実行ゲートの接続が未完了です', [reason], requestId),
+      externalApiCalled: false,
+      efficiency: this.efficiencyMetrics.aggregate(requestId)
+    };
   }
 
   /**
