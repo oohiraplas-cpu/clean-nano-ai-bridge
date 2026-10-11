@@ -162,7 +162,7 @@ Screens:
             Height: =52
             OnSelect: =Set(gblCalType, "解体"); Set(gblTimeTreeOpen, false); Navigate(S2_Calendar, ScreenTransition.None)
             Size: =11
-            Text: ="⚔ 解体"
+            Text: ="剣 解体"
             Visible: =Coalesce(gblTimeTreeOpen, false)
             Width: =(Parent.Width - 40) / 3
             X: =16 + 0 * ((Parent.Width - 40) / 3 + 4)
