@@ -257,3 +257,27 @@ CNAI: Bridge の現在の能力情報を取得して。
 4. 問題修正・最適化
 5. 全社向け本番公開
 
+
+## 2026-10-12: registry contract synchronization (review branch only)
+
+`src/server.js` exports the authoritative `MCP_PUBLIC_TOOLS` input schemas and
+`MCP_METHODS` dispatch names. Run `npm run sync:mcp-contract` after a registry
+change. It updates `openapi.yaml`'s `McpInput.method.enum` and
+`config/mcp-public-tools.json`; CI tests fail if either drifts. The JSON file is
+an exact MCP discovery snapshot for comparison, **not** a claim that Copilot
+Studio imports this file directly or that every registered tool is live-ready.
+
+For the existing MCP connection, compare authenticated `GET /mcp/tools/list`
+and JSON-RPC `tools/list` with the snapshot. Refresh the existing connection
+only through its supported configuration flow, after an approved deployment.
+Do not create a replacement connection or broaden permissions. A connector
+still showing only `relativePath` for `get_powerapps_source` is stale: it must
+also expose `correlationId` and `stateSessionId`. Preserve both identifiers
+from `get_powerapps_state` throughout the same transport session. Source
+validation and comparison additionally require the complete `stateContext`.
+Do not drop or synthesize these fields to pass validation.
+
+Registration refresh, Azure deployment, PAC authentication, SOURCE_MAP content,
+and Copilot execution were not performed by this branch. The unified execution
+route is deliberately blocked until scoped, single-use SharePoint approval is
+connected; caller-provided approval flags or tokens cannot enable it.

@@ -1,0 +1,2617 @@
+{
+  "tools": [
+    {
+      "name": "health_check",
+      "description": "Bridgeの稼働状態を確認します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_tasks",
+      "description": "タスク一覧を取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_next_task",
+      "description": "次に実行可能なタスクを取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_task",
+      "description": "ChatGPTからPower Appsへ渡す編集タスクを新規作成します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "編集タスクのタイトル"
+          },
+          "description": {
+            "type": "string",
+            "description": "Power Appsへ渡す具体的な編集内容"
+          },
+          "priority": {
+            "type": "string",
+            "description": "優先度（省略時normal）"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_task_status",
+      "description": "編集タスクの状態と実行結果を更新します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "対象タスクID"
+          },
+          "status": {
+            "type": "string",
+            "description": "更新後の状態"
+          },
+          "result": {
+            "description": "実行結果"
+          }
+        },
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_task_result",
+      "description": "編集タスクの状態と実行結果を取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "対象タスクID"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_powerapps_app",
+      "description": "既存Power Appsアプリの情報を取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_powerapps_state",
+      "description": "既存Power Appsアプリの現在状態を取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_powerapps_source",
+      "description": "既存Power Appsソースの指定ファイルを取得します。relativePath / screenName / targetNames のいずれかを指定。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "relativePath": {
+            "type": "string",
+            "description": "取得するソースファイルの相対パス（オプション）"
+          },
+          "screenName": {
+            "type": "string",
+            "description": "Power Apps画面名。Git正本から自動解決します（オプション）"
+          },
+          "targetNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "複数の画面名を一括解決（targetNamesが指定された場合、他は無視）（オプション）",
+            "maxItems": 50
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "get_powerapps_stateが返したcorrelationId（オプション）"
+          },
+          "stateSessionId": {
+            "type": "string",
+            "description": "同じ実行単位のstateSessionId。解決結果をStateContextへ保存（オプション）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_powerapps_app",
+      "description": "既存Power Appsアプリを更新します。ソース更新時はGitHubへ保存後、Power Platformへ同期します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "updateData": {
+            "type": "object",
+            "description": "Power Apps管理APIへ送る更新内容"
+          },
+          "relativePath": {
+            "type": "string",
+            "description": "更新するソースファイルの相対パス"
+          },
+          "content": {
+            "type": "string",
+            "description": "更新後のファイル内容"
+          },
+          "message": {
+            "type": "string",
+            "description": "更新のコミットメッセージ"
+          },
+          "branch": {
+            "type": "string",
+            "description": "get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "stateContext"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "save_powerapps_app",
+      "description": "GitHubの既存Power AppsソースをPower Platformへ同期し、保存状態を確認します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "stateContext"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "publish_powerapps_app",
+      "description": "既存Power Appsアプリを公開します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          },
+          "stateSessionId": {
+            "type": "string",
+            "minLength": 8,
+            "description": "get_powerapps_sourceで正本ソースを観測したstateSessionId（必須・契約2026-10-11）"
+          }
+        },
+        "required": [
+          "stateContext",
+          "stateSessionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_sharepoint_list",
+      "description": "SharePointリストの項目を読み取り専用で取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "取得するSharePointリストのID"
+          },
+          "listName": {
+            "type": "string",
+            "description": "listId未指定時に表示名で検索するためのリスト名"
+          },
+          "siteId": {
+            "type": "string",
+            "description": "対象サイトID（省略時は既定のサイトを使用）"
+          },
+          "top": {
+            "type": "number",
+            "description": "取得件数の上限（既定50、最大200）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_sharepoint_lists",
+      "description": "指定SharePointサイト内のリスト一覧（リストGUID・表示名・URL・テンプレート）を読み取り専用で取得します。項目や設定は変更しません。",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "description": "SharePointサイトID（省略時は既定サイト）"
+          },
+          "searchTerm": {
+            "type": "string",
+            "description": "リスト表示名の部分一致フィルター（任意）"
+          },
+          "top": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "最大取得件数（既定200）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_sharepoint_list",
+      "description": "SharePointサイトに新しい汎用リストを作成します。既存リストの重複を事前確認し、人間承認（approvedByHuman:true）が必須です。削除は行いません。",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "approvedByHuman": {
+            "type": "boolean",
+            "description": "このリストの作成を人間が明示承認した場合のみtrue"
+          }
+        },
+        "required": [
+          "siteId",
+          "displayName",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_sharepoint_list_item",
+      "description": "既存SharePointリストに1件追加します。fieldsのキーは実環境で確認済みの列内部名を指定し、人間承認（approvedByHuman:true）が必須です。",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "listId": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "minProperties": 1
+          },
+          "approvedByHuman": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "siteId",
+          "listId",
+          "fields",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_sharepoint_list_item",
+      "description": "既存SharePointリスト項目を部分編集します。fieldsのキーは実環境で確認済みの列内部名を指定し、人間承認（approvedByHuman:true）が必須です。削除は行いません。",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "listId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "minProperties": 1
+          },
+          "approvedByHuman": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "siteId",
+          "listId",
+          "itemId",
+          "fields",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_sharepoint_columns",
+      "description": "SharePointリストの列定義（内部名・表示名・型・必須・Choice候補等）を読み取り専用で取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "取得するSharePointリストのID"
+          },
+          "listName": {
+            "type": "string",
+            "description": "listId未指定時に表示名で検索するためのリスト名"
+          },
+          "siteId": {
+            "type": "string",
+            "description": "対象サイトID（省略時は既定のサイトを使用）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ensure_sharepoint_columns",
+      "description": "SharePointリストに不足列だけを追加します。既存列は変更・削除せずスキップします。人間承認（approvedByHuman:true）が必須です。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string"
+          },
+          "listName": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "number",
+                    "dateTime",
+                    "boolean",
+                    "choice"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "multiline": {
+                  "type": "boolean"
+                },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "displayName",
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "approvedByHuman": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "run_power_automate_flow",
+      "description": "登録済みのPower AutomateフローをHTTPトリガー経由で実行します。人間承認（approvedByHuman:true）が必須です。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "flowKey": {
+            "type": "string",
+            "description": "実行するフローの登録キー"
+          },
+          "payload": {
+            "type": "object",
+            "description": "フローに渡す入力データ"
+          },
+          "approvedByHuman": {
+            "type": "boolean",
+            "description": "人間による承認済みであることを示すフラグ（true必須）"
+          }
+        },
+        "required": [
+          "flowKey",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_employee_ledger_entry",
+      "description": "CN_社員台帳へ新しい社員情報を1件登録します。列内部名は実環境で確認済みの固定マッピングを使用します。人間承認（approvedByHuman:true）が必須です。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "record": {
+            "type": "object",
+            "description": "登録する項目",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "氏名"
+              },
+              "employeeId": {
+                "type": "string",
+                "description": "社員ID"
+              },
+              "department": {
+                "type": "string",
+                "description": "所属"
+              },
+              "employmentStatus": {
+                "type": "string",
+                "description": "状態"
+              },
+              "progressStatus": {
+                "type": "string",
+                "description": "進捗状況"
+              },
+              "hireDate": {
+                "type": "string",
+                "description": "入社日（YYYY-MM-DD）"
+              },
+              "remarks": {
+                "type": "string",
+                "description": "備考"
+              }
+            },
+            "additionalProperties": false
+          },
+          "approvedByHuman": {
+            "type": "boolean",
+            "description": "人間による承認済みであることを示すフラグ（true必須）"
+          }
+        },
+        "required": [
+          "record",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_employee_ledger_entry",
+      "description": "CN_社員台帳の既存社員情報を部分更新します。人間承認（approvedByHuman:true）が必須です。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "更新対象のSharePointアイテムID"
+          },
+          "record": {
+            "type": "object",
+            "description": "更新する項目（部分更新、指定したキーのみ上書き）",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "氏名"
+              },
+              "employeeId": {
+                "type": "string",
+                "description": "社員ID"
+              },
+              "department": {
+                "type": "string",
+                "description": "所属"
+              },
+              "employmentStatus": {
+                "type": "string",
+                "description": "状態"
+              },
+              "progressStatus": {
+                "type": "string",
+                "description": "進捗状況"
+              },
+              "hireDate": {
+                "type": "string",
+                "description": "入社日（YYYY-MM-DD）"
+              },
+              "remarks": {
+                "type": "string",
+                "description": "備考"
+              }
+            },
+            "additionalProperties": false
+          },
+          "approvedByHuman": {
+            "type": "boolean",
+            "description": "人間による承認済みであることを示すフラグ（true必須）"
+          }
+        },
+        "required": [
+          "itemId",
+          "record",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_powerapps_operation_result",
+      "description": "Power Apps操作（更新・保存・公開）のoperationIdから、記録された結果を取得します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "description": "操作ID（更新・保存・公開の応答に含まれるoperationId）"
+          }
+        },
+        "required": [
+          "operationId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "validate_powerapps_change",
+      "description": "Power Appsソース変更を適用前に検査します（branch・relativePath・対象ファイル・削除・大規模差分・構文）。valid・errors・warnings・summaryを返します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "変更対象のbranch（正本branchと一致する必要があります）"
+          },
+          "relativePath": {
+            "type": "string",
+            "description": "対象ソースファイルの相対パス"
+          },
+          "content": {
+            "type": "string",
+            "description": "更新後のファイル内容（削除の場合は指定しません）"
+          },
+          "currentContent": {
+            "type": "string",
+            "description": "現在のファイル内容（省略時は正本branchから取得します）"
+          },
+          "currentExists": {
+            "type": "boolean",
+            "description": "対象ファイルが現在存在するか（currentContent未指定時の補足）"
+          },
+          "delete": {
+            "type": "boolean",
+            "description": "ファイル削除を検査する場合はtrue"
+          },
+          "create": {
+            "type": "boolean",
+            "description": "新規ファイル作成を許可する場合はtrue"
+          },
+          "allowLargeDiff": {
+            "type": "boolean",
+            "description": "大規模差分（変更率80%以上）を意図したものとして許可する場合はtrue"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          },
+          "stateSessionId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "get_powerapps_sourceが返した同一実行単位のstateSessionId"
+          }
+        },
+        "required": [
+          "branch",
+          "relativePath",
+          "stateContext",
+          "stateSessionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "run_powerapps_tests",
+      "description": "Power Appsソース変更の静的検査（構文・括弧・引用符・重複定義・画面遷移・データソース参照・危険な削除）を実行します。実行不能の項目は成功扱いにせずskippedとreasonを返します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "description": "検査する変更ファイル（1〜50件）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "relativePath": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "更新後の内容（削除の場合は指定しません）"
+                },
+                "delete": {
+                  "type": "boolean",
+                  "description": "削除するファイルの場合はtrue"
+                }
+              },
+              "required": [
+                "relativePath"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "knownScreens": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "既存の画面名一覧（指定すると画面遷移先を厳密に検証します）"
+          },
+          "knownDataSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "verify_save_result",
+      "description": "保存後にアプリ状態と正本ソースを再取得し、branch・relativePath・期待SHAまたは期待内容・エラー状態を検証します。expectedShaまたはexpectedContentのいずれかが必須です。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "relativePath": {
+            "type": "string",
+            "description": "検証するソースファイルの相対パス"
+          },
+          "branch": {
+            "type": "string",
+            "description": "想定しているbranch（正本branchと一致する必要があります）"
+          },
+          "expectedSha": {
+            "type": "string",
+            "description": "期待するファイルのSHA（40桁の16進）"
+          },
+          "expectedContent": {
+            "type": "string",
+            "description": "期待するファイル内容"
+          }
+        },
+        "required": [
+          "relativePath"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "deploy_to_test",
+      "description": "構成済みの非本番テスト環境へだけデプロイを要求します。本番・環境不明・設定不足・branch不一致は拒否します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "デプロイ元branch（許可branchと一致する必要があります）"
+          },
+          "environment": {
+            "type": "string",
+            "description": "対象環境名（省略時は構成済みのテスト環境）。本番は指定できません"
+          },
+          "ref": {
+            "type": "string",
+            "description": "デプロイするコミットSHA（省略時はbranch先頭）"
+          }
+        },
+        "required": [
+          "branch"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "verify_deployment",
+      "description": "対象環境・バージョン・デプロイ結果・healthのHTTP状態と応答内容を検証します。確認できない項目は成功扱いにしません。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string",
+            "description": "検証する環境名（省略時は構成済みのテスト環境）"
+          },
+          "deploymentId": {
+            "type": "string",
+            "description": "deploy_to_testが返したdeploymentId（デプロイ結果の検証に使用）"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "description": "期待するバージョン（healthの応答のversionと比較）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_deployment_logs",
+      "description": "構成済みのデプロイ基盤から診断ログ（workflow run・job・step）を取得します。トークン・APIキー・接続文字列などはマスクされます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string",
+            "description": "対象環境名（省略時は構成済みのテスト環境）"
+          },
+          "deploymentId": {
+            "type": "string",
+            "description": "対象のdeploymentId"
+          },
+          "runId": {
+            "type": "integer",
+            "description": "対象のworkflow run ID（deploymentIdとは同時に指定できません）"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "取得件数（既定5、最大20）"
+          },
+          "includeJobLogs": {
+            "type": "boolean",
+            "description": "jobログ本文の末尾100行を含める場合はtrue"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "rollback_deployment",
+      "description": "確認済み（verify_deploymentでverified）の復旧元へだけ戻します。本番はapprovedByHuman:trueが必須です。復旧後にhealthを再確認します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string",
+            "description": "対象環境名（省略時は構成済みのテスト環境）"
+          },
+          "targetDeploymentId": {
+            "type": "string",
+            "description": "復旧元のdeploymentId（確認済みのもののみ）"
+          },
+          "approvedByHuman": {
+            "type": "boolean",
+            "description": "人間による承認済みであることを示すフラグ（本番ではtrue必須）"
+          }
+        },
+        "required": [
+          "targetDeploymentId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_permissions",
+      "description": "構成済み対象の権限を読み取り専用で取得します。対象種別・取得範囲・現在の権限を返し、秘密情報は返しません。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "powerapps_app",
+              "dataverse_user_roles"
+            ],
+            "description": "対象種別"
+          },
+          "principalId": {
+            "type": "string",
+            "description": "dataverse_user_rolesで対象とするsystemuserのGUID"
+          }
+        },
+        "required": [
+          "targetType"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_permissions",
+      "description": "必要最小権限のみを付与・取消します。人間承認（approvedByHuman:true）が必須です。System Administrator等の強い権限・テナント全体共有・外部共有は拒否し、変更前後を検証します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "powerapps_app",
+              "dataverse_user_roles"
+            ],
+            "description": "対象種別"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "grant",
+              "revoke"
+            ],
+            "description": "付与または取消"
+          },
+          "principalId": {
+            "type": "string",
+            "description": "対象のEntraオブジェクトID（GUID）またはメールアドレス（dataverse_user_rolesではsystemuserのGUID）"
+          },
+          "principalType": {
+            "type": "string",
+            "enum": [
+              "User",
+              "Group",
+              "Tenant"
+            ],
+            "description": "対象の種別（Tenantは常に拒否されます）"
+          },
+          "roleName": {
+            "type": "string",
+            "description": "ロール名（powerapps_app: CanView/CanEdit。dataverse_user_roles: 許可リストのロール）"
+          },
+          "approvedByHuman": {
+            "type": "boolean",
+            "description": "人間による承認済みであることを示すフラグ（true必須）"
+          }
+        },
+        "required": [
+          "targetType",
+          "action",
+          "principalId",
+          "principalType",
+          "roleName",
+          "approvedByHuman"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "lock_user_info",
+      "description": "ユーザー情報をロック状態にします。ロック後、非管理者による閲覧・編集を禁止します。パスキーの初期化と同時に実行します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "description": "ロック対象のユーザーオブジェクト（name, email, department, employeeId等を含む）"
+          },
+          "passkey": {
+            "type": "string",
+            "description": "パスキー（編集時に要求される64文字以上のランダム文字列）"
+          }
+        },
+        "required": [
+          "user",
+          "passkey"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "validate_passkey",
+      "description": "ロック済みユーザーの編集時、パスキーの妥当性を検証します。認証成功・失敗を返します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "passkey": {
+            "type": "string",
+            "description": "入力されたパスキー"
+          },
+          "user": {
+            "type": "object",
+            "description": "ロック済みのユーザーオブジェクト（passkeyHashを含む）"
+          }
+        },
+        "required": [
+          "passkey",
+          "user"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_user_lock_status",
+      "description": "ユーザーのロック状態（ロック済み・未ロック・ロック日時）を取得します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "description": "ユーザーオブジェクト"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "can_view_user_info",
+      "description": "指定ユーザーが対象ユーザー情報を閲覧可能かを判定します。自分自身・管理者は常に閲覧可。ロック済みユーザーは管理者のみ閲覧可。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "targetUser": {
+            "type": "object",
+            "description": "対象ユーザーオブジェクト"
+          },
+          "currentUserEmail": {
+            "type": "string",
+            "description": "確認対象のユーザーメールアドレス"
+          }
+        },
+        "required": [
+          "targetUser",
+          "currentUserEmail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "can_edit_user_info",
+      "description": "指定ユーザーが対象ユーザー情報を編集可能かを判定します。権限・パスキー要否を返します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "targetUser": {
+            "type": "object",
+            "description": "対象ユーザーオブジェクト"
+          },
+          "currentUserEmail": {
+            "type": "string",
+            "description": "確認対象のユーザーメールアドレス"
+          },
+          "passkey": {
+            "type": "string",
+            "description": "ロック済みユーザー編集時のパスキー（省略可）"
+          }
+        },
+        "required": [
+          "targetUser",
+          "currentUserEmail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "can_delete_user_info",
+      "description": "指定ユーザーが対象ユーザー情報を削除可能かを判定します。管理者かつ未ロック状態でのみ削除可。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "targetUser": {
+            "type": "object",
+            "description": "対象ユーザーオブジェクト"
+          },
+          "currentUserEmail": {
+            "type": "string",
+            "description": "確認対象のユーザーメールアドレス"
+          }
+        },
+        "required": [
+          "targetUser",
+          "currentUserEmail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "generate_ui_control_state",
+      "description": "指定ユーザーに対するPower Apps UI制御情報を生成します。ボタン非表示・フィールド読み取り専用・パスキープロンプト表示等の制御フラグを返します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "description": "ユーザーオブジェクト"
+          },
+          "currentUserEmail": {
+            "type": "string",
+            "description": "現在ログイン中のユーザーメールアドレス"
+          }
+        },
+        "required": [
+          "user",
+          "currentUserEmail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_bridge_capabilities",
+      "description": "BridgeのVersion、MCP仕様対応状況、公開ツール一覧、制約情報、セキュリティ設定を返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "check_dependencies",
+      "description": "Bridge接続先（Power Apps、SharePoint、Power Automate、Git、Azure）のhealth状態を確認します。Bridge全体が正常と判定するには全依存先が健全である必要があります。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "compare_powerapps_with_git",
+      "description": "Power AppsソースとGit正本ブランチのファイル内容を比較します。一致、Power Apps側が新しい、Git側が新しい、競合等の状態を判定します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "targetFile": {
+            "type": "string",
+            "description": "比較するファイルの相対パス（例：Source/Home.pa.yaml）"
+          },
+          "targetApp": {
+            "type": "string",
+            "description": "対象Power AppsアプリID（省略時は構成済みアプリ）"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          },
+          "stateSessionId": {
+            "type": "string",
+            "description": "get_powerapps_stateが返した実行単位ID"
+          }
+        },
+        "required": [
+          "stateContext",
+          "stateSessionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "validate_powerapps_source",
+      "description": "Power Appsソースファイルの構文、Secret混入、ファイルサイズ等を検査します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceContent": {
+            "type": "string",
+            "description": "検査するソースコンテンツ"
+          },
+          "relativePath": {
+            "type": "string",
+            "description": "ソースファイルの相対パス"
+          },
+          "expectedBranch": {
+            "type": "string",
+            "description": "期待するbranch名（省略可）"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          },
+          "stateSessionId": {
+            "type": "string",
+            "description": "get_powerapps_stateが返した実行単位ID"
+          }
+        },
+        "required": [
+          "stateContext",
+          "stateSessionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_sharepoint_list_schema",
+      "description": "SharePoint Listのスキーマ情報（列定義、型、必須、一意制約等）を取得します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "description": "SharePointサイトID"
+          },
+          "listId": {
+            "type": "string",
+            "description": "ListのID"
+          }
+        },
+        "required": [
+          "siteId",
+          "listId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_registered_power_automate_flows",
+      "description": "Bridge登録済みのPower Automateフロー一覧を取得します。フロー名、用途、入力定義、承認要否を返します。トリガーURLとSAS値は返されません。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_power_automate_run_result",
+      "description": "Power Automateフロー実行後、実行結果（成功/失敗、各アクション状態、エラー）を取得します。「受付成功」と「業務処理成功」を区別します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "description": "フロー実行ID"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "inspect_powerapps_structure",
+      "description": "Power Appsアプリの構造を解析します。appIdのみで実アプリ情報を解析、またはstateContext+relativePath指定でGit保存ソースを解析。画面一覧、コントロール、コンポーネント、データソース、コネクタ、Power Fx参照、警告を返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "対象Power AppsアプリID（省略時は構成済みアプリ）"
+          },
+          "stateContext": {
+            "type": "object",
+            "description": "実取得した対象・Git blob SHA・サーバー登録済みcorrelationId。stateSessionIdと併用します。",
+            "properties": {
+              "appId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canonicalBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$",
+                "description": "対象ファイルのGit blob SHA"
+              },
+              "correlationId": {
+                "type": "string",
+                "minLength": 8,
+                "description": "get_powerapps_stateが生成したUUID"
+              },
+              "repository": {
+                "type": "string",
+                "minLength": 1,
+                "description": "GitHub repository (owner/repo)"
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Git root path for Power Apps source"
+              }
+            },
+            "required": [
+              "appId",
+              "environment",
+              "branch",
+              "canonicalBranch",
+              "sha",
+              "correlationId"
+            ],
+            "additionalProperties": false
+          },
+          "stateSessionId": {
+            "type": "string",
+            "description": "Git保存ソース解析時の実行session ID（stateContextと併用時のみ有効）"
+          },
+          "relativePath": {
+            "type": "string",
+            "description": "Git解析対象ファイルの相対パス（stateContextと併用時のみ有効）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "discover_powerapps_structure",
+      "description": "App ID と Environment ID のみで対象Power Appsアプリを解決し、画面一覧・遷移マップ・欠落遷移先・未参照画面・コントロール一覧を読み取り専用で返します。登録済みソースrootのみを対象とし、推測しません。書込みは行いません。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "対象Power AppsアプリID（GUID）"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "対象Environment ID"
+          }
+        },
+        "required": [
+          "appId",
+          "environmentId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "resolve_app_target",
+      "description": "アプリ名（例: CN_AI依頼台帳。別名・部分一致可）、またはApp IDとEnvironment IDから、App ID・Environment・正本Branch・gitRootを実環境から解決します。取得できなかった項目は推測せずunconfirmedで返します。曖昧な場合は候補を返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "アプリ名または別名（例: CN_AI依頼台帳）"
+          },
+          "appId": {
+            "type": "string",
+            "description": "App ID（GUID）。environmentIdと併用"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "Environment ID。appIdと併用"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_power_apps",
+      "description": "環境内のPower Appsキャンバスアプリ一覧（App ID・名称・公開日時）をDataverseから取得します。取得できない場合は構成済みアプリ1件のみ返し、その旨をwarningsに示します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_environments",
+      "description": "Power Platform管理APIからEnvironment一覧を取得します。権限不足の場合は構成済みEnvironment IDのみ（名称・種別は未確認）を返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_git_branches",
+      "description": "GitHub上の実在Branch一覧と、書き込み対象の正本Branch（構成値）を返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_application_rules",
+      "description": "ユーザー確認済みの設定ファイルに記載されたルール（公開承認者・gitRoot・別名）を返します。記載のない項目は未確認として扱ってください。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appName": {
+            "type": "string",
+            "description": "アプリケーション名（例: CN_AI依頼台帳）"
+          }
+        },
+        "required": [
+          "appName"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "export_knowledge_snapshot",
+      "description": "アプリ・Environment・Branch・承認者の取得結果をCopilot Studio Knowledge用のMarkdownとして生成します。生成のみで、どこにも保存・更新しません。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_executive_policy",
+      "description": "CNAI Executive vNext：利益・入金回収・資金繰り優先の経営執行支援方針と14役割の振り分け候補、承認・再利用・正本・改修順序を取得。読み取り専用。業務操作は行わない。",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "相談内容（秘密値は入力しない）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_executive_brief",
+      "description": "実在確認済みの既存SharePointリスト・列を指定して経営資料の原本値と不足データを取得。取得範囲のみで全社集計・予測・書き込みは行わない。取得先未指定時は不足項目を返す。読み取り専用。",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "properties": {
+                "metric": {
+                  "type": "string",
+                  "enum": [
+                    "売上",
+                    "粗利",
+                    "営業利益",
+                    "案件別収支",
+                    "売掛金",
+                    "未入金",
+                    "入金予定",
+                    "請求漏れ",
+                    "請求遅延",
+                    "現預金",
+                    "月次固定費",
+                    "資金繰り",
+                    "借入残高",
+                    "金利",
+                    "毎月返済額",
+                    "返済予定",
+                    "月次試算表",
+                    "前年同月比",
+                    "予算実績差",
+                    "納税資金",
+                    "設備投資",
+                    "運転資金",
+                    "融資目的",
+                    "銀行提出資料"
+                  ]
+                },
+                "siteId": {
+                  "type": "string"
+                },
+                "listId": {
+                  "type": "string"
+                },
+                "listName": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "top": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200
+                }
+              },
+              "required": [
+                "metric",
+                "field"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "listId"
+                  ]
+                },
+                {
+                  "required": [
+                    "listName"
+                  ]
+                }
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "check_payment_status",
+      "description": "SharePoint AI4 支払管理リストから未入金・遅延案件を検出（期限超過、期限内未入金、入金済み、キャンセル済み）。各案件の遅延日数・期限までの日数を算出し、優先度付きの一覧を返します。読み取り専用。",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "description": "SharePoint サイト ID（未指定時は既定サイト）"
+          },
+          "listId": {
+            "type": "string",
+            "description": "支払管理リスト ID（listName 指定時は省略可）"
+          },
+          "listName": {
+            "type": "string",
+            "description": "支払管理リスト名（デフォルト: 支払管理）"
+          },
+          "top": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 200,
+            "description": "取得件数（デフォルト: 100）"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "discover_sharepoint_ai4_resources",
+      "description": "SharePoint テナント内から AI4 関連サイトとリストを自動探索します。AI4 サイトが見つからない場合は全テナントを検索します。支払管理・請求管理・案件管理・社員管理リストを自動分類し、推奨リストを返します。読み取り専用。",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "prepare_powerapps_execution",
+      "description": "Power Apps実装契約を1回で生成します。対象アプリ・環境解決→StateContext生成→正本ブランチ/SHA/ソース一覧取得→Git差分解析→SharePointスキーマ/Flow/依存関係取得→重複・未完成機能確認→ROI最高の機能選定→受入条件/変更範囲/ロールバック確定の8ステップを内部処理し、完全な実行契約をJSON形式で返します。Copilot Studioによる複数ツール呼出と手動StateContext継承を廃止します。読み取り専用。",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appName": {
+            "type": "string",
+            "description": "Target Power Apps app name (e.g., CN_AI依頼台帳)"
+          },
+          "objective": {
+            "type": "string",
+            "description": "Feature selection objective (optional, max 500 chars)"
+          },
+          "isolatedCommit": {
+            "type": "string",
+            "description": "Optional 40-char hex SHA for testing on non-canonical branch"
+          }
+        },
+        "required": [
+          "appName"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "execute_powerplatform_request",
+      "description": "Power Platform 統合実行基盤：ユーザー短文1回から、PowerApps・SharePoint・PowerAutomate・Copilot Studio・GitHub・Azure の全製品を協調制御し、対象特定→接続診断→接続修復→既存資産取得→変更計画→実装→テスト→保存→再取得検証→Git/PR/CI→環境反映→公開承認→公開→監査→ロールバック管理の全工程を自動実行します。本番公開・mainマージ・権限変更・削除・外部共有・追加課金のみ人間承認が必須です。",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "string",
+            "description": "ユーザーからの短文指示（目的・対象・内容を含む、通常3〜100文字）"
+          },
+          "target": {
+            "type": "object",
+            "description": "オプション：対象の明示指定（appName, environmentId等）"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "オプション：環境ID（省略時は正本Environmentを自動選択）"
+          },
+          "requestId": {
+            "type": "string",
+            "description": "オプション：冪等キー用requestId（省略時は自動生成）"
+          },
+          "publishApproval": {
+            "type": "boolean",
+            "description": "true=公開を含める、false/未指定=保存までで停止（公開時はAPPROVAL_REQUIRED）"
+          },
+          "approvalToken": {
+            "type": "string",
+            "description": "オプション：mainマージ・本番公開の人間承認トークン"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "assess_done",
+      "description": "Phase 7 DONE Engine：Power Apps操作の完了状態を12条件で自動判定します。実施内容→保存確認→公開確認→再取得確認→ランタイム確認→権限確認→画面確認→証跡5項目→監査ログ→エラーゼロの全チェックリストを実行し、完了度%と不足項目を返します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inputState": {
+            "type": "object",
+            "description": "リクエスト時の入力状態（appId, environment, branch, canonicalBranch, sha）",
+            "properties": {
+              "appId": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "canonicalBranch": {
+                "type": "string"
+              },
+              "sha": {
+                "type": "string"
+              }
+            }
+          },
+          "runtimeState": {
+            "type": "object",
+            "description": "ランタイムから取得した実測状態（appId, environment, branch, canonicalBranch, sha）",
+            "properties": {
+              "appId": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "canonicalBranch": {
+                "type": "string"
+              },
+              "sha": {
+                "type": "string"
+              }
+            }
+          },
+          "operationLog": {
+            "type": "array",
+            "description": "操作ログ配列（save, publish, reread 操作のタイムスタンプと結果）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "stateSnapshot": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "description": "証跡オブジェクト（correlationId, runtimeSha, response, state, publishResult, auditLog など）"
+          },
+          "auditLog": {
+            "type": "array",
+            "description": "監査ログエントリ配列",
+            "items": {
+              "type": "object"
+            }
+          },
+          "errorLog": {
+            "type": "array",
+            "description": "エラーログ配列",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "check_prohibited_operations",
+      "description": "Phase 8 Prohibited Operations Engine：危険な操作（削除・本番公開・権限変更など）を10カテゴリで自動遮断します。本番デプロイ・mainブランチ変更・権限変更・削除・秘密値変更・外部共有・課金変更・Solution エクスポート・データバックアップ・環境間昇格の各操作を検査し、承認トークンの有無に応じて許可/拒否を返します。秘密値・外部共有・データエクスポートは承認の有無にかかわらず常に遮断します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "description": "実行予定の操作名（deploy_to_test, delete_app, update_permissions など）"
+          },
+          "approvalToken": {
+            "type": "string",
+            "description": "人間の明示承認トークン（8文字以上）"
+          },
+          "environment": {
+            "type": "string",
+            "description": "対象環境（本番/production/テスト等）"
+          },
+          "targetBranch": {
+            "type": "string",
+            "description": "対象ブランチ（main/master/dev等）"
+          },
+          "targetName": {
+            "type": "string",
+            "description": "削除対象名（アプリ名、Solution 名など）"
+          },
+          "paramKeys": {
+            "type": "array",
+            "description": "操作パラメータのキー配列（秘密値チェック用）",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetScope": {
+            "type": "string",
+            "description": "共有スコープ（public/external/internal等）"
+          },
+          "currentScope": {
+            "type": "string",
+            "description": "現在のスコープ（internal等）"
+          },
+          "sourceEnv": {
+            "type": "string",
+            "description": "昇格元環境（dev/test等）"
+          },
+          "targetEnv": {
+            "type": "string",
+            "description": "昇格先環境（本番/production等）"
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "suggest_reuse_pattern",
+      "description": "Phase 11 Reuse Engine：過去の成功・失敗パターンから、類似操作の提案テンプレート・リスク要因・最適化案を返します。署名付きパターンマッチング（exact/similar/risk/none）で、実績のある操作手順を検索します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "description": "実行予定の操作名（publish_app, save_app等）"
+          },
+          "targetId": {
+            "type": "string",
+            "description": "対象リソースID（アプリID等）"
+          },
+          "environment": {
+            "type": "string",
+            "description": "実行環境（production/test/dev等）"
+          },
+          "steps": {
+            "type": "array",
+            "description": "実行予定のステップ配列",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_playbook",
+      "description": "Phase 11 Reuse Engine：操作とその環境向けの標準実行手順書（playbook）を取得します。成功率・リスク要因・検証チェックポイント・実行時間推定を含みます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "description": "操作名（publish_app, deploy_app等）"
+          },
+          "environment": {
+            "type": "string",
+            "description": "実行環境（production/test/dev等）"
+          }
+        },
+        "required": [
+          "operation",
+          "environment"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_app_startup",
+      "description": "Phase 12：アプリ起動時の初期化状態をキャプチャします。起動時間・画面読み込み・接続初期化を記録します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string",
+            "description": "セッション関連ID"
+          },
+          "appId": {
+            "type": "string",
+            "description": "アプリID"
+          },
+          "startupTime": {
+            "type": "number",
+            "description": "ミリ秒単位の起動時間"
+          },
+          "environment": {
+            "type": "string",
+            "description": "実行環境"
+          },
+          "screenLoaded": {
+            "type": "boolean",
+            "description": "UI画面読み込み完了"
+          },
+          "connectionsInitialized": {
+            "type": "boolean",
+            "description": "接続初期化完了"
+          }
+        },
+        "required": [
+          "appId",
+          "startupTime"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_user_interaction",
+      "description": "Phase 12：ユーザー操作（クリック・入力・選択）をキャプチャします。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "screenName": {
+            "type": "string"
+          },
+          "controlName": {
+            "type": "string"
+          },
+          "interactionType": {
+            "type": "string",
+            "enum": [
+              "click",
+              "input",
+              "navigation",
+              "selection"
+            ]
+          },
+          "inputValue": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "appId",
+          "controlName",
+          "interactionType"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_data_binding",
+      "description": "Phase 12：データバインディング検証。UI要素と実際のデータが一致しているか確認します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "controlName": {
+            "type": "string"
+          },
+          "dataSourceName": {
+            "type": "string"
+          },
+          "expectedValue": {},
+          "actualValue": {}
+        },
+        "required": [
+          "appId",
+          "controlName",
+          "expectedValue",
+          "actualValue"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_formula_execution",
+      "description": "Phase 12：PowerFx式実行結果をキャプチャ。入出力値の検証を含みます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "formulaName": {
+            "type": "string"
+          },
+          "inputParameters": {
+            "type": "object"
+          },
+          "expectedOutput": {},
+          "actualOutput": {}
+        },
+        "required": [
+          "appId",
+          "formulaName",
+          "expectedOutput",
+          "actualOutput"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_connection",
+      "description": "Phase 12：接続状態とAPI呼び出しをキャプチャします。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "connectionName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "error",
+              "timeout"
+            ]
+          },
+          "responseTime": {
+            "type": "number"
+          },
+          "errorInfo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "appId",
+          "connectionName",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_error_event",
+      "description": "Phase 12：ランタイムエラーをキャプチャ。重大度（error/warning/fatal）と処理状態を記録します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "fatal"
+            ]
+          },
+          "handled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "appId",
+          "errorMessage",
+          "severity"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_state_transition",
+      "description": "Phase 12：状態遷移・画面遷移をキャプチャします。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "transitionType": {
+            "type": "string",
+            "enum": [
+              "navigation",
+              "overlay",
+              "modal",
+              "dialog"
+            ]
+          },
+          "fromScreen": {
+            "type": "string"
+          },
+          "toScreen": {
+            "type": "string"
+          },
+          "transitionTime": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "appId",
+          "transitionType"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_performance",
+      "description": "Phase 12：操作パフォーマンスをキャプチャ。実行時間と閾値比較を含みます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "operationName": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "number",
+            "description": "ミリ秒単位"
+          },
+          "renderTime": {
+            "type": "number"
+          },
+          "apiCallTime": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "appId",
+          "operationName",
+          "duration"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_behavior_verification",
+      "description": "Phase 12：ユーザー可視動作を検証。期待値と観測値の比較を含みます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string",
+            "description": "動作シナリオ"
+          },
+          "expectedBehavior": {
+            "type": "string"
+          },
+          "observedBehavior": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "appId",
+          "scenario",
+          "expectedBehavior",
+          "observedBehavior"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capture_integration",
+      "description": "Phase 12：クロスアプリ・クロスサービス連携を検証します。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          },
+          "integrationType": {
+            "type": "string",
+            "enum": [
+              "sharepoint_sync",
+              "power_automate",
+              "cross_app",
+              "external_api"
+            ]
+          },
+          "sourceSystem": {
+            "type": "string"
+          },
+          "targetSystem": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "partial",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "appId",
+          "integrationType",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "generate_runtime_report",
+      "description": "Phase 12：ランタイムレポート生成。エビデンス集約・完全性検証・準備度採点を含みます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string",
+            "description": "セッション関連ID"
+          }
+        },
+        "required": [
+          "correlationId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "export_evidence",
+      "description": "Phase 12：完全なランタイムエビデンス・ヘルスステータスをエクスポートします。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string",
+            "description": "セッション関連ID"
+          }
+        },
+        "required": [
+          "correlationId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_agent_registry",
+      "description": "Bridgeに登録されたAIエージェント（CommanderAI・ResearchAI・DesignAI・ImplementationAI・TestAI・AuditAI・ReleaseAI・RecoveryAI・ProfitAI・CollectionAI・OptimizationAI）の役割、使用可能ツール、人間承認が必要な操作、Capability Registryを返します。Tool Registryとの整合性も検証します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "create_execution_request",
+      "description": "AIエージェントへの実行依頼をキューに登録します。依頼はAgent Registryに登録されたエージェントの使用可能ツールの範囲に限られます。人間承認が必要なステップを含む場合は「人間承認待ち」で登録され、人間が承認するまで進みません。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "依頼先エージェントID（例：ImplementationAI）"
+          },
+          "priority": {
+            "type": "string",
+            "description": "優先度：high / normal / low（省略時 normal）"
+          },
+          "steps": {
+            "type": "array",
+            "description": "実行するステップの配列（最大50件）",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string",
+                  "description": "使用するツール名"
+                }
+              },
+              "required": [
+                "tool"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "agentId",
+          "steps"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_execution_queue",
+      "description": "実行待ちの依頼を、優先順位（high→normal→low）と登録順で返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "get_execution_status",
+      "description": "実行依頼1件の状態（ステップごとの状態、承認状況を含む）を返します。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "実行依頼ID"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "get_checkpoint",
+      "description": "実行依頼のチェックポイント（完了ステップ数、最後に完了したツール）を返します。停止後の再開位置の確認に使います。読み取り専用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "実行依頼ID"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    }
+  ]
+}
