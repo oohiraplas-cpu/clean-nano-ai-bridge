@@ -1748,3 +1748,30 @@ test('list_sharepoint_listsはサイト内SharePointリストのGUIDと表示名
   assert.ok(calls.every((call) => call.method === 'GET' || call.url.includes('/oauth2/v2.0/token')));
   assert.equal(calls.some((call) => call.method === 'POST' && !call.url.includes('/oauth2/v2.0/token')), false);
 });
+
+
+test('SharePointの新規作成・編集ツールは人間承認なしでは書き込まない', async (t) => {
+  const graphWrites = [];
+  const mockFetch = async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (!String(url).includes('/oauth2/v2.0/token') && ['POST', 'PATCH', 'DELETE'].includes(method)) graphWrites.push({ url: String(url), method });
+    if (String(url).includes('/oauth2/v2.0/token')) return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    return new Response(JSON.stringify({ value: [] }), { status: 200 });
+  };
+  const server = await createTestServer([], { mcpApiKey: 'mcp-secret', fetchImpl: mockFetch });
+  t.after(() => server.close());
+  for (const [name, args] of [
+    ['create_sharepoint_list', { siteId: 'test-site', displayName: 'CN_Test' }],
+    ['create_sharepoint_list_item', { siteId: 'test-site', listId: 'list-id', fields: { Title: 'test' } }],
+    ['update_sharepoint_list_item', { siteId: 'test-site', listId: 'list-id', itemId: 'item-id', fields: { Title: 'edited' } }]
+  ]) {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: name, method: 'tools/call', params: { name, arguments: { ...args, approvedByHuman: false } } })
+    });
+    const body = await response.json();
+    assert.equal(body.result.isError, true, `${name} should reject missing human approval`);
+  }
+  assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
+});
