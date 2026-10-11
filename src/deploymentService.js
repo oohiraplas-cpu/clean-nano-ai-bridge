@@ -258,9 +258,14 @@ class DeploymentService {
       `${this._repoPath()}/actions/workflows/${encodeURIComponent(env.workflow)}/runs?${query}`
     );
     const body = await response.json();
+    // A workflow run is evidence for this deployment only when its actual commit matches the requested ref.
+    // Missing or mismatched head_sha fails closed: the deployment remains unverified.
+    if (!SHA_PATTERN.test(String(entry.ref || ''))) return null;
     const requestedAt = Date.parse(entry.requestedAt) - 60000;
     const candidates = (body.workflow_runs || [])
-      .filter((run) => Date.parse(run.created_at) >= requestedAt)
+      .filter((run) => Date.parse(run.created_at) >= requestedAt
+        && typeof run.head_sha === 'string'
+        && run.head_sha.toLowerCase() === entry.ref.toLowerCase())
       .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
     return candidates[0] || null;
   }
