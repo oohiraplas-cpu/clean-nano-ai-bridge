@@ -6,6 +6,7 @@
 // ソース root は config/application-rules.json に登録された対象のみ解決し、推測しない。
 // 書き込み（PUT/POST/PATCH/DELETE）は一切行わない。
 
+const YAML = require('js-yaml');
 const applicationRules = require('../config/application-rules.json');
 const { parseAndAnalyzePowerAppsSource } = require('./bridgeEnhancedFeatures');
 
@@ -48,6 +49,71 @@ function decodeContent(data) {
 
 function errorMessage(error) {
   return String(error?.message || error).slice(0, 200);
+}
+
+/**
+ * App ID + Environment ID から対象を動的に解決する（名称・固定値を使わない）。
+ * 読み取り専用。未登録のソースrootは推測せず unconfirmed とする。
+ */
+async function resolveAppTargetById({ appId, environmentId, getAppInfo, canonicalBranch }) {
+  const errors = validateDiscoveryParams({ appId, environmentId });
+  if (errors.length) {
+    return { status: 'error', verified: false, data: null, warnings: [], unconfirmed: [], errors, summary: '入力が不正です', approvalRequired: false, rollbackPoint: null, auditReference: null };
+  }
+  let app;
+  try {
+    app = await getAppInfo({ appId, environmentId });
+  } catch (error) {
+    return { status: 'error', verified: false, data: null, warnings: [], unconfirmed: [`app info: ${errorMessage(error)}`], errors: ['App情報を取得できませんでした'], summary: '対象アプリを解決できませんでした', approvalRequired: false, rollbackPoint: null, auditReference: null };
+  }
+  const resolved = resolveSourceRoot(app.displayName);
+  const unconfirmed = [];
+  if (!resolved) unconfirmed.push(`ソース root: ${app.displayName} は application-rules に未登録のため解決できません（推測しません）`);
+  return {
+    status: resolved ? 'ok' : 'partial',
+    verified: Boolean(resolved),
+    data: {
+      appId,
+      environmentId,
+      displayName: app.displayName,
+      gitRoot: resolved ? resolved.gitRoot : null,
+      ruleKey: resolved ? resolved.ruleKey : null,
+      canonicalBranch: canonicalBranch || null
+    },
+    warnings: [],
+    unconfirmed,
+    errors: [],
+    summary: resolved ? `${app.displayName} を解決（正本root: ${resolved.gitRoot}）` : `${app.displayName} は確認できたが、ソースrootが未登録です`,
+    approvalRequired: false,
+    rollbackPoint: null,
+    auditReference: null
+  };
+}
+
+/**
+ * App.pa.yaml（Manifest）から、起動時の遷移（App.OnStart / StartScreen）を読み取る。
+ * 解析できない場合は例外を投げ、呼び出し側で未確認として扱う。
+ */
+function parseManifest(text) {
+  const parsed = YAML.load(text);
+  if (!parsed || typeof parsed !== 'object' || !parsed.App || typeof parsed.App !== 'object') {
+    throw new Error('App（Manifest）が見つかりません');
+  }
+  const props = parsed.App.Properties || {};
+  const navigations = [];
+  for (const property of ['OnStart', 'StartScreen']) {
+    const value = props[property];
+    if (typeof value !== 'string') continue;
+    for (const match of value.matchAll(/Navigate\(\s*(\w+)\s*[,)]/g)) {
+      navigations.push({ from: 'App', to: match[1], property });
+    }
+  }
+  let startScreen = null;
+  if (typeof props.StartScreen === 'string') {
+    const m = props.StartScreen.match(/^=?\s*(\w+)\s*$/);
+    if (m) startScreen = m[1];
+  }
+  return { startScreen, navigations, hasOnStart: typeof props.OnStart === 'string' };
 }
 
 /**
@@ -118,9 +184,23 @@ async function discoverPowerAppsStructure(options = {}) {
   if (truncated) unconfirmed.push(`ソースファイルが${MAX_SOURCE_FILES}件を超えるため先頭${MAX_SOURCE_FILES}件のみ解析`);
   if (!hasManifest) unconfirmed.push('App.pa.yaml（Manifest）が対象rootに存在せず、Manifest情報は未確認');
 
-  // 4. Screen・Control・Navigation の解析（読み取りのみ）
+  // 4. Manifest Discovery（App.pa.yaml の起動遷移・読み取りのみ）
   const screens = [];
   const edges = [];
+  let manifest = null;
+  if (hasManifest) {
+    try {
+      const data = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodePath(`${resolved.gitRoot}/App.pa.yaml`)}?ref=${encodeURIComponent(branch)}`);
+      const text = decodeContent(data);
+      if (text === null) throw new Error('内容を取得できませんでした');
+      manifest = parseManifest(text);
+      for (const nav of manifest.navigations) edges.push(nav);
+    } catch (error) {
+      unconfirmed.push(`App.pa.yaml: 解析失敗（${errorMessage(error)}）`);
+    }
+  }
+
+  // 5. Screen・Control・Navigation の解析（読み取りのみ）
   const controlsByScreen = {};
   let parsedFiles = 0;
   for (const name of targetFiles) {
@@ -176,6 +256,7 @@ async function discoverPowerAppsStructure(options = {}) {
         sourceRuleKey: resolved.ruleKey,
         branch,
         hasManifest,
+        manifest,
         screens: { count: screens.length, list: screens },
         controls: { byScreen: controlsByScreen },
         navigationMap: { edgeCount: edges.length, edges },
@@ -195,4 +276,4 @@ async function discoverPowerAppsStructure(options = {}) {
   };
 }
 
-module.exports = { discoverPowerAppsStructure, resolveSourceRoot, validateDiscoveryParams };
+module.exports = { discoverPowerAppsStructure, resolveAppTargetById, resolveSourceRoot, validateDiscoveryParams, parseManifest };

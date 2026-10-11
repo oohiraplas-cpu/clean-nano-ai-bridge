@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { discoverPowerAppsStructure, resolveSourceRoot, validateDiscoveryParams } = require('../src/powerAppsDiscovery');
+const { discoverPowerAppsStructure, resolveAppTargetById, resolveSourceRoot, validateDiscoveryParams, parseManifest } = require('../src/powerAppsDiscovery');
 
 const APP_ID = '11111111-2222-3333-4444-555555555555';
 const ENV_ID = '4d0aab59-43ec-ecf1-a9d1-869f2517adbb';
@@ -151,4 +151,81 @@ test('invalid input returns error without any upstream call', async () => {
   });
   assert.equal(result.status, 'error');
   assert.equal(called, false);
+});
+
+const APP_YAML = `App:
+  Properties:
+    OnStart: =Set(gblBoot, true); Navigate(S1_Home, ScreenTransition.None)
+    StartScreen: =S1_Home
+`;
+
+test('resolveAppTargetById resolves a registered app from App ID + Environment ID', async () => {
+  const result = await resolveAppTargetById({
+    appId: APP_ID, environmentId: ENV_ID,
+    getAppInfo: appInfo('CN_AI依頼台帳'),
+    canonicalBranch: 'main'
+  });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.verified, true);
+  assert.equal(result.data.gitRoot, ROOT);
+  assert.equal(result.data.canonicalBranch, 'main');
+  assert.equal(result.data.displayName, 'CN_AI依頼台帳');
+});
+
+test('resolveAppTargetById: unregistered app is partial and unconfirmed, never guessed', async () => {
+  const result = await resolveAppTargetById({
+    appId: APP_ID, environmentId: ENV_ID,
+    getAppInfo: appInfo('未登録アプリ'), canonicalBranch: 'main'
+  });
+  assert.equal(result.status, 'partial');
+  assert.equal(result.verified, false);
+  assert.equal(result.data.gitRoot, null);
+  assert.match(result.unconfirmed[0], /未登録/);
+});
+
+test('resolveAppTargetById: invalid input and management failure are errors', async () => {
+  const bad = await resolveAppTargetById({ appId: 'x', environmentId: '', getAppInfo: async () => ({}) });
+  assert.equal(bad.status, 'error');
+  const failed = await resolveAppTargetById({ appId: APP_ID, environmentId: ENV_ID, getAppInfo: async () => { throw new Error('boom'); } });
+  assert.equal(failed.status, 'error');
+  assert.equal(failed.verified, false);
+});
+
+test('parseManifest extracts startup navigation and start screen from App.pa.yaml', () => {
+  const m = parseManifest(APP_YAML);
+  assert.equal(m.startScreen, 'S1_Home');
+  assert.equal(m.hasOnStart, true);
+  assert.deepEqual(m.navigations, [{ from: 'App', to: 'S1_Home', property: 'OnStart' }]);
+});
+
+test('parseManifest rejects a file without an App section', () => {
+  assert.throws(() => parseManifest('Screens:\n  S1:\n    Properties: {}\n'));
+});
+
+test('discovery includes manifest navigation and flags a missing startup target', async () => {
+  const manifestWithMissing = `App:
+  Properties:
+    OnStart: =Navigate(S0_Gone, ScreenTransition.None)
+`;
+  const result = await discoverPowerAppsStructure({
+    appId: APP_ID, environmentId: ENV_ID,
+    getAppInfo: appInfo('CN_AI依頼台帳'),
+    githubRequest: makeGithub({ 'S1_Home.pa.yaml': S1, 'S2_Calendar.pa.yaml': S2, 'App.pa.yaml': manifestWithMissing }),
+    owner: 'o', repo: 'r', branch: 'main'
+  });
+  const s = result.data.structure;
+  assert.equal(s.manifest.navigations[0].to, 'S0_Gone');
+  assert.ok(s.missingTargets.some(t => t.name === 'S0_Gone' && t.referencedFrom.includes('App')));
+  assert.ok(s.navigationMap.edges.some(e => e.from === 'App' && e.to === 'S0_Gone'));
+});
+
+test('discovery reports an unparseable manifest as unconfirmed without failing screens', async () => {
+  const result = await discoverPowerAppsStructure({
+    appId: APP_ID, environmentId: ENV_ID,
+    getAppInfo: appInfo('CN_AI依頼台帳'),
+    githubRequest: makeGithub({ 'S1_Home.pa.yaml': S1, 'App.pa.yaml': 'Screens: {}\n' }),
+    owner: 'o', repo: 'r', branch: 'main'
+  });
+  assert.equal(result.data.structure.screens.count, 1);
+  assert.ok(result.unconfirmed.some(m => m.startsWith('App.pa.yaml')));
 });
