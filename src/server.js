@@ -112,6 +112,37 @@ function createDefaultStore(config) {
   return new TaskStore(config.tasksFile);
 }
 
+/**
+ * Create a read-only SharePoint-backed approval ledger.
+ * The schema is supplied explicitly from verified internal column names; never guess defaults.
+ * If the list is over the reader's 200-row limit, fail closed rather than risk a partial approval lookup.
+ */
+function createApprovalLedger(config, injectedReader = null) {
+  const ledgerConfig = config.approvalLedger || null;
+  const reader = injectedReader || new SharePointReader(config.sharepoint || {});
+  return new ApprovalLedger({
+    config: ledgerConfig,
+    fetchRows: async ({ requestId, stepIndex }) => {
+      if (!ledgerConfig) throw new Error('Approval Ledger configuration is missing');
+      const result = await reader.listItems({
+        siteId: ledgerConfig.siteId,
+        listId: ledgerConfig.listId,
+        top: 200
+      });
+      if (result.hasMore) {
+        throw new Error('Approval Ledger exceeds the safe read limit; approval lookup refused');
+      }
+      const map = ledgerConfig.fieldMap || {};
+      return (result.items || [])
+        .map((item) => item.fields || {})
+        .filter((fields) =>
+          String(fields[map.requestId]) === String(requestId) &&
+          Number(fields[map.stepIndex]) === Number(stepIndex)
+        );
+    }
+  });
+}
+
 // Tool contract revision for publish_powerapps_app (stateSessionId required; SHA semantics fixed).
 const PUBLISH_CONTRACT_VERSION = '2026-10-11';
 
@@ -191,8 +222,8 @@ const MCP_METHODS = Object.freeze([
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
-// 承認台帳は未設定（fail closed）。SharePoint承認台帳の列名・サイトが実環境で確認されるまで、承認は得られない。
-const executionQueue = new ExecutionQueue({ ledger: new ApprovalLedger() });
+// Approval Ledgerは検証済みの環境設定が揃った場合のみSharePointを読み取る。未設定・読取失敗はfail closed。
+const executionQueue = new ExecutionQueue({ ledger: createApprovalLedger(getConfig()) });
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
@@ -3084,4 +3115,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS };
+module.exports = { apiKeyMiddleware, createApp, createApprovalLedger, MCP_METHODS, MCP_PUBLIC_TOOLS };
