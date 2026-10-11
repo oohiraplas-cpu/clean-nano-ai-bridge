@@ -305,9 +305,10 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
-        stateContext: STATE_CONTEXT_SCHEMA
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 1, description: 'source-bound session ID' }
       },
-      required: ['stateContext'],
+      required: ['stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -1324,7 +1325,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, scope) {
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -1568,6 +1569,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    // Fail closed: publish only from the same server-registered, source-bound session.
+    const publishRecord = stateRegistry.assertPublishBound(params.stateContext, params.stateSessionId, scope);
+    const liveState = await withUpstreamErrorStatus(powerAppsStore.getAppState());
+    if (liveState.appId !== publishRecord.context.appId ||
+        liveState.environmentId !== publishRecord.context.environment) {
+      throw contextError(['publish: live app/environment mismatch']);
+    }
+    const liveSource = await withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(publishRecord.source.path));
+    if (liveSource.sha !== publishRecord.source.sha || liveSource.content !== publishRecord.source.content) {
+      throw contextError(['publish: source changed since binding']);
+    }
+    stateRegistry.assertPublishBound(params.stateContext, params.stateSessionId, scope);
     await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
     return withUpstreamErrorStatus(powerAppsStore.publishApp());
   }
@@ -2600,7 +2613,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
