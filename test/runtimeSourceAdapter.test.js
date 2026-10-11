@@ -12,6 +12,8 @@ const { getConfig } = require('../src/config');
 
 const APP = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
 const ENV = '4d0aab59-43ec-ecf1-a9d1-869f2517adbb';
+// StateContext.sha is the branch COMMIT sha; SourceObservation.sha is the file BLOB sha.
+const COMMIT = '3e5bad3fc1a8a58ad7e64f81124a8edc5f2be9a7';
 const FILE = 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml';
 const ENTRY = 'Src/S1_Home.pa.yaml';
 const SOURCE = 'Screens:\n  S1_Home:\n    Properties:\n      Fill: =Color.White\n      Visible: =true\n';
@@ -270,7 +272,8 @@ test('targetNames individual binding with SourceObservation validation (3-screen
     appId: APP,
     environmentId: ENV,
     branch: 'main',
-    canonicalBranch: 'main'
+    canonicalBranch: 'main',
+    sha: COMMIT
   }, 'session-3screens');
 
   // Phase 6: bindSourceObservation for each screen individually
@@ -322,7 +325,7 @@ test('targetNames individual binding with SourceObservation validation (3-screen
     environment: ENV,
     branch: 'main',
     canonicalBranch: 'main',
-    sha: lastObs.fileSha,
+    sha: COMMIT,
     correlationId: started.correlationId
   };
 
@@ -349,7 +352,8 @@ test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actu
     appId: 'CN_AI依頼台帳',
     environmentId: 'prod',
     branch: 'main',
-    canonicalBranch: 'main'
+    canonicalBranch: 'main',
+    sha: COMMIT
   }, 'fault-injection-scope');
 
   // Step 2: Simulate resolution phase returning SHA A
@@ -389,7 +393,7 @@ test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actu
     environment: 'prod',
     branch: 'main',
     canonicalBranch: 'main',
-    sha: resolvedSha,  // ← WRONG: using old resolved SHA
+    sha: 'a'.repeat(40),  // ← WRONG commit SHA
     correlationId: started.correlationId
   };
 
@@ -401,7 +405,7 @@ test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actu
       { relativePath: source.path },
       'test_method'
     );
-    assert.fail('Validation should fail when SHA does not match record.source.sha');
+    assert.fail('Validation should fail when commit SHA does not match the registered commit');
   } catch (e) {
     assert.ok(e.payload.failures.some(f => f.includes('sha')), 'Error should mention SHA mismatch');
   }
@@ -412,7 +416,7 @@ test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actu
     environment: 'prod',
     branch: 'main',
     canonicalBranch: 'main',
-    sha: actualSha,  // ← CORRECT: using actual bound SHA
+    sha: COMMIT,  // ← CORRECT: registered commit SHA
     correlationId: started.correlationId
   };
 
@@ -425,5 +429,6 @@ test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actu
   );
 
   assert.ok(validationResult, 'Validation should succeed with correct actual SHA');
-  assert.equal(validationResult.source.sha, actualSha, 'Validator must return actual SHA from record.source');
+  assert.equal(validationResult.source.sha, actualSha, 'Validator must return actual blob SHA from record.source');
+  assert.equal(validationResult.context.sha, COMMIT, 'StateContext keeps the commit SHA');
 });

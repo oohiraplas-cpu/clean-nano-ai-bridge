@@ -109,6 +109,16 @@ function createDefaultStore(config) {
   return new TaskStore(config.tasksFile);
 }
 
+// Tool contract revision for publish_powerapps_app (stateSessionId required; SHA semantics fixed).
+const PUBLISH_CONTRACT_VERSION = '2026-10-11';
+
+function publishGateError(failures, status, code) {
+  const error = new Error(`公開ゲート拒否: ${failures.join('; ')}`);
+  error.status = status;
+  error.payload = { status: code, failures, contractVersion: PUBLISH_CONTRACT_VERSION };
+  return error;
+}
+
 function apiKeyMiddleware(getKey) {
   return (req, res, next) => {
     const expected = getKey();
@@ -305,9 +315,10 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
-        stateContext: STATE_CONTEXT_SCHEMA
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_sourceで正本ソースを観測したstateSessionId（必須・契約2026-10-11）' }
       },
-      required: ['stateContext'],
+      required: ['stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -2749,6 +2760,37 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         requestId: requestCorrelationId
       };
     }
+    if (method === 'publish_powerapps_app') {
+      // Canonical-branch refusal keeps its existing precedence (branch_mismatch) before session checks.
+      await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
+      // Contract PUBLISH_CONTRACT_VERSION: publish requires a source-bound, unexpired stateSession.
+      // Old callers without stateSessionId receive an explicit refusal (no fallback).
+      if (typeof params.stateSessionId !== 'string' || !params.stateSessionId) {
+        throw publishGateError(['stateSessionId: 公開には必須です（契約 ' + PUBLISH_CONTRACT_VERSION + '）'], 428, 'state_session_required');
+      }
+      if (!params.stateContext || typeof params.stateContext !== 'object' || Array.isArray(params.stateContext)) {
+        throw publishGateError(['stateContext: 公開には必須です'], 428, 'state_session_required');
+      }
+      // Fail-Closed: validate() rejects expired sessions, unknown sessions, unobserved sources,
+      // branch != canonical, and any commit/blob/path mismatch with the registered state.
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const failures = [];
+      const currentState = await powerAppsStore.getAppState();
+      if (currentState.appId !== record.context.appId) failures.push('appId: 公開直前に対象アプリが変化しました');
+      if (currentState.environmentId !== record.context.environment) failures.push('environmentId: 公開直前に環境が変化しました');
+      const canonical = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (canonical.sha !== record.context.sha) failures.push('sha: 正本commitが状態取得後に変化しました');
+      if (canonical.canonicalBranch !== record.context.canonicalBranch) failures.push('canonicalBranch: 正本branchが変化しました');
+      const liveFile = await powerAppsGitStore.getSourceFile(record.source.path);
+      if (liveFile.sha !== record.source.sha) failures.push('sha: 観測ソースのblob SHAが変化しました');
+      if (liveFile.branch !== record.context.branch) failures.push('branch: 観測ソースのbranchが変化しました');
+      if (!config.deploymentSha) failures.push('deploymentSha: DEPLOYMENT_SHA が未設定です');
+      else if (config.deploymentSha !== record.context.sha) failures.push('deploymentSha: 稼働中SHAが正本commitと一致しません');
+      if (failures.length) throw publishGateError(failures, 409, 'publish_gate_refused');
+      // Recheck TTL and session after upstream calls; slow requests may expire.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return execute(params);
+    }
     if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
         method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
         (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined))) {
@@ -2760,7 +2802,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (currentState.appId !== record.context.appId) failures.push('appId: observed app changed');
       if (currentState.environmentId !== record.context.environment) failures.push('environment: observed environment changed');
       const source = await powerAppsGitStore.getSourceFile(record.source.path);
-      for (const field of ['branch', 'canonicalBranch', 'sha']) if (source[field] !== record.context[field]) failures.push(`${field}: observed source changed`);
+      for (const field of ['branch', 'canonicalBranch']) if (source[field] !== record.context[field]) failures.push(`${field}: observed source changed`);
+      // Blob SHA (file) must match the observed file; commit SHA (branch HEAD) is re-read separately.
+      if (source.sha !== record.source.sha) failures.push('sha: observed source blob changed');
+      const observedCommit = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (observedCommit.sha !== record.context.sha) failures.push('sha: observed commit changed');
       if (source.path !== record.source.path || source.content !== record.source.content) failures.push('sourceContent/path: observed source changed');
       // Recheck TTL and session after upstream calls; slow requests may expire.
       stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);

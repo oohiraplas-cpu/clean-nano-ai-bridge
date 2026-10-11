@@ -1436,9 +1436,12 @@ test('save_powerapps_app / publish_powerapps_app: State Lock未成立・branch�
   const saveUnlocked = await rpc(server, 'save_powerapps_app', {});
   assert.equal(saveUnlocked.isError, true, 'branch未指定はState Lock未成立として拒否');
   assert.equal(saveUnlocked.structuredContent.status, 'branch_mismatch');
-  const publishOk = await rpc(server, 'publish_powerapps_app', { branch: 'main' });
-  assert.equal(publishOk.isError, false);
-  assert.equal(publishOk.structuredContent.status, 'ok');
+  // 契約2026-10-11: stateSessionIdなしの旧callerは明示拒否され、公開処理へ到達しない（フォールバックなし）
+  const publishCallsBefore = mock.calls.filter((c) => c.url.includes('/publish')).length;
+  const publishNoSession = await rpc(server, 'publish_powerapps_app', { branch: 'main' });
+  assert.equal(publishNoSession.isError, true);
+  assert.equal(publishNoSession.structuredContent.status, 'state_session_required');
+  assert.equal(mock.calls.filter((c) => c.url.includes('/publish')).length, publishCallsBefore, 'stateSessionIdなしでは公開APIを呼ばない');
   assert.equal((await rpc(server, 'publish_powerapps_app', { branch: '' })).isError, true);
 });
 
