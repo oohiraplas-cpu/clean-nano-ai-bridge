@@ -1448,7 +1448,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
             };
 
             // StateRegistry.bindSourceObservation()で原子的bind
-            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+            // Reuse the authenticated request/session scope established by executeWithStateInternal.
             const bindResult = stateRegistry.bindSourceObservation(
               params.correlationId,
               params.stateSessionId,
@@ -1512,7 +1512,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
     if (params.stateSessionId && params.correlationId) {
-      const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+      // Reuse the authenticated request/session scope established by executeWithStateInternal.
       try {
         // Compute blob SHA for content validation
         const blobShaFunc = require('./stateContext').blobSha;

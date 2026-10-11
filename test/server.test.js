@@ -53,7 +53,7 @@ async function createTestServer(tasks, options = {}) {
     enforceStateManager: options.enforceStateManager ?? false
   };
 
-  const app = createApp(config);
+  const app = createApp(config, options.injectedStore, options.injectedPowerAppsStore, options.injectedPowerAppsGitStore, options.injectedSharePointReader, options.injectedPowerAutomateRunner, options.injectedEmployeeLedgerWriter, options.injectedBridgeServices);
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
   });
@@ -1530,6 +1530,127 @@ test('Executive policy is available through authenticated MCP capabilities witho
 
 
 
+test('publish_powerapps_app: valid bound session reaches mocked publish exactly once', async (t) => {
+  const { blobSha } = require('../src/stateContext');
+  const sourceContent = 'screen source for publish test';
+  const sourceSha = blobSha(sourceContent);
+  const commitSha = 'a'.repeat(40);
+  let publishCalls = 0;
+  const injectedPowerAppsStore = {
+    getAppState: async () => ({ appId: 'test-app', environmentId: 'test-env' }),
+    publishApp: async () => { publishCalls += 1; return { status: 'published' }; }
+  };
+  const injectedPowerAppsGitStore = {
+    getSourceFileMetadata: async () => ({ branch: 'main', canonicalBranch: 'main', sha: commitSha }),
+    getSourceFile: async () => ({ path: 'Screen.pa.yaml', content: sourceContent, sha: sourceSha }),
+    assertCanonicalBranch: async () => true
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    powerAppsOverrides: { githubRepo: 'owner/repo', githubRoot: 'powerapps/app' },
+    injectedPowerAppsStore,
+    injectedPowerAppsGitStore
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const call = async (method, params = {}, extraHeaders = {}) => {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST', headers: { ...headers, ...extraHeaders },
+      body: JSON.stringify({ method, params })
+    });
+    return { response, body: await response.json() };
+  };
+
+  const stateResult = await call('get_powerapps_state');
+  assert.equal(stateResult.response.status, 200);
+  const state = stateResult.body.result;
+  const sourceResult = await call('get_powerapps_source', {
+    relativePath: 'Screen.pa.yaml',
+    correlationId: state.correlationId,
+    stateSessionId: state.stateSessionId
+  });
+  assert.equal(sourceResult.response.status, 200);
+  const stateContext = { ...state.stateContext, sha: sourceSha };
+  const published = await call('publish_powerapps_app', {
+    stateContext, stateSessionId: state.stateSessionId, branch: 'main'
+  });
+  assert.equal(published.response.status, 200);
+  assert.equal(publishCalls, 1);
+});
+
+test('publish_powerapps_app: invalid session/scope/context/source changes have zero publish side effects', async (t) => {
+  const { blobSha } = require('../src/stateContext');
+  const sourceContent = 'screen source for publish rejection test';
+  const sourceSha = blobSha(sourceContent);
+  const commitSha = 'b'.repeat(40);
+  let sourceReads = 0;
+  let publishCalls = 0;
+  const injectedPowerAppsStore = {
+    getAppState: async () => ({ appId: 'test-app', environmentId: 'test-env' }),
+    publishApp: async () => { publishCalls += 1; return { status: 'published' }; }
+  };
+  const injectedPowerAppsGitStore = {
+    getSourceFileMetadata: async () => ({ branch: 'main', canonicalBranch: 'main', sha: commitSha }),
+    getSourceFile: async () => {
+      sourceReads += 1;
+      const content = sourceReads >= 2 ? 'changed after binding' : sourceContent;
+      return { path: 'Screen.pa.yaml', content, sha: blobSha(content) };
+    },
+    assertCanonicalBranch: async () => true
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    powerAppsOverrides: { githubRepo: 'owner/repo', githubRoot: 'powerapps/app' },
+    injectedPowerAppsStore,
+    injectedPowerAppsGitStore
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const call = async (method, params = {}, extraHeaders = {}) => {
+    const response = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST', headers: { ...headers, ...extraHeaders },
+      body: JSON.stringify({ method, params })
+    });
+    return { response, body: await response.json() };
+  };
+  const stateResult = await call('get_powerapps_state');
+  assert.equal(stateResult.response.status, 200);
+  const state = stateResult.body.result;
+  const sourceResult = await call('get_powerapps_source', {
+    relativePath: 'Screen.pa.yaml',
+    correlationId: state.correlationId,
+    stateSessionId: state.stateSessionId
+  });
+  assert.equal(sourceResult.response.status, 200);
+  const stateContext = { ...state.stateContext, sha: sourceSha };
+  const baseParams = { stateContext, stateSessionId: state.stateSessionId, branch: 'main' };
+
+  const rejected = await call('publish_powerapps_app', { ...baseParams, stateSessionId: 'wrong-session-id' });
+  assert.notEqual(rejected.response.status, 200);
+  assert.equal(publishCalls, 0);
+
+  const wrongScope = await call('publish_powerapps_app', baseParams, { 'Mcp-Session-Id': 'different-mcp-session' });
+  assert.notEqual(wrongScope.response.status, 200);
+  assert.equal(publishCalls, 0);
+
+  const wrongApp = await call('publish_powerapps_app', {
+    ...baseParams, stateContext: { ...stateContext, appId: 'other-app' }
+  });
+  assert.notEqual(wrongApp.response.status, 200);
+  assert.equal(publishCalls, 0);
+
+  const wrongEnvironment = await call('publish_powerapps_app', {
+    ...baseParams, stateContext: { ...stateContext, environment: 'other-env' }
+  });
+  assert.notEqual(wrongEnvironment.response.status, 200);
+  assert.equal(publishCalls, 0);
+
+  // The mocked source changes between binding and the live pre-publish recheck.
+  const changedSource = await call('publish_powerapps_app', baseParams);
+  assert.notEqual(changedSource.response.status, 200);
+  assert.equal(publishCalls, 0);
+});
+
 test('MCP public Power Apps write tools expose complete required stateContext schema', () => {
   const writeTools = ['update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'];
   const requiredFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'];
@@ -1545,6 +1666,47 @@ test('MCP public Power Apps write tools expose complete required stateContext sc
     assert.deepEqual(stateSchema.required, requiredFields);
     assert.deepEqual(Object.keys(stateSchema.properties).sort(), allFields.sort());
   }
+
+  const publish = MCP_PUBLIC_TOOLS.find((entry) => entry.name === 'publish_powerapps_app');
+  assert.ok(publish.inputSchema.required.includes('stateSessionId'), 'publish must require stateSessionId');
+  assert.equal(publish.inputSchema.properties.stateSessionId.type, 'string');
+  assert.equal(publish.inputSchema.properties.stateSessionId.minLength, 1);
+});
+
+test('StateContext Registry: publish binding rejects wrong scope and changed source context', () => {
+  const { StateContextRegistry, blobSha } = require('../src/stateContext');
+  const registry = new StateContextRegistry({ ttlMs: 300000 });
+  const scope = 'publish-test';
+  const begin = registry.begin({
+    appId: 'app-1', environmentId: 'env-1',
+    branch: 'main', canonicalBranch: 'main',
+    repository: 'owner/repo', gitRoot: 'powerapps/app'
+  }, scope);
+  const sourceContent = 'publish test source';
+  const sourceSha = blobSha(sourceContent);
+  registry.bind(begin.correlationId, begin.stateSessionId, scope, {
+    path: 'Screen.pa.yaml', content: sourceContent, sha: sourceSha,
+    branch: 'main', canonicalBranch: 'main'
+  }, 'Screen.pa.yaml');
+  const validContext = { ...begin.stateContext, branch: 'main', canonicalBranch: 'main', sha: sourceSha };
+
+  assert.throws(
+    () => registry.assertPublishBound(validContext, begin.stateSessionId, 'different-scope'),
+    /stateSessionId: missing or session mismatch/
+  );
+  assert.throws(
+    () => registry.assertPublishBound({ ...validContext, sha: blobSha('changed source') }, begin.stateSessionId, scope),
+    /sha: source observation mismatch/
+  );
+  assert.throws(
+    () => registry.assertPublishBound({ ...validContext, appId: 'other-app' }, begin.stateSessionId, scope),
+    /appId: session mismatch/
+  );
+  assert.throws(
+    () => registry.assertPublishBound({ ...validContext, environment: 'other-env' }, begin.stateSessionId, scope),
+    /environment: session mismatch/
+  );
+  assert.equal(registry.assertPublishBound(validContext, begin.stateSessionId, scope).source.sha, sourceSha);
 });
 
 test('StateContext Registry: lookupBySessionId API', () => {
