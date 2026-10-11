@@ -6,7 +6,7 @@
 - Branch: main (canonical), gitRoot: powerapps/CN_AI依頼台帳/Source
 
 ## 前提確認（公開直前）
-- 最新state read: stateSessionId 0be5… 直前取得 (state c4e601e1 の state read: correlationId 800e5948-2ba9-4153-93c2-4c08cbbe9477)
+- 最新state read: correlationId 800e5948-2ba9-4153-93c2-4c08cbbe9477（stateSessionId c4e601e1 を発行）
 - source-bound session: stateSessionId c4e601e1-06ce-4016-b945-5ff1dedb260b
 - sourceObservationComplete=true, stateContextComplete=true（同一session・source read結果）
 - stateContext.sha（main commit）= 61412575d571dc557b68a62d7cb25163b7f48710
