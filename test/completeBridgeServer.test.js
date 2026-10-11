@@ -13,12 +13,12 @@ const {
 } = require('../src/completeBridgeServer');
 
 test('BridgeServerFactory', async (t) => {
-  await t.test('initializes with default config', () => {
+  await t.test('initializes with environment configuration and defaults', () => {
     const factory = new BridgeServerFactory();
 
-    assert.strictEqual(factory.serverConfig.port, 3000);
-    assert.strictEqual(factory.serverConfig.host, '0.0.0.0');
-    assert.strictEqual(factory.serverConfig.environment, 'development');
+    assert.strictEqual(factory.serverConfig.port, Number(process.env.PORT || 3000));
+    assert.strictEqual(factory.serverConfig.host, process.env.HOST || '0.0.0.0');
+    assert.strictEqual(factory.serverConfig.environment, process.env.NODE_ENV || 'development');
   });
 
   await t.test('sets custom configuration', () => {
