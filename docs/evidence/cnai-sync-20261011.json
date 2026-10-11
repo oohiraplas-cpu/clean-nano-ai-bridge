@@ -1,0 +1,132 @@
+{
+  "requestId": "CNAI-SYNC-20261011-01",
+  "status": "PARTIAL",
+  "observedAt": "2026-10-11T04:22:54.783Z",
+  "health": {
+    "status": "ok"
+  },
+  "powerApps": {
+    "status": "ok",
+    "appId": "f42a9b03-59b9-49d3-a33b-0a210cd3d51e",
+    "environmentId": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
+    "displayName": "CN_AI依頼台帳",
+    "description": null,
+    "publisher": "Unknown",
+    "versionNumber": "2026-10-05T08:51:35Z"
+  },
+  "powerAppsState": {
+    "status": "ok",
+    "operationId": "27f8a7ca-84fa-482b-95ff-11bed5d967e1",
+    "appId": "f42a9b03-59b9-49d3-a33b-0a210cd3d51e",
+    "environmentId": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
+    "versionNumber": "2026-10-05T08:51:35Z",
+    "displayName": "CN_AI依頼台帳",
+    "unmanagedSolutions": [
+      {
+        "solutionId": "e85faa76-48bf-f111-aaaf-002248f083f2",
+        "uniqueName": "CNPowerAppsAutomation",
+        "friendlyName": "CN Power Apps 自動改修",
+        "version": "1.0.0.0"
+      },
+      {
+        "solutionId": "f19cb7fb-80b7-f111-aaad-002248f083f2",
+        "uniqueName": "CN_AIIraiDaicho",
+        "friendlyName": "CN_AI依頼台帳",
+        "version": "1.0.0.0"
+      },
+      {
+        "solutionId": "00000001-0000-0000-0001-00000000009b",
+        "uniqueName": "Crc4df4",
+        "friendlyName": "Common Data Services Default Solution",
+        "version": "1.0.0.0"
+      },
+      {
+        "solutionId": "fd140aae-4df4-11dd-bd17-0019b9312238",
+        "uniqueName": "Active",
+        "friendlyName": "アクティブなソリューション",
+        "version": "1.0"
+      },
+      {
+        "solutionId": "25a01723-9f63-4449-a3e0-046cc23a2902",
+        "uniqueName": "Basic",
+        "friendlyName": "基本ソリューション",
+        "version": "1.0"
+      },
+      {
+        "solutionId": "fd140aaf-4df4-11dd-bd17-0019b9312238",
+        "uniqueName": "Default",
+        "friendlyName": "既定のソリューション",
+        "version": "1.0"
+      }
+    ],
+    "correlationId": "cc9d858c-a3d3-4fb5-a03f-8e32030b9889",
+    "stateSessionId": "e06d1676-05f6-460d-8fd3-083096fee183",
+    "stateContext": {
+      "appId": "f42a9b03-59b9-49d3-a33b-0a210cd3d51e",
+      "environment": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
+      "branch": "main",
+      "canonicalBranch": "main",
+      "sha": "44a8521e1f22dc220e8098c8392bdfaac1fc8d72",
+      "correlationId": "cc9d858c-a3d3-4fb5-a03f-8e32030b9889"
+    },
+    "authorityContext": {
+      "appId": "f42a9b03-59b9-49d3-a33b-0a210cd3d51e",
+      "environmentId": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
+      "repository": "clean-nano-ai-bridge",
+      "gitRoot": "powerapps/CN_AI依頼台帳/Source",
+      "branch": "main",
+      "canonicalBranch": "main",
+      "baseSha": "44a8521e1f22dc220e8098c8392bdfaac1fc8d72",
+      "correlationId": "cc9d858c-a3d3-4fb5-a03f-8e32030b9889"
+    },
+    "authorityContextComplete": true,
+    "sourceObservationComplete": false,
+    "stateContextComplete": false,
+    "stateContextExpiresAt": "2026-10-11T04:15:21.876Z",
+    "deploymentSha": "44a8521e1f22dc220e8098c8392bdfaac1fc8d72",
+    "requestId": "cc9d858c-a3d3-4fb5-a03f-8e32030b9889"
+  },
+  "githubMainSha": "44a8521e1f22dc220e8098c8392bdfaac1fc8d72",
+  "runtimeSha": null,
+  "azureDeploymentShaIndependent": null,
+  "sharePoint": {
+    "siteId": "hisyoengineer.sharepoint.com,6c84edee-5d0a-4501-b360-89881542f521,5e589c1f-2d73-48df-a550-a64f2f344d66",
+    "listId": "973f17d6-3566-4795-9712-2386bb7bf540",
+    "readSucceeded": true
+  },
+  "exposedBridgeMethods": [
+    "mcp__codex_apps__bridge_create_task",
+    "mcp__codex_apps__bridge_get_next_task",
+    "mcp__codex_apps__bridge_get_powerapps_app",
+    "mcp__codex_apps__bridge_get_powerapps_source",
+    "mcp__codex_apps__bridge_get_powerapps_state",
+    "mcp__codex_apps__bridge_get_sharepoint_list",
+    "mcp__codex_apps__bridge_get_task_result",
+    "mcp__codex_apps__bridge_get_tasks",
+    "mcp__codex_apps__bridge_health_check",
+    "mcp__codex_apps__bridge_publish_powerapps_app",
+    "mcp__codex_apps__bridge_run_power_automate_flow",
+    "mcp__codex_apps__bridge_save_powerapps_app",
+    "mcp__codex_apps__bridge_update_powerapps_app",
+    "mcp__codex_apps__bridge_update_task_status"
+  ],
+  "liveMcpInventoryComplete": false,
+  "cnaiInventory": null,
+  "cnaiAgentId": null,
+  "channelTest": "BLOCKED_CONNECTION",
+  "saveStatus": "UNVERIFIED",
+  "publishStatus": "UNVERIFIED",
+  "rollbackPoint": "44a8521e1f22dc220e8098c8392bdfaac1fc8d72 (source baseline only; deployment rollback unverified)",
+  "connectionOwner": null,
+  "effectivePermissions": null,
+  "profitImpact": "Not measured",
+  "cashRecoveryImpact": "Not measured",
+  "manualStepsRemoved": 0,
+  "blockers": [
+    "CNAI authenticated connection/Agent ID unavailable",
+    "Azure identity and deployment target unavailable",
+    "Executor proxy connection unavailable",
+    "Full tool inventory endpoint unavailable through exposed connector"
+  ],
+  "verification": "Live Power Apps and SharePoint reads performed through Bridge connector; no CNAI channel success claimed"
+}
