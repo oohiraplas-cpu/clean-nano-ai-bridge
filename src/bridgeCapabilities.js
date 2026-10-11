@@ -55,7 +55,7 @@ function createCommonResponse(options = {}) {
 function getBridgeCapabilities(MCP_PUBLIC_TOOLS, {
   version = '1.0.0',
   mcpVersion = '2025-06-18',
-  schemaVersion = '2025-10-10',
+  schemaVersion = '2026-10-11',
   deploymentSha = null,
   executionPackageVersion = '1.0.0',
   supportedStateContextFields = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId']

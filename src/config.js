@@ -114,6 +114,8 @@ function getConfig(env = process.env) {
     // When enabled (set BRIDGE_STATE_MANAGER_ENFORCE=true), all write operations require
     // complete state context (appId, environment, branch, sha, correlationId).
     // Default: false (for backward compatibility during testing/migration)
+    // Commit SHA the running Bridge was deployed from (set by the deploy workflow).
+    deploymentSha: env.DEPLOYMENT_SHA || null,
     enforceStateManager: env.BRIDGE_STATE_MANAGER_ENFORCE === 'true'
   };
 }

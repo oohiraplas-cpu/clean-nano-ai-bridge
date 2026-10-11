@@ -194,7 +194,9 @@ class StateContextRegistry {
     // Phase 6: sha is in SourceObservation, not AuthorityContext; check it separately
     const fieldsToCompare = REQUIRED_STATE_FIELDS.filter(f => f !== 'sha');
     for (const field of fieldsToCompare) if (context[field] !== record.context[field]) failures.push(`${field}: mismatch with registered context`);
-    if (context.sha !== record.source.sha) failures.push('sha: mismatch with registered source');
+    // context.sha is the branch COMMIT sha (StateContext); record.source.sha is the file BLOB sha.
+    // They are different identifiers and must be compared separately.
+    if (context.sha !== record.context.sha) failures.push('sha: mismatch with registered commit');
     if (record.context.branch !== record.context.canonicalBranch) failures.push('branch: non-canonical source');
     const suppliedPath = method === 'compare_powerapps_with_git' ? params.targetFile : params.relativePath;
     if (suppliedPath !== undefined && suppliedPath !== record.source.path && suppliedPath !== record.source.requestedPath) failures.push('relativePath/targetFile: mismatch with registered file');
