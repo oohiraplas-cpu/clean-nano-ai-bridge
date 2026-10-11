@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
+const { getAgentRegistry } = require('./agentRegistry');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -179,7 +180,8 @@ const MCP_METHODS = Object.freeze([
   'capture_behavior_verification',
   'capture_integration',
   'generate_runtime_report',
-  'export_evidence'
+  'export_evidence',
+  'get_agent_registry'
 ]);
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
@@ -1253,6 +1255,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['correlationId'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'get_agent_registry',
+    description: 'Bridgeに登録されたAIエージェント（CommanderAI・ResearchAI・DesignAI・ImplementationAI・TestAI・AuditAI・ReleaseAI・RecoveryAI・ProfitAI・CollectionAI・OptimizationAI）の役割、使用可能ツール、人間承認が必要な操作、Capability Registryを返します。Tool Registryとの整合性も検証します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
   }
 ]);
 
@@ -2344,6 +2352,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       integrityVerified: report.integrityVerified,
       timestamp: new Date().toISOString()
     };
+  }
+
+  if (method === 'get_agent_registry') {
+    return getAgentRegistry({ publicTools: MCP_PUBLIC_TOOLS });
   }
 
   if (method === 'export_evidence') {
