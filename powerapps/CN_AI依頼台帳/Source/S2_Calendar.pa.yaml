@@ -21,8 +21,8 @@ Screens:
                 Properties:
                   DropShadow: =DropShadow.None
                   FillPortions: =0
-                  Height: =Max(760, Parent.Height, S2_Grid.Y + S2_Grid.Height + 230)
-                  LayoutMinHeight: =Max(760, Parent.Height, S2_Grid.Y + S2_Grid.Height + 230)
+                  Height: =Max(640, Parent.Height, S2_Grid.Y + S2_Grid.Height + 128)
+                  LayoutMinHeight: =Max(640, Parent.Height, S2_Grid.Y + S2_Grid.Height + 128)
                   LayoutMinWidth: =0
                   Width: =Parent.Width
                 Children:
@@ -42,8 +42,8 @@ Screens:
                       Control: Classic/Button@2.2.0
                       Properties:
                         BorderThickness: =0
-                        Color: =RGBA(10, 10, 10, 1)
-                        Fill: =RGBA(255, 255, 255, 1)
+                        Color: =RGBA(0, 204, 102, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
                         Height: =50
                         OnSelect: |-
                           =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months));
@@ -57,8 +57,8 @@ Screens:
                       Control: Classic/Button@2.2.0
                       Properties:
                         BorderThickness: =0
-                        Color: =RGBA(10, 10, 10, 1)
-                        Fill: =RGBA(255, 255, 255, 1)
+                        Color: =RGBA(0, 204, 102, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
                         Height: =50
                         OnSelect: |-
                           =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months));
@@ -162,25 +162,9 @@ Screens:
                         Align: =Align.Center
                         Color: =RGBA(0, 204, 102, 1)
                         FontWeight: =FontWeight.Bold
-                        Height: =190
+                        Height: =96
                         Size: =14
-                        Text: |-
-                          =If(gblCalType = "運営",
-                            "今月 延べ稼働 " & CountRows(colOps) & " 人日" & Char(10) &
-                            "早出 " & CountRows(Filter(colOps, 勤務区分.Value = "早出")) & "件　残業 " & CountRows(Filter(colOps, 勤務区分.Value = "残業")) & "件",
-                            With({m: LookUp(CN_社員マスタ, 社員ID = gblEmpID),
-                                  workMin: Sum(colAttend, Coalesce(確定勤務分, Max(0, DateDiff(開始日時, 終了日時, TimeUnit.Minutes) - Coalesce(休憩分, 0)))),
-                                  overtimeMin: Sum(Filter(colAttend, 勤務区分.Value = "残業"), Coalesce(確定勤務分, Max(0, DateDiff(開始日時, 終了日時, TimeUnit.Minutes) - Coalesce(休憩分, 0))))},
-                              "今月の総支給見込み" & Char(10) &
-                              Text(Coalesce(m.基本給, 0) +
-                                CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) * Coalesce(m.日勤手当, 0) +
-                                CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) * Coalesce(m.夜勤手当, 0) +
-                                CountRows(Filter(colAttend, 勤務区分.Value = "早出")) * Coalesce(m.早出手当, 0) +
-                                (overtimeMin / 60) * Coalesce(m.'残業単価（1時間）', 0), "¥#,##0") & Char(10) &
-                              "出勤 " & CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & "日　実作業 " & Text(workMin / 60, "0.0") & "h" & Char(10) &
-                              "日勤 " & CountRows(Filter(colAttend, 勤務区分.Value = "日勤")) & "　夜勤 " & CountRows(Filter(colAttend, 勤務区分.Value = "夜勤")) & "　早出 " & CountRows(Filter(colAttend, 勤務区分.Value = "早出")) & "　残業 " & Text(overtimeMin / 60, "0.0") & "h"
-                            )
-                          )
+                        Text: =If(gblCalType = "運営", "今月 延べ稼働 " & CountRows(colOps) & " 人日　早出 " & CountRows(Filter(colOps, 勤務区分.Value = "早出")) & " 件　残業 " & CountRows(Filter(colOps, 勤務区分.Value = "残業")) & " 件　売上・経費：未連携", "今月の出勤（" & gblCalType & "）：" & CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & " 日")
                         Width: =Parent.Width - 32
                         X: =16
                         Y: =S2_Grid.Y + S2_Grid.Height + 16
@@ -189,8 +173,8 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         BorderThickness: =1
-                        Color: =RGBA(10, 10, 10, 1)
-                        Fill: =RGBA(255, 255, 255, 1)
+                        Color: =If(gblCalType = "解体", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+                        Fill: =If(gblCalType = "解体", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
                         FontWeight: =FontWeight.Bold
                         Height: =44
                         OnSelect: =Set(gblCalType, "解体"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
@@ -204,8 +188,8 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         BorderThickness: =1
-                        Color: =RGBA(10, 10, 10, 1)
-                        Fill: =RGBA(255, 255, 255, 1)
+                        Color: =If(gblCalType = "設備", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+                        Fill: =If(gblCalType = "設備", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
                         FontWeight: =FontWeight.Bold
                         Height: =44
                         OnSelect: =Set(gblCalType, "設備"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
@@ -219,8 +203,8 @@ Screens:
                       Properties:
                         BorderColor: =RGBA(0, 204, 102, 1)
                         BorderThickness: =1
-                        Color: =RGBA(10, 10, 10, 1)
-                        Fill: =RGBA(255, 255, 255, 1)
+                        Color: =If(gblCalType = "運営", RGBA(10, 10, 10, 1), RGBA(0, 204, 102, 1))
+                        Fill: =If(gblCalType = "運営", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
                         FontWeight: =FontWeight.Bold
                         Height: =44
                         OnSelect: =Set(gblCalType, "運営"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
@@ -237,18 +221,18 @@ Screens:
             Height: =70
             Width: =Parent.Width
             Y: =Parent.Height - 70
-      - btn_nav_home:
+      - S2_Nav1:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S1_Home, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -258,18 +242,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 0
             Y: =Parent.Height - 70
-      - btn_nav_calendar:
+      - S2_Nav2:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(0, 204, 102, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -279,18 +263,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 1
             Y: =Parent.Height - 70
-      - btn_nav_register:
+      - S2_Nav3:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: =Set(gblSelDate, Today()); Navigate(S3_Register, ScreenTransition.None)
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -300,18 +284,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 2
             Y: =Parent.Height - 70
-      - btn_nav_summary:
+      - S2_Nav4:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S4_Summary, ScreenTransition.None) '
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -321,18 +305,18 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 3
             Y: =Parent.Height - 70
-      - btn_nav_settings:
+      - S2_Nav5:
           Control: Classic/Button@2.2.0
           Properties:
             BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(255, 255, 255, 1)
+            Fill: =RGBA(26, 58, 42, 1)
             FontWeight: =FontWeight.Bold
             Height: =70
-            HoverColor: =RGBA(10, 10, 10, 1)
-            HoverFill: =RGBA(245, 245, 245, 1)
+            HoverColor: =RGBA(255, 255, 255, 1)
+            HoverFill: =RGBA(0, 204, 102, 0.3)
             OnSelect: '=Navigate(S7_Settings, ScreenTransition.None)    '
-            PressedFill: =RGBA(224, 224, 224, 1)
+            PressedFill: =RGBA(0, 204, 102, 1)
             RadiusBottomLeft: =0
             RadiusBottomRight: =0
             RadiusTopLeft: =0
@@ -342,13 +326,13 @@ Screens:
             Width: =Parent.Width / 5
             X: =Parent.Width / 5 * 4
             Y: =Parent.Height - 70
-      - btn_nav_plan:
+      - S2_PlanAttach:
           Control: Classic/Button@2.2.0
           Properties:
             BorderColor: =RGBA(0,255,102,1)
             BorderThickness: =1
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(255, 255, 255, 1)
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(8,34,20,1)
             FontWeight: =FontWeight.Bold
             Height: =44
             OnSelect: =Navigate(Screen2, ScreenTransition.None)
