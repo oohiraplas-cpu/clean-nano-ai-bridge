@@ -85,3 +85,23 @@ editing, saving, publishing, approval consumption and rollback: NOT TESTED.
 Overall goal status: **BLOCKED**. This reviewable foundation does not satisfy
 all-service approved execution. Live target and approval infrastructure are
 unverified; additional adapter and gate implementation remains necessary.
+
+
+## Follow-up implementation: scoped SharePoint edit executor
+
+The same review branch now implements an opt-in structured approvedOperation on
+execute_powerplatform_request. It supports existing SharePoint item updates only:
+verified Graph human identity, allowlisted target/fields, environment and running
+Bridge SHA binding, canonical payload hash, expiry/revocation, ETag reservation,
+backup before mutation, conditional target PATCH, readback and durable outcome.
+Reserved approvals cannot be replayed across executor instances or concurrent
+workers. Caller flags/tokens are not authorization.
+
+Local final full suite: **1436 PASS / 0 FAIL**. New scoped tests: **29 PASS**,
+including JSON-RPC and legacy HTTP paths against simulated Graph. OpenAPI: 1 PASS.
+Final safety suite: 65 PASS. Real SharePoint mutation and deployment: NOT RUN.
+The exact runtime configuration and current boundaries are documented in
+`docs/scoped-approval-execution.md`. Legacy individual mutation tools are not all
+migrated; other service adapters remain incomplete. Overall live-use status
+remains BLOCKED until real approval list metadata/access, approvers and a safe
+validation target are supplied and verified, and independent deployment gates pass.

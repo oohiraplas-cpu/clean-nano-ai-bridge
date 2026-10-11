@@ -9,7 +9,7 @@
     "test": "node --test",
     "validate:openapi": "node --test test/openapi.test.js",
     "test:mcp-tools": "node --test test/server.test.js test/deploymentService.test.js test/permissionsService.test.js test/powerAppsChangeValidation.test.js test/powerAppsStaticTests.test.js test/secretMasking.test.js test/mcpContractSync.test.js",
-    "test:safety": "node --test test/powerAppsGitStore.test.js test/executionAdapterSafety.test.js",
+    "test:safety": "node --test test/powerAppsGitStore.test.js test/executionAdapterSafety.test.js test/scopedApprovalExecution.test.js",
     "sync:mcp-contract": "node scripts/sync-mcp-contract.js"
   },
   "engines": {

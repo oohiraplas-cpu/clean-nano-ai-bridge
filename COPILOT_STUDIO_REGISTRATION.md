@@ -278,6 +278,8 @@ validation and comparison additionally require the complete `stateContext`.
 Do not drop or synthesize these fields to pass validation.
 
 Registration refresh, Azure deployment, PAC authentication, SOURCE_MAP content,
-and Copilot execution were not performed by this branch. The unified execution
-route is deliberately blocked until scoped, single-use SharePoint approval is
-connected; caller-provided approval flags or tokens cannot enable it.
+and Copilot execution were not performed by this branch. The text-only unified execution route remains blocked. A structured
+`approvedOperation` now supports registered existing SharePoint item edits only,
+with the scoped single-use ledger described in `docs/scoped-approval-execution.md`.
+It remains blocked without verified server configuration; caller-provided approval
+flags or tokens cannot enable it.
