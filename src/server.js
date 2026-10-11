@@ -1460,6 +1460,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
   if (method === 'health_check') return { status: 'ok' };
   if (method === 'get_azure_runtime_diagnostics') {
+    // The shared MCP middleware authenticates configured keys. Deny this sensitive
+    // diagnostic outright if MCP authentication was not configured.
+    if (typeof config.mcpApiKey !== 'string' || !config.mcpApiKey.trim())
+      return { status: 'blocked', reason: 'mcp_auth_not_configured' };
     if (params && (typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length)) {
       throw requestError('get_azure_runtime_diagnostics does not accept parameters');
     }
