@@ -150,7 +150,7 @@ function apiKeyMiddleware(getKey) {
 
 const MCP_METHODS = Object.freeze([
   'get_executive_policy', 'get_executive_brief',
-  'health_check', 'get_azure_runtime_diagnostics', 'get_tasks', 'get_next_task',
+  'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
@@ -188,7 +188,8 @@ const MCP_METHODS = Object.freeze([
   'create_execution_request',
   'get_execution_queue',
   'get_execution_status',
-  'get_checkpoint'
+  'get_checkpoint',
+  'get_azure_runtime_diagnostics'
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
@@ -209,11 +210,6 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
-  },
-  {
-    name: 'get_azure_runtime_diagnostics',
-    description: 'Runtime Source Adapter設定キーの存在のみを確認します。Azure実設定・認証状態は未検証として返し、値や秘密情報は返しません。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -1369,7 +1365,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       additionalProperties: false
     },
     annotations: { readOnlyHint: true, destructiveHint: false }
-  }
+  },
+  {
+    name: 'get_azure_runtime_diagnostics',
+    description: 'Runtime Source Adapter設定キーの存在のみを確認します。Azure実設定・認証状態は未検証として返し、値や秘密情報は返しません。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
 ]);
 
 async function tasksPayload(store) {
