@@ -122,6 +122,24 @@ class PowerAppsGitStore {
   }
 
   /**
+   * 読み取り専用の健全性確認。設定の有無（名前のみ）と正本branchの実在をGitHubで確認する。
+   * 秘密値・トークンは返さない。
+   */
+  async healthCheck() {
+    const missingConfiguration = [];
+    if (!this.githubToken) missingConfiguration.push('POWERAPPS_GITHUB_TOKEN');
+    if (!this.githubOwner) missingConfiguration.push('POWERAPPS_GITHUB_OWNER');
+    if (!this.githubRepo) missingConfiguration.push('POWERAPPS_GITHUB_REPO');
+    if (missingConfiguration.length) {
+      return { ok: false, status: 'not_configured', missingConfiguration };
+    }
+    const branchName = encodeURIComponent(this.canonicalBranch);
+    const branch = await this._githubRequest(`/repos/${this.githubOwner}/${this.githubRepo}/branches/${branchName}`);
+    const ok = branch?.name === this.canonicalBranch;
+    return { ok, status: ok ? 'ok' : 'branch_mismatch', branch: branch?.name || null, sha: branch?.commit?.sha || null };
+  }
+
+  /**
    * 自動解決: screenName から実ファイルを検索（完全一致のみ）
    * @param {string} screenName - 画面名（例: "S12_EquipmentOCR"）
    * @returns {Promise<{path: string, sha: string, branch: string}|{error: string, reason: string}>}
