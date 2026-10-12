@@ -269,150 +269,25 @@ class PowerAutomateExecutionAdapter {
  * Copilot Studio 実行アダプター
  */
 class CopilotStudioExecutionAdapter {
-  constructor({ config }) {
-    this.config = config;
+  constructor({ config } = {}) { this.config = config; }
+
+  // No authenticated Microsoft API integration is verified for these operations.
+  // Never report a simulated mutation or publication as successful.
+  _unsupported(operation) {
+    return { success: false, status: 'BLOCKED', reason: 'copilot_studio_api_not_configured',
+      adapter: 'CopilotStudioExecutionAdapter', operation };
   }
 
-  async createAgent(agentName, description, instructions) {
-    // エージェント作成
-    try {
-      const agentDef = { name: agentName, description, instructions };
-      return {
-        success: true,
-        agentId: agentName,
-        agent: agentDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addTopic(agentId, topicName, triggers, content) {
-    // トピック追加
-    try {
-      const topicDef = { name: topicName, triggers, content };
-      return {
-        success: true,
-        agentId,
-        topicId: topicName,
-        topic: topicDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addKnowledge(agentId, knowledgeSource) {
-    // Knowledge追加
-    try {
-      return {
-        success: true,
-        agentId,
-        knowledge: knowledgeSource
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addTool(agentId, toolName, toolDefinition) {
-    // Tool追加
-    try {
-      return {
-        success: true,
-        agentId,
-        toolId: toolName,
-        tool: toolDefinition
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addAction(agentId, actionName, actionDefinition) {
-    // Action追加
-    try {
-      return {
-        success: true,
-        agentId,
-        actionId: actionName,
-        action: actionDefinition
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addConnector(agentId, connectorName, credentials) {
-    // Connector追加
-    try {
-      return {
-        success: true,
-        agentId,
-        connectorId: connectorName
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async syncMcpSchema(agentId, mcpTools) {
-    // MCPスキーマ同期
-    try {
-      return {
-        success: true,
-        agentId,
-        tools: mcpTools
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async testAgent(agentId, input) {
-    // テスト実行
-    try {
-      return {
-        success: true,
-        agentId,
-        input,
-        response: 'Test response'
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async publishAgent(agentId, approvalToken) {
-    // 公開
-    if (!approvalToken) {
-      throw new Error('公開には承認トークンが必要です');
-    }
-    try {
-      return {
-        success: true,
-        agentId,
-        published: true
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async validateAgent(agentId) {
-    // エージェント検証
-    try {
-      return {
-        success: true,
-        agentId,
-        valid: true,
-        conflicts: [],
-        warnings: []
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
+  async createAgent() { return this._unsupported('createAgent'); }
+  async addTopic() { return this._unsupported('addTopic'); }
+  async addKnowledge() { return this._unsupported('addKnowledge'); }
+  async addTool() { return this._unsupported('addTool'); }
+  async addAction() { return this._unsupported('addAction'); }
+  async addConnector() { return this._unsupported('addConnector'); }
+  async syncMcpSchema() { return this._unsupported('syncMcpSchema'); }
+  async testAgent() { return this._unsupported('testAgent'); }
+  async publishAgent() { return this._unsupported('publishAgent'); }
+  async validateAgent() { return this._unsupported('validateAgent'); }
 }
 
 /**
