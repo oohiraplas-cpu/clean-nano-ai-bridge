@@ -5,11 +5,11 @@ const {createGuardedSharePointExecutor}=require('../src/sharePointGuardedExecuto
 const {changeHash}=require('../src/sharePointMutationContractDraft');
 const plan={operation:'create_item',siteId:'tenant,site,web',listId:'list-1',runtimeCommitSha:'a'.repeat(40),params:{fields:{Title:'Test'}}};
 const now=()=>Date.parse('2026-10-13T10:00:00Z');
-function fixture({conflict=false,backupOk=true,readbackOk=true,identityOk=true}={}){
- const calls=[];let etag='"1"';
+function fixture({conflict=false,backupOk=true,readbackOk=true,identityOk=true,revokeAtRead=0}={}){
+ const calls=[];let etag='"1"',reads=0;
  const record={status:'APPROVED',revoked:false,operation:plan.operation,siteId:plan.siteId,listId:plan.listId,runtimeCommitSha:plan.runtimeCommitSha,changeHash:changeHash(plan),approver:'owner',approvedAt:'2026-10-13T09:00:00Z',expiresAt:'2026-10-13T11:00:00Z'};
  const store={assertConfigured(){},verifyHuman:async()=>identityOk,
-  read:async()=>({etag,record:{...record}}),
+  read:async()=>{reads++;if(revokeAtRead&&reads===revokeAtRead){record.revoked=true;etag='"3"';}return {etag,record:{...record}};},
   patch:async(_id,match,fields)=>{if(conflict||etag!==match)throw Error('412');Object.assign(record,fields);etag='"2"';}};
  const writer={createItemFields:async()=>{calls.push('write');return {id:'item-1'};},
   getItemFields:async()=>{calls.push('readback');return readbackOk?{Title:'Test'}:{Title:'wrong'};}};
@@ -49,4 +49,16 @@ test('revocation after reservation blocks before write',async()=>{
  record.revoked=true;
  assert.equal((await execute(plan,'1')).status,'BLOCKED');
  assert.equal(calls.filter(c=>c==='write').length,1);
+});
+
+test('revocation between reservation and final recheck prevents write',async()=>{
+ const {execute,calls}=fixture({revokeAtRead:4});
+ assert.equal((await execute(plan,'1')).status,'BLOCKED');
+ assert.equal(calls.includes('write'),false);
+});
+test('two concurrent requests never both mutate',async()=>{
+ const {execute,calls}=fixture();
+ const results=await Promise.all([execute(plan,'1'),execute(plan,'1')]);
+ assert.equal(results.filter(r=>r.status==='VERIFIED').length<=1,true);
+ assert.equal(calls.filter(c=>c==='write').length<=1,true);
 });
