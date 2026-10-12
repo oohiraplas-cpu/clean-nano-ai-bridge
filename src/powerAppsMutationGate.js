@@ -5,7 +5,7 @@ const { canonicalDiffHash } = require('./approvalScopeContractDraft');
 // Never call a mutation unless every trusted dependency has been injected and
 // verified. This module does NOT activate the legacy server write routes.
 function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCurrentSha,
-  verifyTarget, verifyBackup, verifyPostcondition } = {}) {
+  verifyTarget, verifyBackup, verifyPostcondition, readRuntimeSha } = {}) {
   return async function execute({ operation, approvalId, requestId, appId,
     environmentId, targetSha, changeHash, runtimeCommitSha, sourceSha, params,
     mutate, expectedPostcondition } = {}) {
@@ -33,6 +33,10 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
       changeHash: computedHash, runtimeCommitSha, sourceSha, params };
     let mutationAttempted = false;
     try {
+      // The running Bridge SHA must be attested by a trusted server-owned reader.
+      if (typeof readRuntimeSha !== 'function' || await readRuntimeSha(scope) !== runtimeCommitSha) {
+        return blocked('runtime_sha_unverified');
+      }
       if (await verifyTarget(scope) !== true || await verifyBackup(scope) !== true) {
         return blocked('target_or_backup_unverified');
       }
@@ -71,7 +75,7 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
 
 // Only server-owned adapters may construct a reservation-backed gate.
 // This factory does not expose or activate any HTTP/MCP mutation route.
-function createAtomicPowerAppsMutationGate({ approvalStore, readCurrentSha,
+function createAtomicPowerAppsMutationGate({ approvalStore, readCurrentSha, readRuntimeSha,
   verifyTarget, verifyBackup, verifyPostcondition } = {}) {
   const { createAtomicApprovalReservation, createApprovalRecheck } = require('./atomicApprovalReservation');
   if (!approvalStore || typeof approvalStore.assertConfigured !== 'function' ||
@@ -87,7 +91,7 @@ function createAtomicPowerAppsMutationGate({ approvalStore, readCurrentSha,
   return createPowerAppsMutationGate({
     reserveApproval: createAtomicApprovalReservation({ store: approvalStore }),
     recheckApproval: createApprovalRecheck({ store: approvalStore }),
-    readCurrentSha, verifyTarget, verifyBackup, verifyPostcondition
+    readCurrentSha, readRuntimeSha, verifyTarget, verifyBackup, verifyPostcondition
   });
 }
 
