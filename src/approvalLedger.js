@@ -77,6 +77,16 @@ class ApprovalLedger {
       revoked: row[map.revoked],
       ...Object.fromEntries(BINDING_FIELDS.map(key => [key, map[key] ? row[map[key]] : undefined]))
     }));
+    // A bound approval must be unique for the requested action. Multiple matching
+    // rows can conceal a revoked or conflicting decision; fail closed.
+    if (bound) {
+      const candidates = normalized.filter(record =>
+        record.requestId === expected.requestId &&
+        Number(record.stepIndex) === expected.stepIndex &&
+        record.tool === expected.tool
+      );
+      if (candidates.length > 1) return { approved: false, reason: 'ambiguous_approval_records' };
+    }
     let last = { valid: false, reason: 'no_record' };
     for (const record of normalized) {
       const result = validateApprovalRecord(record, expected, { now: this.now() });
