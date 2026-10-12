@@ -19,7 +19,7 @@ test('Graph approval read obtains server ETag and independent identity',async()=
 });
 test('PATCH requires exact If-Match and reservation-only fields',async()=>{
  const {store,calls}=setup();
- await store.patch('1','"3"',{executionId:'run'});
+ await store.patch('1','"3"',{executionId:'run',executionStatus:'reserved',executionResult:'receipt'});
  assert.equal(calls[0].options.headers['If-Match'],'"3"');
  await assert.rejects(()=>store.patch('1','*',{executionId:'run'}));
  await assert.rejects(()=>store.patch('1','"3"',{status:'APPROVED'}));
@@ -31,4 +31,17 @@ test('Graph 412 conflict fails closed',async()=>{
 test('missing directory verifier prevents store configuration',()=>{
  const store=createSharePointApprovalStore({writer:{},siteId:'s',listId:'l',fieldMap});
  assert.throws(()=>store.assertConfigured());
+});
+
+test('duplicate approval internal column mapping fails closed',()=>{
+ const {store}=setup();
+ const bad={...fieldMap,executionId:fieldMap.approver};
+ const writer={graphBaseUrl:'https://graph.microsoft.com/v1.0',_getAccessToken:async()=> 'token',_fetch:async()=>({ok:true})};
+ const invalid=createSharePointApprovalStore({writer,siteId:'site',listId:'list',fieldMap:bad,verifyDirectoryHuman:async()=>true});
+ assert.throws(()=>invalid.assertConfigured());
+});
+test('incomplete reservation PATCH rejected before Graph call',async()=>{
+ const {store,calls}=setup();
+ await assert.rejects(()=>store.patch('1','"3"',{executionId:'run'}));
+ assert.equal(calls.length,0);
 });
