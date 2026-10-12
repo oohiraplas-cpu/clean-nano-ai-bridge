@@ -2588,10 +2588,16 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     });
   }
 
+  // Azure reader is explicitly injected by a trusted operator. No implicit CLI,
+  // credential retrieval, or Azure requests are performed by Bridge startup.
+  const azureMetadata = injected.azureMetadata &&
+    typeof injected.azureMetadata.readDeploymentMetadata === 'function'
+    ? injected.azureMetadata : null;
   return {
     deployment,
     permissions,
     userProtection,
+    azureMetadata,
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
     verifySaveResult: injected.verifySaveResult || verifySave
   };
