@@ -120,3 +120,57 @@ test('atomic edit gate rejects unverified human without mutation or ETag patch',
   assert.equal(patches, 0);
   assert.equal(mutations, 0);
 });
+
+test('atomic edit gate rejects expired approval before ETag patch and mutation', async () => {
+  const { createAtomicPowerAppsMutationGate } = require('../src/powerAppsMutationGate');
+  const now = Date.now();
+  let patches = 0, mutations = 0;
+  const record = { requestId: scope.requestId, tool: 'update', targetId: scope.appId,
+    environmentId: scope.environmentId, commitSha: scope.targetSha, diffHash: scope.changeHash,
+    approverId: 'human-1', approvedAt: new Date(now - 86400000).toISOString(),
+    expiresAt: new Date(now - 1000).toISOString(), status: '承認', revoked: false };
+  const store = { assertConfigured() {}, read: async () => ({ etag: '1', record }),
+    patch: async () => { patches++; }, verifyHuman: async () => true };
+  const gate = createAtomicPowerAppsMutationGate({ approvalStore: store,
+    verifyTarget: async () => true, verifyBackup: async () => true,
+    readCurrentSha: async () => scope.targetSha, verifyPostcondition: async () => true });
+  const result = await gate({ ...scope, operation: 'update',
+    mutate: async () => { mutations++; return { success: true }; } });
+  assert.equal(result.reason, 'approval_reservation_failed');
+  assert.equal(patches, 0);
+  assert.equal(mutations, 0);
+});
+test('atomic edit gate refuses changed SHA before any approval or mutation', async () => {
+  const { createAtomicPowerAppsMutationGate } = require('../src/powerAppsMutationGate');
+  let reads = 0, mutations = 0;
+  const store = { assertConfigured() {}, read: async () => { reads++; throw new Error('must not read'); },
+    patch: async () => { throw new Error('must not patch'); }, verifyHuman: async () => true };
+  const gate = createAtomicPowerAppsMutationGate({ approvalStore: store,
+    verifyTarget: async () => true, verifyBackup: async () => true,
+    readCurrentSha: async () => 'c'.repeat(40), verifyPostcondition: async () => true });
+  const result = await gate({ ...scope, operation: 'update',
+    mutate: async () => { mutations++; return { success: true }; } });
+  assert.equal(result.reason, 'stale_target_sha');
+  assert.equal(reads, 0);
+  assert.equal(mutations, 0);
+});
+test('atomic edit gate denies ETag conflict and never retries mutation', async () => {
+  const { createAtomicPowerAppsMutationGate } = require('../src/powerAppsMutationGate');
+  const now = Date.now();
+  let patches = 0, mutations = 0;
+  const record = { requestId: scope.requestId, tool: 'update', targetId: scope.appId,
+    environmentId: scope.environmentId, commitSha: scope.targetSha, diffHash: scope.changeHash,
+    approverId: 'human-1', approvedAt: new Date(now - 1000).toISOString(),
+    expiresAt: new Date(now + 60000).toISOString(), status: '承認', revoked: false };
+  const store = { assertConfigured() {}, read: async () => ({ etag: '1', record }),
+    patch: async () => { patches++; throw Object.assign(new Error('precondition failed'), { status: 412 }); },
+    verifyHuman: async () => true };
+  const gate = createAtomicPowerAppsMutationGate({ approvalStore: store,
+    verifyTarget: async () => true, verifyBackup: async () => true,
+    readCurrentSha: async () => scope.targetSha, verifyPostcondition: async () => true });
+  const result = await gate({ ...scope, operation: 'update',
+    mutate: async () => { mutations++; return { success: true }; } });
+  assert.equal(result.reason, 'approval_reservation_failed');
+  assert.equal(patches, 1, 'ETag 412 must never be retried');
+  assert.equal(mutations, 0);
+});
