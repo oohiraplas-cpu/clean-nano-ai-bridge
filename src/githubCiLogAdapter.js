@@ -3,6 +3,7 @@
 // No GitHub credentials, writes, reruns, merge or deployment operations.
 const { reviewCiFailure } = require('./ciFailureReview');
 const { assessStructuredDiagnostic } = require('./ciStructuredDiagnostic');
+const { verifyCiArtifactZip } = require('./ciArtifactReader');
 const blocked = reason => Object.freeze({status:'blocked',reason,mayEditDraft:false,mayDeploy:false,mayMerge:false});
 async function reviewGitHubCiFailure({github,repositoryFullName,...input} = {}) {
   if (typeof repositoryFullName !== 'string' ||
@@ -31,4 +32,12 @@ async function reviewGitHubCiFailure({github,repositoryFullName,...input} = {}) 
 function reviewGitHubStructuredDiagnostic(input = {}) {
   return assessStructuredDiagnostic(input);
 }
-module.exports = { reviewGitHubCiFailure, reviewGitHubStructuredDiagnostic };
+// ZIP bytes are supplied by an authenticated, read-only caller. No network or file writes.
+function reviewGitHubStructuredArtifact({zipBytes,...input} = {}) {
+  if (input.repositoryFullName !== 'oohiraplas-cpu/clean-nano-ai-bridge')
+    return blocked('repository_unverified');
+  const checked = verifyCiArtifactZip({zipBytes,artifact:input.artifact});
+  if (checked.status !== 'ok') return checked;
+  return assessStructuredDiagnostic({...input,diagnosticJson:checked.diagnosticJson});
+}
+module.exports = { reviewGitHubCiFailure, reviewGitHubStructuredDiagnostic, reviewGitHubStructuredArtifact };
