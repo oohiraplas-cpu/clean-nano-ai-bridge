@@ -92,3 +92,31 @@ test('postcondition exception requires manual recovery and never retries', async
   assert.equal(result.retryAllowed, false);
   assert.equal(f.calls.filter(x => x === 'mutate').length, 1);
 });
+
+test('atomic edit gate without a trusted SharePoint store fails closed', async () => {
+  const { createAtomicPowerAppsMutationGate } = require('../src/powerAppsMutationGate');
+  let mutated = false;
+  const result = await createAtomicPowerAppsMutationGate()({ ...scope, operation: 'update',
+    mutate: async () => { mutated = true; return { success: true }; } });
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(mutated, false);
+});
+test('atomic edit gate rejects unverified human without mutation or ETag patch', async () => {
+  const { createAtomicPowerAppsMutationGate } = require('../src/powerAppsMutationGate');
+  const now = Date.now();
+  let patches = 0, mutations = 0;
+  const record = { requestId: scope.requestId, tool: 'update', targetId: scope.appId,
+    environmentId: scope.environmentId, commitSha: scope.targetSha, diffHash: scope.changeHash,
+    approverId: 'human-1', approvedAt: new Date(now - 1000).toISOString(),
+    expiresAt: new Date(now + 60000).toISOString(), status: '承認', revoked: false };
+  const store = { assertConfigured() {}, read: async () => ({ etag: '1', record }),
+    patch: async () => { patches++; }, verifyHuman: async () => false };
+  const gate = createAtomicPowerAppsMutationGate({ approvalStore: store,
+    verifyTarget: async () => true, verifyBackup: async () => true,
+    readCurrentSha: async () => scope.targetSha, verifyPostcondition: async () => true });
+  const result = await gate({ ...scope, operation: 'update',
+    mutate: async () => { mutations++; return { success: true }; } });
+  assert.equal(result.reason, 'approval_reservation_failed');
+  assert.equal(patches, 0);
+  assert.equal(mutations, 0);
+});
