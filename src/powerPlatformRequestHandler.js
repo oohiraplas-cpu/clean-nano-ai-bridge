@@ -5,6 +5,7 @@
 
 const crypto = require('node:crypto');
 const { verifyBeforeMutation, verifyAfterMutation } = require('./p0ExecutionEvidence');
+const { createAtomicApprovalReservation } = require('./atomicApprovalReservation');
 const { PlatformOrchestrator } = require('./platformOrchestrator');
 const {
   PowerAppsExecutionAdapter,
@@ -87,8 +88,11 @@ class PowerPlatformRequestHandler {
         ? (context) => config.p0Execution.getEvidence(context) : null,
       readCurrentSha: typeof config?.p0Execution?.readCurrentSha === 'function'
         ? (context) => config.p0Execution.readCurrentSha(context) : null,
-      reserveApproval: typeof config?.p0Execution?.reserveApproval === 'function'
-        ? (context) => config.p0Execution.reserveApproval(context) : null,
+      reserveApproval: config?.p0Execution?.approvalStore && typeof config?.p0Execution?.getApprovalId === 'function'
+        ? async (context) => {
+            const approvalId = await config.p0Execution.getApprovalId(context);
+            return createAtomicApprovalReservation({ store: config.p0Execution.approvalStore })({ ...context, approvalId });
+          } : null,
       config
     });
 
