@@ -312,10 +312,13 @@ class PlatformOrchestrator {
 
       // Step 18-19: 公開後検証、監査証跡
       if (publishApproval) {
-        await this._publishChanges({
+        const publication = await this._publishChanges({
           target,
           requestId: requestIdLocal
         });
+        if (publication?.published !== true || publication?.status !== 'published') {
+          return this._returnBlocked('公開未確認', publication?.errors || [publication?.status || 'publish_unverified'], requestIdLocal);
+        }
         this._logExecution('PUBLISHED', `公開完了`);
 
         const postPublish = await this._verifyPostPublish({
