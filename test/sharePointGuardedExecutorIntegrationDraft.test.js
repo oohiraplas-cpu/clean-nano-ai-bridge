@@ -15,7 +15,7 @@ function fixture({conflict=false,backupOk=true,readbackOk=true,identityOk=true,r
   getItemFields:async()=>{calls.push('readback');return readbackOk?{Title:'Test'}:{Title:'wrong'};}};
  const execute=createGuardedSharePointExecutor({store,writer,now,readRuntimeSha:async()=>plan.runtimeCommitSha,
   backup:async()=>{calls.push('backup');return {verified:backupOk,reference:backupOk?'snapshot':null};},
-  audit:async()=>{calls.push('audit');}});
+  audit:async()=>{calls.push('audit');return {persisted:true,reference:'audit-1'};}});
  return {execute,calls,record};
 }
 test('guarded executor backs up, reserves, writes, reads back and audits',async()=>{
@@ -61,4 +61,16 @@ test('two concurrent requests never both mutate',async()=>{
  const results=await Promise.all([execute(plan,'1'),execute(plan,'1')]);
  assert.equal(results.filter(r=>r.status==='VERIFIED').length<=1,true);
  assert.equal(calls.filter(c=>c==='write').length<=1,true);
+});
+
+test('audit callback without durable receipt cannot claim VERIFIED',async()=>{
+ const {createSharePointMutationExecutor}=require('../src/sharePointMutationExecutorDraft');
+ const fake=createSharePointMutationExecutor({
+  loadApproval:async()=>({etag:'"1"',record:{status:'APPROVED',revoked:false,operation:plan.operation,siteId:plan.siteId,listId:plan.listId,runtimeCommitSha:plan.runtimeCommitSha,changeHash:changeHash(plan),approver:'owner',approvedAt:'2026-10-13T09:00:00Z'}}),
+  verifyHuman:async()=>true,reserveETag:async()=>({reserved:true,executionId:'x'}),
+  readReservation:async()=>({etag:'"2"',executionId:'x',changeHash:changeHash(plan),status:'reserved'}),
+  readRuntimeSha:async()=>plan.runtimeCommitSha,backup:async()=>({verified:true,reference:'backup'}),
+  recheck:async()=>true,writer:{createItemFields:async()=>({id:'1'})},readback:async()=>true,audit:async()=>undefined
+ });
+ assert.equal((await fake(plan,'1')).status,'BLOCKED');
 });
