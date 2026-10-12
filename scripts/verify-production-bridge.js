@@ -3,6 +3,7 @@ const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const { MCP_PUBLIC_TOOLS } = require('../src/server');
 const { assessAzureReadiness } = require('../src/azureReadiness');
+const { collectRuntimeEvidence } = require('../src/azureRuntimeEvidence');
 const azure = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8000000 }));
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 async function main() {
@@ -86,6 +87,14 @@ async function main() {
       report.availability[t.name] = smoke?.status === 'not_configured' ? 'not_configured' : smoke?.status === 'blocked' || (smoke && (smoke.httpStatus !== 200 || (smoke.isError && smoke.status !== 'incomplete'))) ? 'blocked' : smoke ? 'ready' : 'mock_verified_only';
     }
   }
+  // Runtime source provenance is only accepted when the trusted adapter reports
+  // a saved .msapp source and its digest. GitHub-only source is never accepted.
+  const sourceProbe = null; // Existing MCP source result is not independently proven to be PAC runtime.
+  const runtimeEvidence = collectRuntimeEvidence({ settings, pacProbe: sourceProbe });
+  observed.pacProfileVerified = runtimeEvidence.pacProfileVerified;
+  observed.sourceMapVerified = runtimeEvidence.sourceMapVerified;
+  observed.deploymentShaMatched = runtimeEvidence.deploymentShaMatched;
+  report.runtimeEvidence = runtimeEvidence;
   observed.healthVerified = report.health?.httpStatus === 200 && report.health.status === 'ok';
   // PAC runtime authentication and source-map validity require actual isolated runtime
   // checks. Presence of keys alone is never evidence of a working PAC profile.
