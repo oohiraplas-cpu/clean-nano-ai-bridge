@@ -17,6 +17,7 @@ const { PowerAutomateRunner } = require('./powerAutomateRunner');
 const { PaymentMonitorService } = require('./paymentMonitorService');
 const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
+const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
@@ -190,7 +191,7 @@ const MCP_METHODS = Object.freeze([
   'get_execution_queue',
   'get_execution_status',
   'get_checkpoint',
-  'get_azure_deployment_metadata'
+  'get_azure_deployment_metadata', 'verify_github_ci_artifact'
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
@@ -1368,6 +1369,22 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     annotations: { readOnlyHint: true, destructiveHint: false }
   },
   {
+    name: 'verify_github_ci_artifact',
+    description: 'GitHub Actionsの診断ZIPを認証付きで取得し、SHA-256・HEAD・実行回・REST結果を照合します。読み取り専用。修正・マージ・デプロイは許可しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'integer', minimum: 1 },
+        artifactId: { type: 'integer', minimum: 1 },
+        expectedHeadSha: { type: 'string', pattern: '^[a-f0-9]{40}$' },
+        expectedRunAttempt: { type: 'integer', minimum: 1 }
+      },
+      required: ['runId', 'artifactId', 'expectedHeadSha', 'expectedRunAttempt'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
     name: 'get_azure_deployment_metadata',
     description: 'Azureデプロイの非機密メタデータを取得します。読み取り専用。未接続の場合はFail Closed。デプロイIDをGit SHAと見なしません。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
@@ -1459,6 +1476,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'verify_github_ci_artifact') {
+    if (!config.mcpApiKey) return { status: 'blocked', reason: 'mcp_authentication_required', mayEditDraft: false, mayMerge: false, mayDeploy: false };
+    return bridgeServices.ciArtifact.verify(params);
+  }
   if (method === 'get_azure_deployment_metadata') {
     if (params && Object.keys(params).length) throw requestError('parameters_not_allowed');
     const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
@@ -2600,6 +2621,7 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     ? injected.azureMetadata : null;
   return {
     deployment,
+    ciArtifact: createGitHubCiArtifactService(config.deployment || {}),
     permissions,
     userProtection,
     azureMetadata,
