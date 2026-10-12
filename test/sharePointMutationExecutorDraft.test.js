@@ -10,7 +10,7 @@ function fixtures(overrides={}) {
   loadApproval:async()=>({etag:'"1"',record:{status:'APPROVED',operation:plan.operation,siteId:plan.siteId,listId:plan.listId,runtimeCommitSha:plan.runtimeCommitSha,changeHash:changeHash(plan),approver:'person',approvedAt:'2026-10-13T00:00:00Z'}}),
   verifyHuman:async()=>true,
   reserveETag:async()=>({reserved:true,executionId:'once'}),
-  readReservation:async()=>({executionId:'once',changeHash:changeHash(plan),status:'reserved'}),
+  readReservation:async()=>({executionId:'once',changeHash:changeHash(plan),status:'reserved',etag:'"2"'}),
   readRuntimeSha:async()=>plan.runtimeCommitSha,
   backup:async()=>({verified:true,reference:'snapshot'}),
   recheck:async()=>true,
@@ -39,4 +39,15 @@ test('readback failure does not claim success',async()=>{
  const {calls,deps}=fixtures({readback:async()=>false});
  assert.equal((await createSharePointMutationExecutor(deps)(plan,'1')).status,'BLOCKED');
  assert.deepEqual(calls,['write']);
+});
+
+test('unchanged ETag and changed runtime SHA deny before write',async()=>{
+ for(const overrides of [
+  {readReservation:async()=>({executionId:'once',changeHash:changeHash(plan),status:'reserved',etag:'"1"'})},
+  {readRuntimeSha:(()=>{let i=0;return async()=>++i===1?plan.runtimeCommitSha:'b'.repeat(40);})()}
+ ]){
+  const {calls,deps}=fixtures(overrides);
+  assert.equal((await createSharePointMutationExecutor(deps)(plan,'1')).status,'BLOCKED');
+  assert.deepEqual(calls,[]);
+ }
 });
