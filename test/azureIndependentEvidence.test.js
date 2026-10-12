@@ -33,16 +33,11 @@ test('trusted PAC evidence must match app and environment', () => {
   assert.equal(collectRuntimeEvidence({ pacProbe: { ...probe, expectedEnvironment: 'env-2' } }).pacProfileVerified, false);
 });
 
-test('PAC trusted evidence method returns only metadata and delegates to validated read', async () => {
+test('PAC evidence rejects an overridden reader rather than trusting injected source', async () => {
   const { PowerAppsRuntimeSourceAdapter } = require('../src/powerAppsRuntimeSource');
   const appId = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
   const adapter = new PowerAppsRuntimeSourceAdapter({ appId, environmentId: 'env-1' });
   adapter.getSourceFile = async () => ({ status: 'ok', source: 'power-apps-saved-msapp',
-    appId, environment: 'env-1', runtimeHash: 'b'.repeat(64), content: 'sensitive source' });
-  const result = await adapter.getSourceEvidence('S1_Home.pa.yaml', {});
-  assert.equal(result.trustedAdapterVerified, true);
-  assert.equal(result.runtimeHash, 'b'.repeat(64));
-  assert.equal(JSON.stringify(result).includes('sensitive source'), false);
-  adapter.getSourceFile = async () => ({ status: 'ok', source: 'github', appId, environment: 'env-1' });
-  await assert.rejects(adapter.getSourceEvidence('S1_Home.pa.yaml', {}));
+    appId, environment: 'env-1', runtimeHash: 'b'.repeat(64), content: 'forged source' });
+  await assert.rejects(adapter.getSourceEvidence('S1_Home.pa.yaml', {}), /対象照合/);
 });
