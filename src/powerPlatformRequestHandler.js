@@ -85,6 +85,10 @@ class PowerPlatformRequestHandler {
       approvalLedger: config?.p0Execution?.ledger || null,
       getMutationEvidence: typeof config?.p0Execution?.getEvidence === 'function'
         ? (context) => config.p0Execution.getEvidence(context) : null,
+      readCurrentSha: typeof config?.p0Execution?.readCurrentSha === 'function'
+        ? (context) => config.p0Execution.readCurrentSha(context) : null,
+      reserveApproval: typeof config?.p0Execution?.reserveApproval === 'function'
+        ? (context) => config.p0Execution.reserveApproval(context) : null,
       config
     });
 
