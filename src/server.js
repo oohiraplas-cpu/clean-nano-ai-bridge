@@ -1467,6 +1467,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
       return { status: 'blocked', reason: 'azure_metadata_unverified' };
     return { status: 'observed_not_verified', resourceIdMatched: true,
+      diagnostic: require('./azureDiagnostic').assessAzureDiagnostic(),
       deploymentEntries: result.deploymentEntries.map(entry => ({
         deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
         active: entry.active === true,
