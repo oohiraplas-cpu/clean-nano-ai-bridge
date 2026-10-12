@@ -166,7 +166,11 @@ test('opt-in Azure metadata reader returns only scoped deployment metadata', asy
   assert.equal(result.deploymentEntries.length, 1);
   assert.ok(!JSON.stringify(result).includes('must-not-escape'));
   const blocked = createAzureMetadataReader({ collectMetadata: () => ({ resourceIdMatched: false }) });
-  assert.deepEqual(await blocked.readDeploymentMetadata(), { resourceIdMatched: false, deploymentEntries: [] });
+  const blockedResult = await blocked.readDeploymentMetadata();
+  assert.equal(blockedResult.resourceIdMatched, false);
+  assert.deepEqual(blockedResult.deploymentEntries, []);
+  assert.equal(blockedResult.diagnostic.status, 'blocked');
+  assert.equal(blockedResult.diagnostic.checks.githubShaMatch, 'unconfirmed');
   const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
   assert.ok(server.includes('azureMetadata,'));
   assert.ok(server.includes("typeof injected.azureMetadata.readDeploymentMetadata === 'function'"));
