@@ -32,7 +32,8 @@ async function main() {
     observed.managedIdentityAssigned = typeof principalId === 'string' && /^[0-9a-f-]{36}$/i.test(principalId);
     if (observed.managedIdentityAssigned && observed.resourceIdMatched) {
       const assignments = azure(['role', 'assignment', 'list', '--assignee', principalId, '--scope', app.id]);
-      observed.rbacReadVerified = Array.isArray(assignments);
+      // Assignment listing is not proof of effective RBAC; remain unverified.
+      observed.rbacReadVerified = false;
     }
   } catch {
     // Missing access or identity must remain unverified, not assumed healthy.
