@@ -26,7 +26,7 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
     const { approvalId, requestId, operation, targetSha, appId, environmentId, changeHash } = context;
     if (!store || typeof store.assertConfigured !== 'function' || typeof store.read !== 'function' || typeof store.patch !== 'function' ||
         typeof store.verifyHuman !== 'function' || !/^[1-9][0-9]*$/.test(String(approvalId || '')) ||
-        !['deploy', 'publish'].includes(operation) || !requestId || !appId || !environmentId ||
+        !['update', 'save', 'deploy', 'publish'].includes(operation) || !requestId || !appId || !environmentId ||
         !/^[a-f0-9]{40}$/i.test(targetSha || '') || !/^[a-f0-9]{64}$/i.test(changeHash || '')) {
       return { reserved: false, reason: 'reservation_not_configured' };
     }
