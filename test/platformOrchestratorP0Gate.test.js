@@ -57,3 +57,23 @@ test('orchestrator independently reads evidence and rejects mismatched targets',
   assert.match(source, /publicationEvidence\.environmentId !== target\.environmentId/);
   assert.match(source, /evidence_target_mismatch/);
 });
+
+test('deploy and publish require fresh SHA and single-use reservation before mutation', () => {
+  for (const [operation, call] of [['deploy', 'const deployment = await this._deployChanges({'], ['publish', 'const publication = await this._publishChanges({']]) {
+    const start = source.indexOf("operation: '" + operation + "',");
+    const mutate = source.indexOf(call);
+    assert.ok(start > 0 && mutate > start);
+    const region = source.slice(start, mutate);
+    assert.match(region, /await this\.readCurrentSha\(/);
+    assert.match(region, /await this\.reserveApproval\(/);
+    assert.match(region, /head_changed/);
+    assert.match(region, /approval_not_reserved/);
+    assert.match(region, /reservation_unavailable/);
+  }
+});
+
+test('handler only accepts explicitly injected SHA and reservation providers', () => {
+  const handler = fs.readFileSync(path.join(__dirname, '../src/powerPlatformRequestHandler.js'), 'utf8');
+  assert.match(handler, /readCurrentSha: typeof config\?\.p0Execution\?\.readCurrentSha === 'function'/);
+  assert.match(handler, /reserveApproval: typeof config\?\.p0Execution\?\.reserveApproval === 'function'/);
+});
