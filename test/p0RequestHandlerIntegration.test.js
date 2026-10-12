@@ -41,3 +41,14 @@ test('successful callback alone is not proof of saved version', async () => {
   assert.equal((await handler(p0).executeP0Mutation(input)).reason, 'version_unverified');
   assert.equal(calls, 1);
 });
+
+test('postflight cannot override operation or expected SHA', async () => {
+  const p0 = {
+    ledger: { configured: true, check: async () => ({ approved: true, approver: 'reviewer', bindingVerified: true }) },
+    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: sha, environmentId: 'env', appId: 'app' }),
+    perform: async () => ({ success: true }),
+    verifyResult: async () => ({ operation: 'merge', expectedSha: 'b'.repeat(40), actualSha: sha, operationConfirmed: true, appCheckerCritical: 0 }),
+    readCurrentSha: async () => sha
+  };
+  assert.equal((await handler(p0).executeP0Mutation(input)).reason, 'version_unverified');
+});
