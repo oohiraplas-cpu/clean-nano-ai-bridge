@@ -47,5 +47,13 @@ test('publish is denied unless P0 approval evidence is verified before publish',
 test('handler does not inject caller-supplied mutation evidence', () => {
   const handler = fs.readFileSync(path.join(__dirname, '../src/powerPlatformRequestHandler.js'), 'utf8');
   assert.match(handler, /approvalLedger: config\?\.p0Execution\?\.ledger \|\| null/);
-  assert.match(handler, /mutationEvidence: null/);
+  assert.match(handler, /getMutationEvidence: typeof config\?\.p0Execution\?\.getEvidence === 'function'/);
+});
+
+test('orchestrator independently reads evidence and rejects mismatched targets', () => {
+  assert.match(source, /await this\.getMutationEvidence\(\{ operation: 'deploy'/);
+  assert.match(source, /await this\.getMutationEvidence\(\{ operation: 'publish'/);
+  assert.match(source, /evidence\.targetSha !== gitOps\.headSha/);
+  assert.match(source, /publicationEvidence\.environmentId !== target\.environmentId/);
+  assert.match(source, /evidence_target_mismatch/);
 });
