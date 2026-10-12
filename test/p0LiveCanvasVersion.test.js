@@ -1,0 +1,10 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { verifyLiveCanvasVersion } = require('../src/p0LiveCanvasVersion');
+const base={ appId:'app', environmentId:'env', expectedVersion:'v2' };
+test('missing live version reader blocks',async()=>assert.equal((await verifyLiveCanvasVersion(base)).reason,'live_reader_not_configured'));
+test('draft version is not live version proof',async()=>assert.equal((await verifyLiveCanvasVersion({...base,readLiveVersion:async()=>({appId:'app',environmentId:'env',versionNumber:'v2',verified:true})})).reason,'live_version_unverified'));
+test('unverified live version claim blocks',async()=>assert.equal((await verifyLiveCanvasVersion({...base,readLiveVersion:async()=>({source:'powerapps_live_version',appId:'app',environmentId:'env',liveVersion:'v2'})})).reason,'live_version_unverified'));
+test('independently attested live version can verify',async()=>assert.equal((await verifyLiveCanvasVersion({...base,readLiveVersion:async()=>({source:'powerapps_live_version',appId:'app',environmentId:'env',liveVersion:'v2',verified:true})})).verified,true));
+test('live version mismatch blocks',async()=>assert.equal((await verifyLiveCanvasVersion({...base,readLiveVersion:async()=>({source:'powerapps_live_version',appId:'app',environmentId:'env',liveVersion:'v1',verified:true})})).reason,'live_version_unverified'));
