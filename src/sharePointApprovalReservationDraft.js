@@ -14,7 +14,7 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
       const hash=changeHash(plan),snapshot=await store.read(approvalId),record=snapshot?.record;
       verifyApproval(plan,record);
       const start=Date.parse(record.approvedAt),end=Date.parse(record.expiresAt),t=now();
-      if(!validTag(snapshot.etag)||(expectedETag&&snapshot.etag!==expectedETag)||record.executionId||record.executionStatus||
+      if(!validTag(snapshot.etag)||!validTag(expectedETag)||snapshot.etag!==expectedETag||record.executionId||record.executionStatus||
          record.revoked!==false||!Number.isFinite(start)||!Number.isFinite(end)||
          start>t||end<=t||end<=start||end-start>86400000||
          await store.verifyHuman(structuredClone(snapshot))!==true) return {reserved:false,reason:'approval_invalid'};
