@@ -15,7 +15,7 @@ async function main() {
   const sourceBranch = settings.POWERAPPS_GITHUB_BRANCH || 'main';
   const sourceRoot = settings.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_AI依頼台帳/Source';
   const report = { verificationCommit: process.env.GITHUB_SHA, mode: process.env.VERIFICATION_MODE || 'smoke', azure: { name: app.name, state: app.state, host: app.defaultHostName }, settingsPresent: Object.keys(settings).filter(k => /^(POWERAPPS_|DEPLOY_|PERMISSIONS_|MCP_API_KEY|TASK_STORE_BACKEND|SHAREPOINT_)/.test(k)).sort(), sourceBranch, sourceRoot, health: null, initialize: null, tools: null, smoke: {}, availability: {}, mutations: [] };
-  try { report.azure.deployments = azure(['webapp', 'log', 'deployment', 'list', ...args]).slice(0, 3).map(d => ({ id: d.id, status: d.status, active: d.active, endTime: d.end_time })); } catch { report.azure.deploymentMetadata = 'access_denied_or_unavailable'; }
+  try { report.azure.deployments = azure(['webapp', 'log', 'deployment', 'list', ...args]).slice(0, 3).map(d => ({ id: d.id, status: d.status, active: d.active, endTime: d.end_time, commitSha: typeof d.commitSha === 'string' && /^[a-f0-9]{40}$/i.test(d.commitSha) ? d.commitSha : null })); } catch { report.azure.deploymentMetadata = 'access_denied_or_unavailable'; }
   // Read-only Azure identity and RBAC observations. Never print tokens, settings values or role assignments.
   // A successful list request verifies query access, NOT sufficient permissions.
   const observed = {
@@ -94,9 +94,12 @@ async function main() {
   const sourceProbe = null;
   // Azure deployment listing is read-only. Treat a SHA as independent only when
   // explicitly provided by Azure deployment metadata and strictly equal to the expected SHA.
+  // Azure deployment IDs are opaque, even if they look like a 40-character SHA.
+  // Only an explicitly named commit field in Azure deployment metadata is eligible.
   const shaPattern = /^[a-f0-9]{40}$/i;
-  const azureDeploymentSha = report.azure.deployments?.find(d =>
-    d.active === true && shaPattern.test(d.id || ''))?.id || null;
+  const activeDeployment = report.azure.deployments?.find(d => d.active === true);
+  const azureDeploymentSha = typeof activeDeployment?.commitSha === 'string'
+    && shaPattern.test(activeDeployment.commitSha) ? activeDeployment.commitSha : null;
   const deployment = {
     azureDeployedSha: azureDeploymentSha,
     expectedSha: process.env.EXPECTED_DEPLOYMENT_SHA || null,
