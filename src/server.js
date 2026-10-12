@@ -9,6 +9,7 @@ const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
 const { createPowerAppsMutationGate } = require('./powerAppsMutationGate');
 const { createPowerAppsMediaTools } = require('./powerAppsMediaTools');
+const { screenStructurePreview } = require('./powerAppsScreenPreview');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -1753,7 +1754,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return {
       status: 'ok', previewType: 'source_structure', isLiveScreenshot: false,
       screenName, relativePath: resolved.path, sha: source.sha || null,
-      content: source.content, readOnly: true
+      structure: screenStructurePreview(source.content, screenName), readOnly: true
     };
   }
   if (method === 'get_powerapps_app') {
