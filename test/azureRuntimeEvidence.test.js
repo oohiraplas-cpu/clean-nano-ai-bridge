@@ -13,9 +13,11 @@ test('configuration alone never proves PAC authentication or runtime source', ()
   assert.equal(result.effectiveRbacVerified, false);
 });
 test('saved-msapp provenance and digest required', () => {
-  const probe = { status: 'ok', source: 'power-apps-saved-msapp', runtimeHash: 'a'.repeat(64) };
+  const probe = { trustedAdapterVerified: true, status: 'ok', source: 'power-apps-saved-msapp', runtimeHash: 'a'.repeat(64), appId: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e', expectedAppId: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e', environment: 'env-1', expectedEnvironment: 'env-1' };
   assert.equal(collectRuntimeEvidence({ settings, pacProbe: probe }).sourceMapVerified, true);
   assert.equal(collectRuntimeEvidence({ settings, pacProbe: { ...probe, source: 'github' } }).pacProfileVerified, false);
+  assert.equal(collectRuntimeEvidence({ settings, pacProbe: { ...probe, trustedAdapterVerified: false } }).pacProfileVerified, false);
+  assert.equal(collectRuntimeEvidence({ settings, pacProbe: { ...probe, expectedEnvironment: 'other' } }).sourceMapVerified, false);
 });
 test('independent deployment SHA must match', () => {
   const sha = 'b'.repeat(40);
