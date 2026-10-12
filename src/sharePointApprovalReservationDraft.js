@@ -28,7 +28,7 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
          confirmed.record?.status!=='APPROVED'||
          confirmed.record?.executionResult!==JSON.stringify({executionId,changeHash:hash,reservedAt:new Date(t).toISOString()})) return {reserved:false,reason:'reservation_unconfirmed'};
       receipts.set(executionId,{approvalId:String(approvalId),etag:confirmed.etag,
-        hash,original:structuredClone(snapshot),expiresAt:end});
+        hash,executionResult:confirmed.record.executionResult,original:structuredClone(snapshot),expiresAt:end});
       return {reserved:true,executionId};
     }catch{return {reserved:false,reason:'reservation_failed_or_conflict'};}
   }
@@ -43,7 +43,8 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
       const current=await store.read(approvalId),record=current?.record;
       if(!validTag(current?.etag)||current.etag!==receipt.etag||
          record?.executionId!==executionId||record?.executionStatus!=='reserved'||
-         record?.changeHash!==hash||record?.revoked!==false||record?.status!=='APPROVED') return false;
+         record?.changeHash!==hash||record?.executionResult!==receipt.executionResult||
+         record?.revoked!==false||record?.status!=='APPROVED') return false;
       const original=receipt.original.record;
       if(record.approver!==original.approver||record.approvedAt!==original.approvedAt||
          record.runtimeCommitSha!==original.runtimeCommitSha||
@@ -56,6 +57,7 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
       return Boolean(final?.etag===receipt.etag&&final.record?.executionId===executionId&&
         final.record?.executionStatus==='reserved'&&final.record?.revoked===false&&
         final.record?.status==='APPROVED'&&final.record?.changeHash===hash&&
+        final.record?.executionResult===receipt.executionResult&&
         Date.parse(final.record?.expiresAt)>now());
     }catch{return false;}
   }
