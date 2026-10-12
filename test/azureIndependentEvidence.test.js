@@ -90,3 +90,15 @@ test('PAC comparison hook is internal-only and requires registered state validat
   assert.match(server, /validateRegisteredState: \(\) => stateRegistry\.validate/);
   assert.doesNotMatch(server, /params\.runtimeSourceAdapter/);
 });
+
+test('comparison PAC evidence is wired to the PowerAppsStore internal adapter', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
+  const store = fs.readFileSync(path.join(__dirname, '../src/powerAppsStore.js'), 'utf8');
+  assert.ok(store.includes('this._runtimeSource = new PowerAppsRuntimeSourceAdapter('));
+  assert.ok(server.includes('const internalPacAdapter = powerAppsStore._runtimeSource;'));
+  assert.ok(server.includes('readPacEvidenceWithRegisteredState({'));
+  assert.ok(server.includes('validateRegisteredState: () => stateRegistry.validate('));
+  assert.ok(!server.includes('powerAppsStore.runtimeSourceAdapter'));
+});
