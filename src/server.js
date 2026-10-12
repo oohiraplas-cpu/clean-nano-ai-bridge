@@ -159,7 +159,7 @@ const MCP_METHODS = Object.freeze([
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
-  'get_powerapps_source',
+  'get_powerapps_source', 'get_powerapps_screen_preview',
   'list_powerapps_media_assets', 'get_powerapps_media_asset', 'export_powerapps_asset',
   'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
@@ -312,6 +312,16 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     name: 'export_powerapps_asset',
     description: '既存Power Appsの指定メディア資産をエクスポート（読み取り専用。未接続時BLOCKED）。',
     inputSchema: { type: 'object', properties: { assetId: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['assetId'], additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_screen_preview',
+    description: '既存Power Apps画面の読み取り専用構造プレビュー。実画面スクリーンショットではありません。',
+    inputSchema: {
+      type: 'object',
+      properties: { screenName: { type: 'string', minLength: 1, maxLength: 100 } },
+      required: ['screenName'],
+      additionalProperties: false
+    }
   },
   {
     name: 'update_powerapps_app',
@@ -1727,6 +1737,24 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     }
 
     return fileResult;
+  }
+  if (method === 'get_powerapps_screen_preview') {
+    const screenName = params?.screenName;
+    if (typeof screenName !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{0,99}$/.test(screenName) ||
+        Object.keys(params || {}).some(key => key !== 'screenName')) {
+      throw requestError('BLOCKED: invalid Power Apps screen name');
+    }
+    const resolved = await powerAppsGitStore._resolveScreenToRelativePath(screenName);
+    if (!resolved?.path) throw requestError('BLOCKED: screen source not resolved');
+    const source = await powerAppsGitStore.getSourceFile(resolved.path);
+    if (typeof source?.content !== 'string' || source.content.length > 1000000) {
+      throw requestError('BLOCKED: screen source unavailable or too large');
+    }
+    return {
+      status: 'ok', previewType: 'source_structure', isLiveScreenshot: false,
+      screenName, relativePath: resolved.path, sha: source.sha || null,
+      content: source.content, readOnly: true
+    };
   }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
