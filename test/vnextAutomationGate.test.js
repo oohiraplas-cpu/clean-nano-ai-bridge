@@ -34,3 +34,11 @@ test('publication requires verified rollback and human approval', () => {
   assert.ok(result.failures.includes('rollback_unverified'));
   assert.ok(result.failures.includes('human_approval_unverified'));
 });
+
+test('Azure write fails closed without verified Managed Identity and RBAC', () => {
+  const result = assessAutomationProposal({ platform: 'azure', operation: 'deploy', targetBranch: 'draft/x' }, evidence);
+  assert.equal(result.allowed, false);
+  assert.ok(result.failures.includes('azure_readiness_unverified'));
+  assert.ok(result.failures.includes('managed_identity_unverified'));
+  assert.ok(result.failures.includes('rbac_unverified'));
+});
