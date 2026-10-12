@@ -41,3 +41,18 @@ test('PAC evidence rejects an overridden reader rather than trusting injected so
     appId, environment: 'env-1', runtimeHash: 'b'.repeat(64), content: 'forged source' });
   await assert.rejects(adapter.getSourceEvidence('S1_Home.pa.yaml', {}), /対象照合/);
 });
+
+test('Azure standard deployment fields alone cannot establish Git SHA', () => {
+  const azureDeployment = { id: 'a'.repeat(40), active: true, status: 4,
+    message: 'deployment complete', details: 'deployed' };
+  const deployment = { azureDeployedSha: azureDeployment.commitSha || null,
+    expectedSha: 'a'.repeat(40), independentAzureSource: false };
+  assert.equal(collectRuntimeEvidence({ deployment }).deploymentShaMatched, false);
+});
+
+test('PAC source evidence requires registered State Manager callback', async () => {
+  const { PowerAppsRuntimeSourceAdapter } = require('../src/powerAppsRuntimeSource');
+  const adapter = new PowerAppsRuntimeSourceAdapter({ appId: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e',
+    environmentId: 'env-1', mode: 'pac' });
+  await assert.rejects(adapter.getSourceEvidence('S1_Home.pa.yaml', {}));
+});
