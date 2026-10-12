@@ -45,11 +45,31 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
         return { reserved: false, reason: 'reservation_unconfirmed' };
       }
       return { reserved: true, singleUseVerified: true, approvalActiveVerified: true,
-        executionId, requestId, operation, targetSha };
+        approvalId: String(approvalId), executionId, requestId, operation, targetSha };
     } catch {
       // Includes ETag 412 and uncertain post-write outcomes: never retry.
       return { reserved: false, reason: 'reservation_failed_or_conflict' };
     }
   };
 }
-module.exports = { createAtomicApprovalReservation };
+// Re-read immediately before mutation. Never trust a cached approval flag.
+function createApprovalRecheck({ store, now = () => Date.now() } = {}) {
+  return async function recheckApproval(context = {}) {
+    const { approvalId, executionId, requestId, operation, targetSha, appId, environmentId, changeHash } = context;
+    if (!store || typeof store.read !== 'function' || typeof store.verifyHuman !== 'function' ||
+        !/^[1-9][0-9]*$/.test(String(approvalId || '')) || !executionId) return false;
+    try {
+      const snapshot = await store.read(approvalId);
+      const record = snapshot?.record;
+      const start = Date.parse(record?.approvedAt), end = Date.parse(record?.expiresAt), time = now();
+      return Boolean(snapshot?.etag && record?.executionId === executionId &&
+        record.executionStatus === 'reserved' && record.requestId === requestId &&
+        record.tool === operation && record.targetId === appId &&
+        record.environmentId === environmentId && record.commitSha === targetSha &&
+        record.diffHash === changeHash && record.revoked === false && record.status === '承認' &&
+        Number.isFinite(start) && Number.isFinite(end) && start <= time && end > time &&
+        end > start && end - start <= 86400000 && await store.verifyHuman(snapshot) === true);
+    } catch { return false; }
+  };
+}
+module.exports = { createAtomicApprovalReservation, createApprovalRecheck };
