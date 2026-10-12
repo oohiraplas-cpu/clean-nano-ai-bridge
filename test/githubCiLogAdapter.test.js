@@ -4,11 +4,12 @@ const assert=require('node:assert/strict');
 const {reviewGitHubCiFailure}=require('../src/githubCiLogAdapter');
 const sha='a'.repeat(40),branch='draft/vnext-automation-gates-20261012';
 const workflowRun={id:44,head_sha:sha,head_branch:branch,event:'pull_request',status:'completed',conclusion:'failure'};
-const job={id:123,run_id:44,head_sha:sha,name:'test',status:'completed',conclusion:'failure'};
+const steps=[{number:1,conclusion:'failure',started_at:'2026-01-01T00:00:02Z',completed_at:'2026-01-01T00:00:03Z'}];
+const job={id:123,run_id:44,head_sha:sha,name:'test',status:'completed',conclusion:'failure',steps};
 const base={repositoryFullName:'oohiraplas-cpu/clean-nano-ai-bridge',workflowRun,jobResponse:{total_count:1,jobs:[job]},expectedHeadSha:sha,branch};
 test('reads only verified failed job and returns non-executable review',async()=>{
   const calls=[];
-  const github={fetch_workflow_job_logs:async args=>{calls.push(args);return {result:{content:'AssertionError: secret=redacted'}};}};
+  const github={fetch_workflow_job_logs:async args=>{calls.push(args);return {result:{content:'2026-01-01T00:00:02Z AssertionError: secret=redacted'}};}};
   const result=await reviewGitHubCiFailure({...base,github});
   assert.deepEqual(calls,[{repo_full_name:base.repositoryFullName,job_id:123}]);
   assert.equal(result.status,'review_required');
