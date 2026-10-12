@@ -199,9 +199,11 @@ test('Azure diagnostic stays blocked without independently verified evidence', (
 });
 
 
-test('Azure MCP response forwards only complete confirmed diagnostics and defaults blocked', () => {
+test('Azure MCP refuses self-declared confirmed diagnostics', () => {
   const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
-  assert.ok(server.includes("result.diagnostic.status === 'confirmed'"));
-  assert.ok(server.includes("Object.values(result.diagnostic.checks || {}).length === 5"));
-  assert.ok(server.includes("require('./azureDiagnostic').assessAzureDiagnostic()"));
+  const handler = server.slice(server.indexOf("if (method === 'get_azure_deployment_metadata')"),
+    server.indexOf("if (method === 'get_tasks')"));
+  assert.ok(handler.includes("diagnostic: require('./azureDiagnostic').assessAzureDiagnostic()"));
+  assert.ok(!handler.includes("result.diagnostic.status === 'confirmed'"));
+  assert.ok(!handler.includes('diagnostic: result.diagnostic'));
 });
