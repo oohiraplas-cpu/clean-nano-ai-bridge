@@ -435,3 +435,34 @@ test('targetNames: SHA mismatch detection (fault-injection: resolved SHA != actu
   assert.equal(validationResult.source.sha, actualSha, 'Validator must return actual blob SHA from record.source');
   assert.equal(validationResult.context.sha, COMMIT, 'StateContext keeps the commit SHA');
 });
+
+test('PowerAppsStore internal PAC worker provides registered read-only evidence', async () => {
+  const { readPacEvidenceWithRegisteredState } = require('../src/pacStateEvidence');
+  const fixture = registered();
+  let reads = 0;
+  const store = new PowerAppsStore({
+    appId: APP, environmentId: ENV, githubBranch: 'main',
+    runtimeSource: { mode: 'pac', sourceMap: { [FILE]: ENTRY } },
+    runtimeSourceWorker: async (_config, request) => {
+      reads++;
+      assert.equal(request.appId, APP);
+      assert.equal(request.environment, ENV);
+      assert.equal(request.entry, ENTRY);
+      return exported(request);
+    }
+  });
+  assert.ok(store._runtimeSource instanceof PowerAppsRuntimeSourceAdapter);
+  const record = { context: fixture.bound.stateContext, source: { path: FILE } };
+  const evidence = await readPacEvidenceWithRegisteredState({
+    adapter: store._runtimeSource, registeredRecord: record, relativePath: FILE,
+    validateRegisteredState: () => {
+      fixture.options().assertStateContext();
+      return record;
+    }
+  });
+  assert.equal(reads, 1);
+  assert.equal(evidence.status, 'ok');
+  assert.equal(evidence.source, 'power-apps-saved-msapp');
+  assert.equal(evidence.runtimeHash, crypto.createHash('sha256').update(SOURCE).digest('hex'));
+  assert.equal(JSON.stringify(evidence).includes(SOURCE), false);
+});
