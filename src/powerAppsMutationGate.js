@@ -41,9 +41,11 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
       }
       // Recheck is single-use; do not retry after any uncertain mutation result.
       const result = await mutate({ ...scope, executionId: reservation.executionId });
-      if (result?.success !== true) return blocked('mutation_failed_or_uncertain');
+      if (result?.success !== true) return { ...blocked('mutation_failed_or_uncertain'), recoveryRequired: true, retryAllowed: false };
       if (await verifyPostcondition({ ...scope, result, expectedPostcondition }) !== true) {
-        return blocked('postcondition_unverified');
+        // The mutation may have succeeded: do not automatically replay or roll back.
+        // Require independent state inspection and a new human-approved recovery action.
+        return { ...blocked('postcondition_unverified'), recoveryRequired: true, retryAllowed: false };
       }
       return { status: 'VERIFIED', success: true, result };
     } catch {
