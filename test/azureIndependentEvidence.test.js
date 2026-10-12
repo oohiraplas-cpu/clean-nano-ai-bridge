@@ -6,7 +6,7 @@ const { collectRuntimeEvidence } = require('../src/azureRuntimeEvidence');
 const source = fs.readFileSync(path.join(__dirname, '../scripts/verify-production-bridge.js'), 'utf8');
 
 test('independent Azure deployment metadata is used, never GitHub SHA as deployed SHA', () => {
-  assert.match(source, /activeDeployment\\.commitSha/);
+  assert.ok(source.includes('activeDeployment.commitSha'));
   assert.match(source, /independentAzureSource: azureDeploymentSha !== null/);
   assert.doesNotMatch(source, /azureDeployedSha: process\.env\.GITHUB_SHA/);
 });
@@ -21,8 +21,8 @@ test('remote MCP source cannot assert trusted adapter provenance', () => {
 });
 
 test('opaque deployment ID cannot be interpreted as Git commit', () => {
-  assert.doesNotMatch(source, /shaPattern\\.test\\(d\\.id/);
-  assert.match(source, /commitSha: typeof d\\.commitSha/);
+  assert.ok(!source.includes('shaPattern.test(d.id'));
+  assert.ok(source.includes('commitSha: typeof d.commitSha'));
 });
 test('trusted PAC evidence must match app and environment', () => {
   const appId = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
