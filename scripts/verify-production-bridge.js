@@ -89,8 +89,20 @@ async function main() {
   }
   // Runtime source provenance is only accepted when the trusted adapter reports
   // a saved .msapp source and its digest. GitHub-only source is never accepted.
-  const sourceProbe = null; // Existing MCP source result is not independently proven to be PAC runtime.
-  const runtimeEvidence = collectRuntimeEvidence({ settings, pacProbe: sourceProbe });
+  // Only a trusted in-process PAC adapter can establish source provenance.
+  // Remote MCP responses are caller-visible and cannot establish trustedAdapterVerified.
+  const sourceProbe = null;
+  // Azure deployment listing is read-only. Treat a SHA as independent only when
+  // explicitly provided by Azure deployment metadata and strictly equal to the expected SHA.
+  const shaPattern = /^[a-f0-9]{40}$/i;
+  const azureDeploymentSha = report.azure.deployments?.find(d =>
+    d.active === true && shaPattern.test(d.id || ''))?.id || null;
+  const deployment = {
+    azureDeployedSha: azureDeploymentSha,
+    expectedSha: process.env.EXPECTED_DEPLOYMENT_SHA || null,
+    independentAzureSource: azureDeploymentSha !== null
+  };
+  const runtimeEvidence = collectRuntimeEvidence({ settings, deployment, pacProbe: sourceProbe });
   observed.pacProfileVerified = runtimeEvidence.pacProfileVerified;
   observed.sourceMapVerified = runtimeEvidence.sourceMapVerified;
   observed.deploymentShaMatched = runtimeEvidence.deploymentShaMatched;
