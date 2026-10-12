@@ -15,10 +15,15 @@ function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = nul
       typeof key === 'string' && /^[\w.-]+\.pa\.yaml$/.test(key)
       && typeof value === 'string' && /^Src[\\/][\w./\\-]+\.pa\.yaml$/.test(value)
       && !value.split(/[\\/]/).some(part => part === '..'));
-  const runtimeProbeVerified = pacProbe?.status === 'ok'
+  const runtimeProbeVerified = pacProbe?.trustedAdapterVerified === true
+    && pacProbe?.status === 'ok'
     && pacProbe?.source === 'power-apps-saved-msapp'
     && typeof pacProbe?.runtimeHash === 'string'
-    && /^[a-f0-9]{64}$/i.test(pacProbe.runtimeHash);
+    && /^[a-f0-9]{64}$/i.test(pacProbe.runtimeHash)
+    && uuid(pacProbe.appId) && uuid(pacProbe.expectedAppId)
+    && pacProbe.appId.toLowerCase() === pacProbe.expectedAppId.toLowerCase()
+    && typeof pacProbe.environment === 'string' && pacProbe.environment.length > 0
+    && pacProbe.environment === pacProbe.expectedEnvironment;
   const azureSha = deployment.azureDeployedSha;
   const independentShaMatched = sha(azureSha) && sha(deployment.expectedSha)
     && azureSha.toLowerCase() === deployment.expectedSha.toLowerCase()
