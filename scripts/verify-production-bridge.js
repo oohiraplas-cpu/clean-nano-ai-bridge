@@ -87,6 +87,10 @@ async function main() {
     }
   }
   observed.healthVerified = report.health?.httpStatus === 200 && report.health.status === 'ok';
+  // PAC runtime authentication and source-map validity require actual isolated runtime
+  // checks. Presence of keys alone is never evidence of a working PAC profile.
+  // A deployment SHA must be independently matched against the deployed revision.
+  // RBAC listing confirms read access only, not effective authorization.
   report.azureReadiness = assessAzureReadiness(observed);
   const gate = report.health?.httpStatus === 200 && report.health.status === 'ok' && report.initialize.success && (report.mode === 'baseline' || report.tools.matchesCheckout === true);
   report.publicationGatePassed = gate;
