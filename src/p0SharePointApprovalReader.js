@@ -11,6 +11,7 @@ function createP0SharePointApprovalLedger({ reader, config, now } = {}) {
         throw new Error('approval_ledger_unavailable_or_incomplete');
       }
       // The existing ApprovalLedger performs exact request, step, tool and immutable binding checks.
+      if (result.items.some(item => !item || !item.fields || typeof item.fields !== 'object')) throw new Error('approval_ledger_malformed');
       return result.items.map(item => item.fields);
     }
   });
