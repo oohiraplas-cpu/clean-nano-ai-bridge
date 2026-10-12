@@ -58,4 +58,26 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
   };
 }
 
-module.exports = { createPowerAppsMutationGate };
+// Only server-owned adapters may construct a reservation-backed gate.
+// This factory does not expose or activate any HTTP/MCP mutation route.
+function createAtomicPowerAppsMutationGate({ approvalStore, readCurrentSha,
+  verifyTarget, verifyBackup, verifyPostcondition } = {}) {
+  const { createAtomicApprovalReservation, createApprovalRecheck } = require('./atomicApprovalReservation');
+  if (!approvalStore || typeof approvalStore.assertConfigured !== 'function' ||
+      typeof approvalStore.read !== 'function' || typeof approvalStore.patch !== 'function' ||
+      typeof approvalStore.verifyHuman !== 'function') {
+    return createPowerAppsMutationGate();
+  }
+  try {
+    approvalStore.assertConfigured();
+  } catch {
+    return createPowerAppsMutationGate();
+  }
+  return createPowerAppsMutationGate({
+    reserveApproval: createAtomicApprovalReservation({ store: approvalStore }),
+    recheckApproval: createApprovalRecheck({ store: approvalStore }),
+    readCurrentSha, verifyTarget, verifyBackup, verifyPostcondition
+  });
+}
+
+module.exports = { createPowerAppsMutationGate, createAtomicPowerAppsMutationGate };
