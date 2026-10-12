@@ -33,3 +33,19 @@ test('orchestrator never marks publication complete when publish result is pendi
   assert.ok(resultCheck > 0 && publishLog > resultCheck);
   assert.match(source.slice(resultCheck, publishLog), /return this\._returnBlocked\('公開未確認'/);
 });
+
+test('publish is denied unless P0 approval evidence is verified before publish', () => {
+  const gate = source.indexOf("const publicationGate = await verifyBeforeMutation(");
+  const publish = source.indexOf("const publication = await this._publishChanges({");
+  assert.ok(gate > 0 && publish > gate);
+  assert.match(source.slice(gate, publish), /operation: 'publish'/);
+  assert.match(source.slice(gate, publish), /if \(publicationGate\.allowed !== true\)/);
+  assert.match(source.slice(gate, publish), /appId: target\.id/);
+  assert.match(source.slice(gate, publish), /environmentId: target\.environmentId/);
+});
+
+test('handler does not inject caller-supplied mutation evidence', () => {
+  const handler = fs.readFileSync(path.join(__dirname, '../src/powerPlatformRequestHandler.js'), 'utf8');
+  assert.match(handler, /approvalLedger: config\?\.p0Execution\?\.ledger \|\| null/);
+  assert.match(handler, /mutationEvidence: null/);
+});
