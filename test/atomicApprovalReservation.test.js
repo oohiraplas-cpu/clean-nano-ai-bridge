@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createAtomicApprovalReservation } = require('../src/atomicApprovalReservation');
+const { createAtomicApprovalReservation, createApprovalRecheck } = require('../src/atomicApprovalReservation');
 const now = Date.parse('2026-10-13T00:00:00Z');
 const sha = 'a'.repeat(40), hash = 'b'.repeat(64);
 const context = { approvalId: '7', requestId: 'req-1', operation: 'deploy', targetSha: sha, appId: 'app-1', environmentId: 'env-1', changeHash: hash };
@@ -81,4 +81,24 @@ test('invalid approval identifier and missing store fail closed', async () => {
   const f = fixture();
   assert.equal((await createAtomicApprovalReservation({ store: f.store, now: () => now })({ ...context, approvalId: '*' })).reserved, false);
   assert.equal(f.patches(), 0);
+});
+
+test('fresh recheck denies revoked, expired or replaced reservation', async () => {
+  for (const mutate of [
+    record => { record.revoked = true; },
+    record => { record.expiresAt = new Date(now - 1).toISOString(); },
+    record => { record.executionId = 'other-execution'; },
+    record => { record.targetId = 'other-app'; }
+  ]) {
+    const f = fixture();
+    const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+    assert.equal(reserved.reserved, true);
+    mutate(f.record);
+    assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash }), false);
+  }
+});
+test('fresh recheck accepts only the exact reserved approval', async () => {
+  const f = fixture();
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash }), true);
 });
