@@ -91,6 +91,8 @@ const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
 const { discoverPowerAppsStructure, resolveAppTargetById } = require('./powerAppsDiscovery');
 const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError, blobSha } = require('./stateContext');
+const { readPacEvidenceWithRegisteredState } = require('./pacStateEvidence');
+const { PowerAppsRuntimeSourceAdapter } = require('./powerAppsRuntimeSource');
 const {
   FAIL_CLOSED_TOOLS,
   validateStateContext,
@@ -3002,6 +3004,20 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
           stateContext: record.context,
           assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
+        // PAC evidence is optional and read-only; never trust request-supplied adapter or flags.
+        // No registered internal adapter means no PAC evidence (Fail Closed).
+        const internalPacAdapter = powerAppsStore.runtimeSourceAdapter;
+        if (internalPacAdapter instanceof PowerAppsRuntimeSourceAdapter
+            && internalPacAdapter.getSourceFile === PowerAppsRuntimeSourceAdapter.prototype.getSourceFile) {
+          const pacEvidence = await readPacEvidenceWithRegisteredState({
+            adapter: internalPacAdapter, registeredRecord: record,
+            validateRegisteredState: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method),
+            relativePath: record.source.path
+          });
+          result.pacEvidence = { status: pacEvidence.status, source: pacEvidence.source,
+            runtimeHash: pacEvidence.runtimeHash, appId: pacEvidence.appId,
+            environment: pacEvidence.environment };
+        }
         // Export may take time: reject provider or Git drift during the read.
         const afterState = await powerAppsStore.getAppState();
         const afterSource = await powerAppsGitStore.getSourceFile(record.source.path);
