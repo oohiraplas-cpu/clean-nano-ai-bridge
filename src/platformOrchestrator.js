@@ -25,6 +25,7 @@
  */
 
 const crypto = require('node:crypto');
+const { verifyBeforeMutation } = require('./p0ExecutionEvidence');
 
 /**
  * 状態機械: 変更ライフサイクル
@@ -74,6 +75,8 @@ class PlatformOrchestrator {
     stateRegistry,
     deploymentService,
     permissionsService,
+    approvalLedger = null,
+    mutationEvidence = null,
     config
   }) {
     this.powerAppsStore = powerAppsStore;
@@ -83,6 +86,8 @@ class PlatformOrchestrator {
     this.stateRegistry = stateRegistry;
     this.deploymentService = deploymentService;
     this.permissionsService = permissionsService;
+    this.approvalLedger = approvalLedger;
+    this.mutationEvidence = mutationEvidence;
     this.config = config;
     this.executionLog = [];
     this.auditTrail = [];
@@ -247,6 +252,28 @@ class PlatformOrchestrator {
           gitOps.prUrl,
           requestIdLocal
         );
+      }
+
+      // P0: independent ledger-backed evidence is mandatory before deployment.
+      // Never treat approvalToken/publishApproval or a successful CI as approval.
+      const evidence = this.mutationEvidence;
+      const deploymentGate = await verifyBeforeMutation({
+        ledger: this.approvalLedger,
+        operation: 'deploy',
+        targetSha: gitOps.headSha,
+        observedSha: evidence?.observedSha,
+        requestId: requestIdLocal,
+        actorId: evidence?.actorId,
+        backupVerified: evidence?.backupVerified,
+        testsPassed: evidence?.testsPassed,
+        expected: {
+          appId: target.id,
+          environmentId: target.environmentId,
+          changeHash: evidence?.changeHash
+        }
+      });
+      if (deploymentGate.allowed !== true) {
+        return this._returnBlocked('デプロイ承認・証跡不足', [deploymentGate.reason], requestIdLocal);
       }
 
       // Step 12-14: 環境反映、検証
