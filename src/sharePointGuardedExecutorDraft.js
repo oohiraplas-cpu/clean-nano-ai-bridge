@@ -4,8 +4,8 @@ const {createSharePointMutationExecutor}=require('./sharePointMutationExecutorDr
 const {createSharePointReadback}=require('./sharePointReadbackDraft');
 // Server-only composition. No public route, and no default identity/backup provider.
 // The reservation gate owns the approval read/If-Match/recheck lifecycle.
-function createGuardedSharePointExecutor({store,writer,readRuntimeSha,backup,audit}={}) {
-  const gate=createSharePointApprovalReservation({store});
+function createGuardedSharePointExecutor({store,writer,readRuntimeSha,backup,audit,now}={}) {
+  const gate=createSharePointApprovalReservation({store,now});
   const loadApproval=id=>store.read(id);
   // The gate owns the original approval snapshot and the single-use receipt.
   return createSharePointMutationExecutor({
