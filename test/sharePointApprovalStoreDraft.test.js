@@ -25,8 +25,10 @@ test('PATCH requires exact If-Match and reservation-only fields',async()=>{
  await assert.rejects(()=>store.patch('1','"3"',{status:'APPROVED'}));
 });
 test('Graph 412 conflict fails closed',async()=>{
- const {store}=setup({code:412});
- await assert.rejects(()=>store.patch('1','"3"',{executionId:'run'}));
+ const {store,calls}=setup({code:412});
+ await assert.rejects(()=>store.patch('1','"3"',{executionId:'run',executionStatus:'reserved',executionResult:'receipt'}),/APPROVAL_GRAPH_412/);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.headers['If-Match'],'"3"');
 });
 test('missing directory verifier prevents store configuration',()=>{
  const store=createSharePointApprovalStore({writer:{},siteId:'s',listId:'l',fieldMap});
