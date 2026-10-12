@@ -9,7 +9,7 @@ function assessAutomationProposal(proposal = {}, evidence = {}) {
   const failures = [];
   const operation = typeof proposal.operation === 'string' ? proposal.operation : '';
   const platform = typeof proposal.platform === 'string' ? proposal.platform : '';
-  if (!['powerapps', 'powerautomate', 'sharepoint', 'dataverse', 'copilotstudio', 'solutions', 'bridge'].includes(platform)) failures.push('platform_unknown');
+  if (!['powerapps', 'powerautomate', 'sharepoint', 'dataverse', 'copilotstudio', 'solutions', 'bridge', 'azure'].includes(platform)) failures.push('platform_unknown');
   if (!['read', 'inspect', ...WRITE_OPERATIONS].includes(operation)) failures.push('operation_unknown');
   if (proposal.additionalCost === true) failures.push('additional_cost_forbidden');
   if (proposal.permissionExpansion === true) failures.push('permission_expansion_forbidden');
@@ -20,6 +20,11 @@ function assessAutomationProposal(proposal = {}, evidence = {}) {
   if (WRITE_OPERATIONS.has(operation) && evidence.ciPassed !== true) failures.push('ci_unverified');
   if (platform === 'powerapps' && WRITE_OPERATIONS.has(operation) && evidence.appCheckerCriticalZero !== true) failures.push('app_checker_unverified');
   if (platform === 'powerautomate' && WRITE_OPERATIONS.has(operation) && evidence.triggerSafetyVerified !== true) failures.push('flow_trigger_unverified');
+  if (platform === 'azure' && WRITE_OPERATIONS.has(operation)) {
+    if (evidence.azureReadinessVerified !== true) failures.push('azure_readiness_unverified');
+    if (evidence.managedIdentityVerified !== true) failures.push('managed_identity_unverified');
+    if (evidence.rbacVerified !== true) failures.push('rbac_unverified');
+  }
   if (HIGH_RISK_OPERATIONS.has(operation)) {
     if (evidence.humanApprovalVerified !== true) failures.push('human_approval_unverified');
     if (evidence.rollbackVerified !== true) failures.push('rollback_unverified');
