@@ -102,3 +102,30 @@ test('comparison PAC evidence is wired to the PowerAppsStore internal adapter', 
   assert.ok(server.includes('validateRegisteredState: () => stateRegistry.validate('));
   assert.ok(!server.includes('powerAppsStore.runtimeSourceAdapter'));
 });
+
+test('effective RBAC remains unverified even with apparent Azure metadata and PAC proof', () => {
+  const appId = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
+  const result = collectRuntimeEvidence({
+    settings: { POWERAPPS_RUNTIME_AUTH_MODE: 'managedIdentity' },
+    deployment: { azureDeployedSha: 'a'.repeat(40), expectedSha: 'a'.repeat(40),
+      independentAzureSource: true },
+    pacProbe: { trustedAdapterVerified: true, status: 'ok', source: 'power-apps-saved-msapp',
+      runtimeHash: 'b'.repeat(64), appId, expectedAppId: appId,
+      environment: 'env-1', expectedEnvironment: 'env-1' }
+  });
+  assert.equal(result.deploymentShaMatched, true);
+  assert.equal(result.effectiveRbacVerified, false);
+});
+
+test('no PAC profile or source-map readiness without in-process trusted observation', () => {
+  const result = collectRuntimeEvidence({
+    settings: { POWERAPPS_RUNTIME_AUTH_MODE: 'managedIdentity',
+      POWERAPPS_RUNTIME_SOURCE_MAP: JSON.stringify({ 'S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml' }) },
+    pacProbe: null
+  });
+  assert.equal(result.managedIdentityModeConfigured, true);
+  assert.equal(result.pacProfileVerified, false);
+  assert.equal(result.sourceMapVerified, false);
+  assert.equal(result.deploymentShaMatched, false);
+  assert.equal(result.effectiveRbacVerified, false);
+});
