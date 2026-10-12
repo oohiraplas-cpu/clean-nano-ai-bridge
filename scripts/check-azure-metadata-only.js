@@ -21,10 +21,17 @@ function collect() {
       && /^[a-f0-9-]{36}$/i.test(identity?.principalId || '');
   } catch { /* unverified */ }
   let deploymentMetadataAccessible = false;
+  let deploymentEntries = [];
   try {
     const deployments = az(['webapp', 'log', 'deployment', 'list', ...args,
-      '--query', '[].{active:active,status:status}']);
+      '--query', '[].{deploymentId:id,active:active,status:status,receivedTime:received_time}']);
     deploymentMetadataAccessible = Array.isArray(deployments);
+    if (deploymentMetadataAccessible) deploymentEntries = deployments.map(entry => ({
+      deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
+      active: entry.active === true,
+      status: Number.isInteger(entry.status) ? entry.status : null,
+      receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
+    }));
   } catch { /* unverified */ }
   const readiness = assessAzureReadiness({
     resourceIdMatched: true, managedIdentityAssigned,
@@ -33,7 +40,7 @@ function collect() {
     sourceMapVerified: false, healthVerified: false
   });
   return Object.freeze({ resourceIdMatched: true, managedIdentityAssigned,
-    deploymentMetadataAccessible, deploymentShaMatched: false,
+    deploymentMetadataAccessible, deploymentEntries, deploymentShaMatched: false,
     effectiveRbacVerified: false, pacRuntimeVerified: false, readiness });
 }
 if (require.main === module) {
