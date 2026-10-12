@@ -1731,7 +1731,19 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   // independently verified human identity, scoped ledger, atomic ETag reservation,
   // immutable SHA re-read and single-use final approval recheck.
   // Read-only inspection and source handoff remain available through their own routes.
-  if (['update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'].includes(method)) {
+  if (method === 'update_powerapps_app') {
+    // Draft-only gate invocation: no trusted SharePoint store or mutation callback
+    // is injected. This path MUST remain BLOCKED until independent identity,
+    // ledger schema, ETag and source re-read are verified in the live environment.
+    const decision = await powerAppsMutationGate({ operation: 'update' });
+    if (decision.status !== 'VERIFIED') {
+      throw requestError('BLOCKED: direct Power Apps mutation approval gate is not configured');
+    }
+    // Even a future VERIFIED result must not fall through to the legacy writer:
+    // the verified gate must own the sole mutation call and postcondition.
+    throw requestError('BLOCKED: legacy Power Apps update route is disabled');
+  }
+  if (['save_powerapps_app', 'publish_powerapps_app'].includes(method)) {
     throw requestError('BLOCKED: direct Power Apps mutation approval gate is not configured');
   }
   if (method === 'update_powerapps_app') {
