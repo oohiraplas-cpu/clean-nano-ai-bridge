@@ -6,7 +6,9 @@ function createSharePointApprovalStore({writer,siteId,listId,fieldMap,verifyDire
   function assertConfigured(){
     if(!writer||typeof writer._getAccessToken!=='function'||typeof writer._fetch!=='function'||
        !writer.graphBaseUrl||!siteId||!listId||typeof verifyDirectoryHuman!=='function'||
-       !fieldMap||fields.some(k=>typeof fieldMap[k]!=='string'||!fieldMap[k])) throw Error('APPROVAL_STORE_NOT_CONFIGURED');
+       !fieldMap||fields.some(k=>typeof fieldMap[k]!=='string'||!fieldMap[k])||
+       new Set(fields.map(k=>fieldMap[k])).size!==fields.length||
+       fields.some(k=>!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fieldMap[k]))) throw Error('APPROVAL_STORE_NOT_CONFIGURED');
   }
   async function request(id,method='GET',etag,body){
     assertConfigured();
@@ -34,7 +36,9 @@ function createSharePointApprovalStore({writer,siteId,listId,fieldMap,verifyDire
     },
     async patch(id,etag,values){
       const allowed=['executionId','executionStatus','executionResult'];
-      if(!values||Object.keys(values).some(k=>!allowed.includes(k))) throw Error('RESERVATION_FIELDS_ONLY');
+      if(!values||Object.keys(values).length!==3||
+         allowed.some(k=>typeof values[k]!=='string'||!values[k])||
+         Object.keys(values).some(k=>!allowed.includes(k))) throw Error('RESERVATION_FIELDS_ONLY');
       await request(id,'PATCH',etag,Object.fromEntries(Object.entries(values).map(([k,v])=>[fieldMap[k],v])));
     },
     async verifyHuman(snapshot){
