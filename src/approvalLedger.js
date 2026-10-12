@@ -12,6 +12,7 @@ const APPROVED_STATUS = '承認';
 
 /** 承認台帳の列名（内部名）の既定値は持たない。設定で明示された場合だけ使う。 */
 const REQUIRED_FIELD_KEYS = Object.freeze(['requestId', 'stepIndex', 'tool', 'status', 'approver', 'approvedAt', 'revoked']);
+const BINDING_FIELDS = Object.freeze(['targetSha', 'environmentId', 'appId', 'changeHash', 'approvalStage']);
 
 /**
  * 承認レコードを、依頼と照合して検証する。
@@ -64,6 +65,8 @@ class ApprovalLedger {
     }
     if (!Array.isArray(rows) || rows.length === 0) return { approved: false, reason: 'no_record' };
     const map = this.config.fieldMap;
+    const bound = BINDING_FIELDS.some(key => expected[key] !== undefined);
+    if (bound && !BINDING_FIELDS.every(key => typeof expected[key] === 'string' && expected[key].trim() && typeof map[key] === 'string' && map[key].trim())) return { approved: false, reason: 'binding_not_configured' };
     const normalized = rows.map((row) => ({
       requestId: row[map.requestId],
       stepIndex: row[map.stepIndex],
@@ -71,12 +74,14 @@ class ApprovalLedger {
       status: row[map.status],
       approver: row[map.approver],
       approvedAt: row[map.approvedAt],
-      revoked: row[map.revoked]
+      revoked: row[map.revoked],
+      ...Object.fromEntries(BINDING_FIELDS.map(key => [key, map[key] ? row[map[key]] : undefined]))
     }));
     let last = { valid: false, reason: 'no_record' };
     for (const record of normalized) {
       const result = validateApprovalRecord(record, expected, { now: this.now() });
-      if (result.valid) return { approved: true, reason: null, approver: record.approver };
+      if (result.valid && bound && !BINDING_FIELDS.every(key => record[key] === expected[key])) { last = { valid: false, reason: 'binding_mismatch' }; continue; }
+      if (result.valid) return { approved: true, reason: null, approver: record.approver, ...(bound ? { bindingVerified: true } : {}) };
       last = result;
     }
     return { approved: false, reason: last.reason };
