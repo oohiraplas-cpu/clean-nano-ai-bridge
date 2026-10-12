@@ -4,6 +4,7 @@
  */
 
 const crypto = require('node:crypto');
+const { verifyBeforeMutation, verifyAfterMutation } = require('./p0ExecutionEvidence');
 const { PlatformOrchestrator } = require('./platformOrchestrator');
 const {
   PowerAppsExecutionAdapter,
@@ -85,6 +86,45 @@ class PowerPlatformRequestHandler {
 
     this.config = config;
     this.stateRegistry = stateRegistry;
+    // Runtime wiring remains fail-closed until an independently authenticated ledger and evidence provider are injected.
+    this.p0Execution = config?.p0Execution || null;
+  }
+
+  /**
+   * Explicit P0 mutation entrypoint, intentionally NOT routed from arbitrary text requests.
+   * All evidence and execution callbacks must come from server-side trusted wiring.
+   * Never infer approval from approvalToken, publishApproval or user-supplied flags.
+   */
+  async executeP0Mutation({ operation, targetSha, observedSha, requestId, actorId, expected } = {}) {
+    const runtime = this.p0Execution;
+    if (!runtime || typeof runtime.getEvidence !== 'function' ||
+        typeof runtime.perform !== 'function' || typeof runtime.verifyResult !== 'function') {
+      return { conclusion: 'BLOCKED', reason: 'p0_runtime_not_configured' };
+    }
+    let evidence;
+    try { evidence = await runtime.getEvidence({ operation, targetSha, requestId, actorId, expected }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'p0_evidence_unavailable' }; }
+    const pre = await verifyBeforeMutation({
+      ledger: runtime.ledger, operation, targetSha, observedSha, requestId, actorId,
+      backupVerified: evidence?.backupVerified, testsPassed: evidence?.testsPassed,
+      expected: { changeHash: evidence?.changeHash, environmentId: evidence?.environmentId, appId: evidence?.appId }
+    });
+    if (!pre.allowed) return { conclusion: 'BLOCKED', reason: pre.reason };
+    // Require a second HEAD read immediately before any state-changing call.
+    let currentSha;
+    try { currentSha = await runtime.readCurrentSha({ operation, requestId }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'head_read_failed' }; }
+    if (currentSha !== targetSha) return { conclusion: 'BLOCKED', reason: 'head_changed' };
+    let execution;
+    try { execution = await runtime.perform({ operation, targetSha, requestId }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'operation_failed' }; }
+    let observed;
+    try { observed = await runtime.verifyResult({ operation, targetSha, requestId, execution }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'postflight_unavailable' }; }
+    const post = verifyAfterMutation({ operation, expectedSha: targetSha, ...observed });
+    return post.allowed
+      ? { conclusion: 'VERIFIED', requestId, operation }
+      : { conclusion: 'BLOCKED', reason: post.reason, requestId };
   }
 
   /**
