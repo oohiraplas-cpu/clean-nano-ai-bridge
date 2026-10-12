@@ -54,3 +54,22 @@ test('SHA mismatch after reservation never mutates', async () => {
   assert.equal(result.reason, 'sha_changed_after_reservation');
   assert.equal(f.calls.includes('mutate'), false);
 });
+
+test('failed postcondition requires human-approved recovery, never automatic retry', async () => {
+  const f = fixture({ verifyPostcondition: async () => false });
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: f.mutate });
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.recoveryRequired, true);
+  assert.equal(result.retryAllowed, false);
+  assert.equal(f.calls.filter(x => x === 'mutate').length, 1);
+});
+test('uncertain mutation outcome requires recovery without replay', async () => {
+  const f = fixture();
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: async () => {
+    f.calls.push('mutate'); return { success: false };
+  } });
+  assert.equal(result.reason, 'mutation_failed_or_uncertain');
+  assert.equal(result.recoveryRequired, true);
+  assert.equal(result.retryAllowed, false);
+  assert.equal(f.calls.filter(x => x === 'mutate').length, 1);
+});
