@@ -22,3 +22,9 @@ test('missing configuration fails closed', async () => {
   const ledger = createP0SharePointApprovalLedger({ reader:{ listItems:async () => ({}) }, config:{} });
   assert.equal((await ledger.check(expected)).reason, 'ledger_not_configured');
 });
+
+test('malformed approval row blocks rather than silently skipping', async () => {
+  const reader = { listItems: async () => ({ status:'ok', hasMore:false, items:[{ fields }] .concat([{}]) }) };
+  const ledger = createP0SharePointApprovalLedger({ reader, config, now: () => now });
+  assert.equal((await ledger.check(expected)).reason, 'ledger_unreadable');
+});
