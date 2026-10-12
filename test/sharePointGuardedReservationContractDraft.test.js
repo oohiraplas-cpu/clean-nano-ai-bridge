@@ -30,3 +30,11 @@ test('modified reservation result fails closed',async()=>{
  record.executionResult='tampered';
  assert.equal(await gate.recheck('1',plan,a.executionId),false);
 });
+
+test('approval expiry mutation after reservation fails closed',async()=>{
+ const {store,record}=mock(),gate=createSharePointApprovalReservation({store,now:()=>t});
+ const a=await gate.reserve('1',plan,'"1"');
+ assert.equal(a.reserved,true);
+ record.expiresAt='2026-10-13T12:00:00Z';
+ assert.equal(await gate.recheck('1',plan,a.executionId),false);
+});
