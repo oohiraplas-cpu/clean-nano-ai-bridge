@@ -47,6 +47,7 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
          record?.revoked!==false||record?.status!=='APPROVED') return false;
       const original=receipt.original.record;
       if(record.approver!==original.approver||record.approvedAt!==original.approvedAt||
+         record.expiresAt!==original.expiresAt||
          record.runtimeCommitSha!==original.runtimeCommitSha||
          record.operation!==original.operation||record.siteId!==original.siteId||
          record.listId!==original.listId||record.itemId!==original.itemId) return false;
@@ -58,6 +59,9 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
         final.record?.executionStatus==='reserved'&&final.record?.revoked===false&&
         final.record?.status==='APPROVED'&&final.record?.changeHash===hash&&
         final.record?.executionResult===receipt.executionResult&&
+        final.record?.approver===original.approver&&
+        final.record?.approvedAt===original.approvedAt&&
+        final.record?.expiresAt===original.expiresAt&&
         Date.parse(final.record?.expiresAt)>now());
     }catch{return false;}
   }
