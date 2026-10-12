@@ -199,3 +199,25 @@ test('concurrent final rechecks authorize at most one mutation', async () => {
   assert.equal(results.filter(Boolean).length, 1);
   assert.equal(await recheck(input), false);
 });
+
+for (const operation of ['update', 'save', 'publish']) {
+  test(operation + ' reservation requires exact scoped operation and is single-use', async () => {
+    const f = fixture({ tool: operation });
+    const scope = { ...context, operation };
+    const reserve = createAtomicApprovalReservation({ store: f.store, now: () => now });
+    const first = await reserve(scope);
+    assert.equal(first.reserved, true);
+    assert.equal(first.operation, operation);
+    assert.equal((await reserve(scope)).reserved, false);
+    assert.equal(f.patches(), 1);
+    assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({
+      ...first, appId: scope.appId, environmentId: scope.environmentId, changeHash: scope.changeHash
+    }), true);
+  });
+}
+test('approval for publish cannot authorize save', async () => {
+  const f = fixture({ tool: 'publish' });
+  const result = await createAtomicApprovalReservation({ store: f.store, now: () => now })({ ...context, operation: 'save' });
+  assert.equal(result.reserved, false);
+  assert.equal(f.patches(), 0);
+});
