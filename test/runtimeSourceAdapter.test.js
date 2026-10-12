@@ -184,7 +184,10 @@ test('MCP chain exports actual adapter source, fetches canonical Git, validates 
   assert.equal(result.structuredContent.comparisonVerified, true);
   assert.equal(result.structuredContent.targetSha, args.stateContext.sha);
   assert.equal(result.structuredContent.correlationId, args.stateContext.correlationId);
-  assert.equal(f.counts().exports, 1); assert.ok(f.counts().gitReads >= 3);
+  assert.equal(f.counts().exports, 2); // comparison export + registered PAC evidence read
+  assert.equal(result.structuredContent.pacEvidence?.source, 'power-apps-saved-msapp');
+  assert.match(result.structuredContent.pacEvidence?.runtimeHash || '', /^[a-f0-9]{64}$/);
+  assert.ok(f.counts().gitReads >= 3);
 });
 test('MCP reports changed, presentation-only, unavailable and validation_blocked outcomes', async t => {
   for (const [options, outcome, isError] of [
