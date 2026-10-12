@@ -8,6 +8,7 @@ const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
 const { createPowerAppsMutationGate } = require('./powerAppsMutationGate');
+const { createPowerAppsMediaTools } = require('./powerAppsMediaTools');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -159,6 +160,7 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
+  'list_powerapps_media_assets', 'get_powerapps_media_asset', 'export_powerapps_asset',
   'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
@@ -295,6 +297,21 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       },
       additionalProperties: false
     }
+  },
+  {
+    name: 'list_powerapps_media_assets',
+    description: '既存Power Appsのメディア資産一覧（読み取り専用。未接続時BLOCKED）。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_media_asset',
+    description: '既存Power Appsの指定メディア資産を取得（読み取り専用）。',
+    inputSchema: { type: 'object', properties: { assetId: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['assetId'], additionalProperties: false }
+  },
+  {
+    name: 'export_powerapps_asset',
+    description: '既存Power Appsの指定メディア資産をエクスポート（読み取り専用。未接続時BLOCKED）。',
+    inputSchema: { type: 'object', properties: { assetId: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['assetId'], additionalProperties: false }
   },
   {
     name: 'update_powerapps_app',
@@ -1720,6 +1737,14 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetPowerAppsStateParams(params);
     if (paramError) throw requestError(paramError);
     return powerAppsStore.getAppState();
+  }
+  if (['list_powerapps_media_assets', 'get_powerapps_media_asset', 'export_powerapps_asset'].includes(method)) {
+    // Never substitute a GitHub file listing for live Power Apps media inventory.
+    // Runtime media adapter is deliberately absent pending verified read-only auth.
+    return createPowerAppsMediaTools({
+      appId: powerAppsStore.appId,
+      environmentId: powerAppsStore.environmentId
+    })(method, params);
   }
   // Draft integration point. Trusted adapters are intentionally NOT injected here;
   // the common gate returns BLOCKED until SharePoint schema, directory identity,
