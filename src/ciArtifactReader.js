@@ -21,14 +21,34 @@ function extractDiagnostic(zip) {
   const size=zip.readUInt32LE(end+12),offset=zip.readUInt32LE(end+16);
   if(offset+size>end||size<46||zip.readUInt32LE(offset)!==0x02014b50)throw Error('zip_central');
   const flags=zip.readUInt16LE(offset+8),method=zip.readUInt16LE(offset+10),crc=zip.readUInt32LE(offset+16),compressed=zip.readUInt32LE(offset+20),uncompressed=zip.readUInt32LE(offset+24),nameLen=zip.readUInt16LE(offset+28),extraLen=zip.readUInt16LE(offset+30),commentLen=zip.readUInt16LE(offset+32),local=zip.readUInt32LE(offset+42);
-  if(flags!==0&&flags!==0x800||![0,8].includes(method)||uncompressed>MAX_JSON||compressed>MAX_ZIP||offset+46+nameLen+extraLen+commentLen!==offset+size)throw Error('zip_metadata');
+  if(![0,0x800,0x8,0x808].includes(flags)||![0,8].includes(method)||uncompressed>MAX_JSON||compressed>MAX_ZIP||offset+46+nameLen+extraLen+commentLen!==offset+size)throw Error('zip_metadata');
   const name=utf8.decode(zip.subarray(offset+46,offset+46+nameLen));
   if(name!=='diagnostic.json'||name.includes('/')||name.includes('\\'))throw Error('zip_path');
   if(local+30>offset||zip.readUInt32LE(local)!==0x04034b50||zip.readUInt16LE(local+6)!==flags||zip.readUInt16LE(local+8)!==method)throw Error('zip_local');
+  // In descriptor mode, CRC and sizes are carried after compressed bytes.
+  // Without bit 3, local header values must exactly match the central directory.
+  if(!(flags&0x8)&&(zip.readUInt32LE(local+14)!==crc||
+      zip.readUInt32LE(local+18)!==compressed||
+      zip.readUInt32LE(local+22)!==uncompressed))throw Error('zip_local_metadata');
+  if(flags&0x8) {
+    for(const pos of [local+14,local+18,local+22])
+      if(zip.readUInt32LE(pos)!==0)throw Error('zip_local_descriptor_placeholder');
+  }
   const ln=zip.readUInt16LE(local+26),le=zip.readUInt16LE(local+28);
   if(utf8.decode(zip.subarray(local+30,local+30+ln))!==name)throw Error('zip_name_mismatch');
   const start=local+30+ln+le;
-  if(start+compressed>offset)throw Error('zip_overlap');
+  const dataEnd=start+compressed;
+  if(dataEnd>offset)throw Error('zip_overlap');
+  if(flags&0x8){
+    const remaining=offset-dataEnd;
+    const hasSignature=remaining===16;
+    if(remaining!==12&&!hasSignature)throw Error('zip_descriptor_length');
+    const at=dataEnd+(hasSignature?4:0);
+    if(hasSignature&&zip.readUInt32LE(dataEnd)!==0x08074b50)throw Error('zip_descriptor_signature');
+    if(zip.readUInt32LE(at)!==crc||
+       zip.readUInt32LE(at+4)!==compressed||
+       zip.readUInt32LE(at+8)!==uncompressed)throw Error('zip_descriptor_mismatch');
+  }else if(dataEnd!==offset)throw Error('zip_trailing_data');
   const payload=zip.subarray(start,start+compressed);
   const out=method===0?payload:inflateRawSync(payload,{maxOutputLength:MAX_JSON+1});
   if(out.length!==uncompressed||out.length>MAX_JSON)throw Error('zip_length');
