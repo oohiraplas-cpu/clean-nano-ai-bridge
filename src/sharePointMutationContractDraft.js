@@ -32,9 +32,12 @@ function validatePlan(plan) {
   } else {
     if (!ID.test(plan.listId || '')) throw new Error('INVALID_LIST_ID');
     if (plan.operation === 'create_column') {
-      if (!COLUMN.test(p.name || '') || !p.displayName || !plain(p.columnDefinition)) throw new Error('INVALID_COLUMN');
+      if (!COLUMN.test(p.name || '') || typeof p.displayName !== 'string' || !p.displayName.trim() || !plain(p.columnDefinition)) throw new Error('INVALID_COLUMN');
       if (p.columnDefinition.name !== p.name || p.columnDefinition.displayName !== p.displayName) throw new Error('COLUMN_MISMATCH');
       if (p.columnDefinition.required === true || p.columnDefinition.hidden === true) throw new Error('RESTRICTED_COLUMN');
+      const allowed = new Set(['name','displayName','description','required','hidden','text','number','boolean','dateTime','choice']);
+      const types = ['text','number','boolean','dateTime','choice'];
+      if (Object.keys(p.columnDefinition).some(k => !allowed.has(k)) || types.filter(k => Object.hasOwn(p.columnDefinition,k)).length !== 1) throw new Error('INVALID_COLUMN_TYPE');
     } else {
       if (plan.operation === 'update_item' && !ID.test(plan.itemId || '')) throw new Error('INVALID_ITEM_ID');
       if (!plain(p.fields) || !Object.keys(p.fields).length) throw new Error('INVALID_FIELDS');
