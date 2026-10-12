@@ -6,7 +6,7 @@ const {changeHash,verifyApproval}=require('./sharePointMutationContractDraft');
 function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
   const receipts=new Map();
   const validTag=v=>typeof v==='string'&&v.trim()!==''&&v!=='*';
-  async function reserve(approvalId,plan) {
+  async function reserve(approvalId,plan,expectedETag) {
     try {
       if(!store||!['read','patch','verifyHuman','assertConfigured'].every(k=>typeof store[k]==='function')||
          !/^[1-9][0-9]*$/.test(String(approvalId))) return {reserved:false,reason:'not_configured'};
@@ -14,7 +14,7 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
       const hash=changeHash(plan),snapshot=await store.read(approvalId),record=snapshot?.record;
       verifyApproval(plan,record);
       const start=Date.parse(record.approvedAt),end=Date.parse(record.expiresAt),t=now();
-      if(!validTag(snapshot.etag)||record.executionId||record.executionStatus||
+      if(!validTag(snapshot.etag)||(expectedETag&&snapshot.etag!==expectedETag)||record.executionId||record.executionStatus||
          record.revoked!==false||!Number.isFinite(start)||!Number.isFinite(end)||
          start>t||end<=t||end<=start||end-start>86400000||
          await store.verifyHuman(structuredClone(snapshot))!==true) return {reserved:false,reason:'approval_invalid'};
@@ -25,7 +25,8 @@ function createSharePointApprovalReservation({store,now=()=>Date.now()}={}) {
       if(!validTag(confirmed?.etag)||confirmed.etag===snapshot.etag||
          confirmed.record?.executionId!==executionId||confirmed.record?.executionStatus!=='reserved'||
          confirmed.record?.changeHash!==hash||confirmed.record?.revoked!==false||
-         confirmed.record?.status!=='APPROVED') return {reserved:false,reason:'reservation_unconfirmed'};
+         confirmed.record?.status!=='APPROVED'||
+         confirmed.record?.executionResult!==JSON.stringify({executionId,changeHash:hash,reservedAt:new Date(t).toISOString()})) return {reserved:false,reason:'reservation_unconfirmed'};
       receipts.set(executionId,{approvalId:String(approvalId),etag:confirmed.etag,
         hash,original:structuredClone(snapshot),expiresAt:end});
       return {reserved:true,executionId};
