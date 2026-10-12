@@ -171,3 +171,25 @@ test('opt-in Azure metadata reader returns only scoped deployment metadata', asy
   assert.ok(server.includes('azureMetadata,'));
   assert.ok(server.includes("typeof injected.azureMetadata.readDeploymentMetadata === 'function'"));
 });
+
+test('Azure diagnostic stays blocked without independently verified evidence', () => {
+  const { assessAzureDiagnostic } = require('../src/azureDiagnostic');
+  const id = '/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Web/sites/clean-nano-ai-bridge';
+  const sha = 'a'.repeat(40);
+  const missing = assessAzureDiagnostic({ armResourceId: id, managedIdentityAssigned: true,
+    independentAzureSha: sha, expectedGithubSha: sha });
+  assert.equal(missing.status, 'blocked');
+  assert.equal(missing.checks.githubShaMatch, 'unconfirmed');
+  const mismatch = assessAzureDiagnostic({ armResourceId: id, armObservedIndependently: true,
+    managedIdentityAssigned: true, managedIdentityObservedIndependently: true,
+    effectiveRbacVerifiedIndependently: true, effectiveRbacScopeMatched: true,
+    independentAzureSha: 'b'.repeat(40), independentAzureShaVerified: true, expectedGithubSha: sha });
+  assert.equal(mismatch.checks.githubShaMatch, 'blocked');
+  const verified = assessAzureDiagnostic({ armResourceId: id, armObservedIndependently: true,
+    managedIdentityAssigned: true, managedIdentityObservedIndependently: true,
+    effectiveRbacVerifiedIndependently: true, effectiveRbacScopeMatched: true,
+    independentAzureSha: sha, independentAzureShaVerified: true, expectedGithubSha: sha });
+  assert.equal(verified.status, 'confirmed');
+  assert.equal(verified.checks.githubShaMatch, 'confirmed');
+  assert.equal(assessAzureDiagnostic({ ...verified, armResourceId: '/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Web/sites/other' }).status, 'blocked');
+});
