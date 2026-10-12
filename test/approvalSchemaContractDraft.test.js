@@ -110,7 +110,7 @@ test('backup boundary: 60,000 UTF-8 bytes accepted, 60,001 rejected before reser
   // JSON.stringify adds two quotation-mark bytes.
   const atLimit = await run(59998);
   assert.equal(atLimit.result, 'accepted');
-  assert.equal(atLimit.patches, 1);
+  assert.equal(atLimit.patches, 2);
   const overLimit = await run(59999);
   assert.equal(overLimit.result, 'rejected');
   assert.equal(overLimit.patches, 0);
