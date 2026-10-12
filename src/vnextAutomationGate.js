@@ -10,7 +10,7 @@ function assessAutomationProposal(proposal = {}, evidence = {}) {
   const operation = typeof proposal.operation === 'string' ? proposal.operation : '';
   const platform = typeof proposal.platform === 'string' ? proposal.platform : '';
   if (!['powerapps', 'powerautomate', 'sharepoint', 'dataverse', 'copilotstudio', 'solutions', 'bridge'].includes(platform)) failures.push('platform_unknown');
-  if (!operation) failures.push('operation_missing');
+  if (!['read', 'inspect', ...WRITE_OPERATIONS].includes(operation)) failures.push('operation_unknown');
   if (proposal.additionalCost === true) failures.push('additional_cost_forbidden');
   if (proposal.permissionExpansion === true) failures.push('permission_expansion_forbidden');
   if (proposal.destructive === true) failures.push('destructive_change_forbidden');
