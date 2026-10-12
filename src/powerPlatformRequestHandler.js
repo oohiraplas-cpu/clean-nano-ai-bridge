@@ -121,7 +121,7 @@ class PowerPlatformRequestHandler {
     let observed;
     try { observed = await runtime.verifyResult({ operation, targetSha, requestId, execution }); }
     catch { return { conclusion: 'BLOCKED', reason: 'postflight_unavailable' }; }
-    const post = verifyAfterMutation({ operation, expectedSha: targetSha, ...observed });
+    const post = verifyAfterMutation({ ...observed, operation, expectedSha: targetSha });
     return post.allowed
       ? { conclusion: 'VERIFIED', requestId, operation }
       : { conclusion: 'BLOCKED', reason: post.reason, requestId };
