@@ -34,6 +34,31 @@ test('incomplete job pages, wrong SHA and wrong run id fail closed', () => {
     assert.equal(result.mayEditDraft,false);
   }
 });
+test('missing workflow identity, job provenance and page count fail closed', () => {
+  const missing = (obj, key) => { const result = {...obj}; delete result[key]; return result; };
+  const patches = [
+    ...['id','head_sha','head_branch','event'].map(key => ({workflowRun:missing(run,key)})),
+    {workflowRun:{...run,id:0}},
+    {workflowRun:{...run,id:'44'}},
+    ...['head_sha','run_id'].map(key => ({jobResponse:{total_count:1,jobs:[missing(job,key)]}})),
+    {jobResponse:{jobs:[job]}},
+    {jobResponse:{total_count:'1',jobs:[job]}},
+    {jobResponse:{total_count:2,jobs:[job]}},
+    {jobResponse:{total_count:0,jobs:[]}}
+  ];
+  for (const patch of patches) {
+    const result=assessGitHubCiRepair({...base,...patch});
+    assert.equal(result.status,'blocked',JSON.stringify(patch));
+    assert.equal(result.mayEditDraft,false);
+    assert.equal(result.mayDeploy,false);
+    assert.equal(result.mayMerge,false);
+  }
+});
+test('complete two-job page is accepted only when all jobs match the workflow', () => {
+  const other = {...job,id:124,name:'safety'};
+  assert.equal(assessGitHubCiRepair({...base,jobResponse:{total_count:2,jobs:[job,other]}}).status,'no_repair_needed');
+  assert.equal(assessGitHubCiRepair({...base,jobResponse:{total_count:2,jobs:[job,{...other,run_id:45}]}}).status,'blocked');
+});
 test('no automatic edit even with matching failed metadata unless approved', () => {
   const result = assessGitHubCiRepair({...base,
     workflowRun:{...run,conclusion:'failure'},
