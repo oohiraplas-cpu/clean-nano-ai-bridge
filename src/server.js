@@ -1469,10 +1469,9 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return { status: 'observed_not_verified', resourceIdMatched: true,
       // Only the trusted adapter's already assessed diagnostic is forwarded.
       // Missing or malformed diagnostic must remain blocked.
-      diagnostic: result.diagnostic && result.diagnostic.status === 'confirmed' &&
-        Object.values(result.diagnostic.checks || {}).length === 5 &&
-        Object.values(result.diagnostic.checks).every(value => value === 'confirmed')
-        ? result.diagnostic : require('./azureDiagnostic').assessAzureDiagnostic(),
+      // Untrusted adapter results are observational only. Never accept a
+      // self-declared confirmed status as independent Azure proof.
+      diagnostic: require('./azureDiagnostic').assessAzureDiagnostic(),
       deploymentEntries: result.deploymentEntries.map(entry => ({
         deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
         active: entry.active === true,
