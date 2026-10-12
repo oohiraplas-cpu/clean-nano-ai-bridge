@@ -1,4 +1,5 @@
 'use strict';
+const { canonicalDiffHash } = require('./approvalScopeContractDraft');
 
 // Draft-only authorization boundary for future Power Apps write adapters.
 // Never call a mutation unless every trusted dependency has been injected and
@@ -6,7 +7,8 @@
 function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCurrentSha,
   verifyTarget, verifyBackup, verifyPostcondition } = {}) {
   return async function execute({ operation, approvalId, requestId, appId,
-    environmentId, targetSha, changeHash, mutate, expectedPostcondition } = {}) {
+    environmentId, targetSha, changeHash, runtimeCommitSha, sourceSha, params,
+    mutate, expectedPostcondition } = {}) {
     const blocked = (reason) => ({ status: 'BLOCKED', success: false, reason });
     if (!['update', 'save', 'publish'].includes(operation) ||
         !/^[1-9][0-9]*$/.test(String(approvalId || '')) ||
@@ -19,7 +21,16 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
           verifyBackup, verifyPostcondition, mutate].every(fn => typeof fn === 'function')) {
       return blocked('mutation_gate_not_configured');
     }
-    const scope = { operation, approvalId, requestId, appId, environmentId, targetSha, changeHash };
+    // Legacy requests lack independent SHA domains and are never authorized.
+    // The hash is recomputed here, not trusted merely because it is 64 hex characters.
+    let computedHash;
+    try {
+      computedHash = canonicalDiffHash({ requestId, operation, appId, environmentId,
+        runtimeCommitSha, sourceSha, params });
+    } catch { return blocked('approval_scope_not_configured'); }
+    if (sourceSha !== targetSha || changeHash !== computedHash) return blocked('approval_scope_mismatch');
+    const scope = { operation, approvalId, requestId, appId, environmentId, targetSha,
+      changeHash: computedHash, runtimeCommitSha, sourceSha, params };
     let mutationAttempted = false;
     try {
       if (await verifyTarget(scope) !== true || await verifyBackup(scope) !== true) {
