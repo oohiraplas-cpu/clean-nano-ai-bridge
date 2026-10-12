@@ -43,16 +43,6 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =80
-      - S7_Emp:
-          Control: Label@2.5.1
-          Properties:
-            Color: =RGBA(0, 204, 102, 1)
-            FontWeight: =FontWeight.Bold
-            Height: =30
-            Text: ="表示中の作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択") & "（" & gblEmpID & "）"
-            Width: =Parent.Width - 64
-            X: =32
-            Y: =132
       - S7_Month:
           Control: Label@2.5.1
           Properties:
@@ -63,21 +53,6 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =170
-      - S7_GoMembers:
-          Control: Classic/Button@2.2.0
-          Properties:
-            BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(0, 204, 102, 1)
-            FontWeight: =FontWeight.Bold
-            Height: =52
-            HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Navigate(S6_Members, ScreenTransition.None)
-            PressedFill: =RGBA(0, 160, 80, 1)
-            Text: ="作業員を切り替える（メンバー一覧）"
-            Width: =Parent.Width - 32
-            X: =16
-            Y: =236
       - S7_Reload:
           Control: Classic/Button@2.2.0
           Properties:
@@ -92,7 +67,7 @@ Screens:
             Text: ="データを再読み込み"
             Width: =Parent.Width - 32
             X: =16
-            Y: =300
+            Y: =236
       - S7_ThisMonth:
           Control: Classic/Button@2.2.0
           Properties:
@@ -107,7 +82,7 @@ Screens:
             Text: ="表示を今月に戻す"
             Width: =Parent.Width - 32
             X: =16
-            Y: =364
+            Y: =300
       - S7_Src:
           Control: Label@2.5.1
           Properties:
