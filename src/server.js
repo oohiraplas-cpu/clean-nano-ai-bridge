@@ -6,6 +6,8 @@ const cors = require('cors');
 const { getConfig } = require('./config');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
+const { ExecutionStore } = require('./executionStore');
+const { ToolExecutor } = require('./toolExecutor');
 const { ApprovalLedger } = require('./approvalLedger');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
@@ -197,7 +199,14 @@ const MCP_METHODS = Object.freeze([
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
 // 承認台帳は未設定（fail closed）。SharePoint承認台帳の列名・サイトが実環境で確認されるまで、承認は得られない。
-const executionQueue = new ExecutionQueue({ ledger: new ApprovalLedger() });
+// 永続化: EXECUTION_STORE_PATH（既定 data/execution-queue.json）。
+// 実ツールの接続は未登録のため、全ツールは BLOCKED_TOOL_CONNECTION（ダミー成功にはしない）。
+// 承認台帳は未設定のまま（fail closed）。
+const executionQueue = new ExecutionQueue({
+  ledger: new ApprovalLedger(),
+  store: new ExecutionStore({ filePath: getConfig().executionStorePath }),
+  executor: new ToolExecutor({ connectors: {} })
+});
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
