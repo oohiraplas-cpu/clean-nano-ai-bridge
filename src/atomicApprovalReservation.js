@@ -1,5 +1,6 @@
 'use strict';
 const crypto = require('node:crypto');
+const { canonicalDiffHash } = require('./approvalScopeContractDraft');
 // Server-only receipts retain the authenticated human snapshot independently of
 // lastModifiedBy, which the reservation PATCH changes to the service actor.
 // A restart loses receipts and therefore denies recheck; never reconstruct from input.
@@ -23,12 +24,22 @@ function receiptMap(store, timestamp) {
 // A reservation is consumed on successful If-Match PATCH; never retry conflicts.
 function createAtomicApprovalReservation({ store, now = () => Date.now() } = {}) {
   return async function reserveApproval(context = {}) {
-    const { approvalId, requestId, operation, targetSha, appId, environmentId, changeHash } = context;
+    const { approvalId, requestId, operation, targetSha, appId, environmentId, changeHash, runtimeCommitSha, sourceSha, params } = context;
     if (!store || typeof store.assertConfigured !== 'function' || typeof store.read !== 'function' || typeof store.patch !== 'function' ||
         typeof store.verifyHuman !== 'function' || !/^[1-9][0-9]*$/.test(String(approvalId || '')) ||
-        !['update', 'save', 'deploy', 'publish'].includes(operation) || !requestId || !appId || !environmentId ||
+        !['update', 'save', 'publish'].includes(operation) || !requestId || !appId || !environmentId ||
         !/^[a-f0-9]{40}$/i.test(targetSha || '') || !/^[a-f0-9]{64}$/i.test(changeHash || '')) {
       return { reserved: false, reason: 'reservation_not_configured' };
+    }
+    // Legacy approvals cannot prove distinct runtime and source revisions.
+    // Require the server-computed canonical hash and both independently pinned SHAs.
+    let computedHash;
+    try {
+      computedHash = canonicalDiffHash({ requestId, operation, appId, environmentId,
+        runtimeCommitSha, sourceSha, params });
+    } catch { return { reserved: false, reason: 'approval_scope_not_configured' }; }
+    if (sourceSha !== targetSha || changeHash !== computedHash) {
+      return { reserved: false, reason: 'approval_scope_mismatch' };
     }
     try {
       store.assertConfigured();
@@ -39,7 +50,7 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
       const timestamp = now();
       if (!validETag(snapshot?.etag) || !record || typeof record.approverId !== 'string' || !record.approverId.trim() || record.requestId !== requestId ||
           record.tool !== operation || record.targetId !== appId ||
-          record.environmentId !== environmentId || record.commitSha !== targetSha ||
+          record.environmentId !== environmentId || record.commitSha !== runtimeCommitSha ||
           record.diffHash !== changeHash || record.status !== '承認' || record.revoked !== false ||
           record.executionId || record.executionStatus || !Number.isFinite(start) ||
           !Number.isFinite(expiry) || start > timestamp || expiry <= timestamp ||
@@ -60,7 +71,7 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
       if (!validETag(confirmed?.etag) || confirmed.etag === snapshot.etag || !confirmed?.record || decisionHash(confirmed.record) !== hash || confirmed?.record?.executionId !== executionId || confirmed?.record?.executionStatus !== 'reserved' ||
           confirmed.record.requestId !== requestId || confirmed.record.tool !== operation ||
           confirmed.record.targetId !== appId || confirmed.record.environmentId !== environmentId ||
-          confirmed.record.commitSha !== targetSha || confirmed.record.diffHash !== changeHash ||
+          confirmed.record.commitSha !== runtimeCommitSha || confirmed.record.diffHash !== changeHash ||
           confirmed.record.revoked !== false || confirmed.record.status !== '承認' ||
           !Number.isFinite(Date.parse(confirmed.record.approvedAt)) ||
           Date.parse(confirmed.record.approvedAt) > now() ||
@@ -84,10 +95,12 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
 // Re-read immediately before mutation. Never trust a cached approval flag.
 function createApprovalRecheck({ store, now = () => Date.now() } = {}) {
   return async function recheckApproval(context = {}) {
-    const { approvalId, executionId, requestId, operation, targetSha, appId, environmentId, changeHash } = context;
+    const { approvalId, executionId, requestId, operation, targetSha, appId, environmentId, changeHash, runtimeCommitSha, sourceSha, params } = context;
     if (!store || typeof store.assertConfigured !== 'function' || typeof store.read !== 'function' || typeof store.verifyHuman !== 'function' ||
         !/^[1-9][0-9]*$/.test(String(approvalId || '')) || !executionId) return false;
     try {
+      if (sourceSha !== targetSha || changeHash !== canonicalDiffHash({ requestId, operation, appId, environmentId,
+        runtimeCommitSha, sourceSha, params })) return false;
       store.assertConfigured();
       const receipt = receipts.get(store)?.get(executionId);
       if (!receipt || receipt.approvalId !== String(approvalId)) return false;
