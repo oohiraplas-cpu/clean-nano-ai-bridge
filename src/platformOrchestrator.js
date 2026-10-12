@@ -295,7 +295,7 @@ class PlatformOrchestrator {
         const currentSha = await this.readCurrentSha({ operation: 'deploy', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
         if (currentSha !== gitOps.headSha) return this._returnBlocked('デプロイSHA変更', ['head_changed'], requestIdLocal);
         const reservation = await this.reserveApproval({ operation: 'deploy', requestId: requestIdLocal, targetSha: gitOps.headSha, appId: target.id, environmentId: target.environmentId, changeHash: evidence.changeHash });
-        if (reservation?.reserved !== true || typeof reservation.executionId !== 'string' || !reservation.executionId) {
+        if (reservation?.reserved !== true || reservation?.singleUseVerified !== true || reservation?.approvalActiveVerified !== true || reservation?.targetSha !== gitOps.headSha || reservation?.requestId !== requestIdLocal || reservation?.operation !== 'deploy' || typeof reservation.executionId !== 'string' || !reservation.executionId) {
           return this._returnBlocked('デプロイ単回承認失敗', ['approval_not_reserved'], requestIdLocal);
         }
       } catch { return this._returnBlocked('デプロイ単回承認失敗', ['reservation_unavailable'], requestIdLocal); }
@@ -368,7 +368,7 @@ class PlatformOrchestrator {
           const currentSha = await this.readCurrentSha({ operation: 'publish', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
           if (currentSha !== gitOps.headSha) return this._returnBlocked('公開SHA変更', ['head_changed'], requestIdLocal);
           const reservation = await this.reserveApproval({ operation: 'publish', requestId: requestIdLocal, targetSha: gitOps.headSha, appId: target.id, environmentId: target.environmentId, changeHash: publicationEvidence.changeHash });
-          if (reservation?.reserved !== true || typeof reservation.executionId !== 'string' || !reservation.executionId) {
+          if (reservation?.reserved !== true || reservation?.singleUseVerified !== true || reservation?.approvalActiveVerified !== true || reservation?.targetSha !== gitOps.headSha || reservation?.requestId !== requestIdLocal || reservation?.operation !== 'publish' || typeof reservation.executionId !== 'string' || !reservation.executionId) {
             return this._returnBlocked('公開単回承認失敗', ['approval_not_reserved'], requestIdLocal);
           }
         } catch { return this._returnBlocked('公開単回承認失敗', ['reservation_unavailable'], requestIdLocal); }
