@@ -342,3 +342,34 @@ Screens:
             Width: =Parent.Width - 32
             X: =16
             Y: =Parent.Height - 122
+      - S2_ReportBtn:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0,255,102,1)
+            BorderThickness: =1
+            Color: =RGBA(0,255,102,1)
+            Fill: =RGBA(8,34,20,1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            Size: =14
+            Text: =Text(gblSelDate, "m/d") & "の日報を書く"
+            Visible: =gblCalType <> "運営"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =Parent.Height - 176
+            OnSelect: |-
+              =With(
+                  {rec: LookUp(CN_勤怠明細台帳, AttendanceKey = gblEmpID & "_" & Text(gblSelDate, "yyyymmdd"))},
+                  If(
+                      IsBlank(rec),
+                      Notify("この日の登録がありません。先にカレンダーで登録してください", NotificationType.Error),
+                      Set(gblReportFromCalendar, true);
+                      Set(gblReportSite, Coalesce(IfError(Text(ParseJSON(rec.OriginalInput).siteName), ""), ""));
+                      Set(gblReportPrime, Coalesce(IfError(Text(ParseJSON(rec.OriginalInput).primeCompany), ""), ""));
+                      Set(gblReportContact, Coalesce(IfError(Text(ParseJSON(rec.OriginalInput).primeContact), ""), ""));
+                      Set(gblReportContent, Coalesce(rec.Notes, ""));
+                      Set(gblReportStart, rec.StartAt);
+                      Set(gblReportEnd, rec.EndAt);
+                      Navigate(S11_Report, ScreenTransition.None)
+                  )
+              )
