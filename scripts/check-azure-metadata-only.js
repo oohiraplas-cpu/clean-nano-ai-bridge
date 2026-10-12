@@ -39,7 +39,9 @@ function collect() {
     runtimeKeysPresent: false, pacProfileVerified: false,
     sourceMapVerified: false, healthVerified: false
   });
-  return Object.freeze({ resourceIdMatched: true, managedIdentityAssigned,
+  return Object.freeze({ resourceIdMatched: true,
+    armResourceId: app.id, armObservedIndependently: true,
+    managedIdentityAssigned, managedIdentityObservedIndependently: managedIdentityAssigned,
     deploymentMetadataAccessible, deploymentEntries, deploymentShaMatched: false,
     effectiveRbacVerified: false, pacRuntimeVerified: false, readiness });
 }
