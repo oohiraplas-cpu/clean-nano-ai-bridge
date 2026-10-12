@@ -16,31 +16,38 @@ function setup({conflict=false,human=true}={}){
 test('ETag reservation and recheck are single-use',async()=>{
  const {store,getPatches}=setup();
  const gate=createSharePointApprovalReservation({store,now:()=>time});
- const reserved=await gate.reserve('1',plan);
+ const reserved=await gate.reserve('1',plan,'"1"');
  assert.equal(reserved.reserved,true);
  assert.equal(getPatches(),1);
  assert.equal(await gate.recheck('1',plan,reserved.executionId),true);
  assert.equal(await gate.recheck('1',plan,reserved.executionId),false);
- assert.equal((await gate.reserve('1',plan)).reserved,false);
+ assert.equal((await gate.reserve('1',plan,'"1"')).reserved,false);
 });
 test('conflict and unverified human never authorize',async()=>{
  for(const options of [{conflict:true},{human:false}]){
   const {store}=setup(options);
   const gate=createSharePointApprovalReservation({store,now:()=>time});
-  assert.equal((await gate.reserve('1',plan)).reserved,false);
+  assert.equal((await gate.reserve('1',plan,'"1"')).reserved,false);
  }
 });
 test('restart loses receipt and fails closed',async()=>{
  const {store}=setup();
  const a=createSharePointApprovalReservation({store,now:()=>time});
- const reserved=await a.reserve('1',plan);
+ const reserved=await a.reserve('1',plan,'"1"');
  const restarted=createSharePointApprovalReservation({store,now:()=>time});
  assert.equal(await restarted.recheck('1',plan,reserved.executionId),false);
 });
 test('revocation after reservation denies',async()=>{
  const {store,record}=setup();
  const gate=createSharePointApprovalReservation({store,now:()=>time});
- const reserved=await gate.reserve('1',plan);
+ const reserved=await gate.reserve('1',plan,'"1"');
  record.revoked=true;
  assert.equal(await gate.recheck('1',plan,reserved.executionId),false);
+});
+
+test('missing initial ETag is rejected before PATCH',async()=>{
+ const {store,getPatches}=setup();
+ const gate=createSharePointApprovalReservation({store,now:()=>time});
+ assert.equal((await gate.reserve('1',plan)).reserved,false);
+ assert.equal(getPatches(),0);
 });
