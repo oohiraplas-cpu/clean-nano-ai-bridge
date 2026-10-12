@@ -21,7 +21,7 @@ test('missing ledger or evidence blocks deployment approval', async () => {
     ledger: null, operation: 'deploy', targetSha: 'a'.repeat(40),
     observedSha: 'a'.repeat(40), requestId: 'req', actorId: 'actor',
     backupVerified: true, testsPassed: true,
-    expected: { appId: 'app', environmentId: 'env', changeHash: 'b'.repeat(40) }
+    expected: { appId: 'app', environmentId: 'env', changeHash: 'b'.repeat(64) }
   });
   assert.equal(result.allowed, false);
   assert.equal(result.reason, 'ledger_not_configured');

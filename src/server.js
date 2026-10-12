@@ -945,6 +945,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: {
         request: { type: 'string', description: 'ユーザーからの短文指示（目的・対象・内容を含む、通常3〜100文字）' },
         target: { type: 'object', description: 'オプション：対象の明示指定（appName, environmentId等）' },
+        sourceHandoff: { type: 'object', description: 'CNAI引渡し情報。指定時は対象・HEAD・内容ハッシュの読取り検証のみを行い、保存・公開は実行しません。' },
         environmentId: { type: 'string', description: 'オプション：環境ID（省略時は正本Environmentを自動選択）' },
         requestId: { type: 'string', description: 'オプション：冪等キー用requestId（省略時は自動生成）' },
         publishApproval: { type: 'boolean', description: 'true=公開を含める、false/未指定=保存までで停止（公開時はAPPROVAL_REQUIRED）' },
@@ -2224,6 +2225,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     return withUpstreamErrorStatus(handler.executePowerPlatformRequest({
       request: params.request,
+      sourceHandoff: params.sourceHandoff,
       targetName,
       targetId,
       environmentId,

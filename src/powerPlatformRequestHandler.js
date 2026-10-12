@@ -98,6 +98,8 @@ class PowerPlatformRequestHandler {
       config
     });
 
+    this.powerAppsStore = powerAppsStore;
+    this.powerAppsGitStore = powerAppsGitStore;
     this.config = config;
     this.stateRegistry = stateRegistry;
     // Runtime wiring remains fail-closed until an independently authenticated ledger and evidence provider are injected.
@@ -155,7 +157,7 @@ class PowerPlatformRequestHandler {
    * }
    */
   async executePowerPlatformRequest(input) {
-    const requestId = input.requestId || crypto.randomUUID();
+    const requestId = input?.requestId || crypto.randomUUID();
     const startTime = Date.now();
 
     // ユーザー入力回数: 1
@@ -165,6 +167,17 @@ class PowerPlatformRequestHandler {
     const validation = this._validateInput(input);
     if (!validation.valid) {
       return this._returnBlocked(validation.error, validation.errors, requestId);
+    }
+
+    if (input.sourceHandoff !== undefined) {
+      // Receipt verification is read-only; never fall through to orchestration.
+      const invalid = validateExecutePowerPlatformRequestParams(input);
+      if (invalid) return this._returnBlocked(invalid, [], requestId);
+      if (typeof this.powerAppsGitStore?.verifySourceHandoff !== 'function') {
+        return this._returnBlocked('handoff_verifier_not_configured', [], requestId);
+      }
+      const result = await this.powerAppsGitStore.verifySourceHandoff(input.sourceHandoff, this.powerAppsStore);
+      return { ...result, requestId, conclusion: result.sourceVerified === true ? 'HANDOFF_VERIFIED' : 'BLOCKED' };
     }
 
     // Step 2: 秘密値検査
@@ -302,6 +315,16 @@ function validateExecutePowerPlatformRequestParams(params) {
 
   if (!params.request || typeof params.request !== 'string') {
     return 'requestは文字列が必要です';
+  }
+
+  if (params.sourceHandoff !== undefined) {
+    const h = params.sourceHandoff;
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return 'sourceHandoffはオブジェクトが必要です';
+    if (params.publishApproval === true || params.approvalToken) return 'sourceHandoffは読取り検証専用です';
+    const targetId = params.targetId ?? params.target?.appId ?? params.target?.id;
+    const environmentId = params.environmentId ?? params.target?.environmentId;
+    if ((targetId !== undefined && targetId !== h.target?.appId) ||
+        (environmentId !== undefined && environmentId !== h.target?.environmentId)) return 'sourceHandoffの対象が一致しません';
   }
 
   if (params.targetName !== undefined && typeof params.targetName !== 'string') {

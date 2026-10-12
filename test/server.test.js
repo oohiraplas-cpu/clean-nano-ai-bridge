@@ -1793,3 +1793,34 @@ test('update_powerapps_app deferSync passes a scoped CNAI handoff without Power 
   }
   assert.equal(mock.calls.filter(c => !c.url.includes('api.github.com')).length, 0);
 });
+
+test('CNAI sourceHandoff uses read-only receiver on HTTP and MCP with State Manager enabled', async (t) => {
+  const crypto = require('node:crypto');
+  const content = 'Screens:\n  S1_Home: {}\n';
+  const path = `${GITHUB_ROOT}/S1_Home.pa.yaml`;
+  const blob = crypto.createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+  const sha = 'a'.repeat(40);
+  const mock = routedFetch([
+    tokenRoute,
+    [(c) => c.method === 'GET' && c.url.includes('/apps/test-app?'), () => jsonResponse({ properties: { displayName: 'App', appVersion: '1' } })],
+    [(c) => c.method === 'GET' && c.url.includes('/git/refs/heads/main'), () => jsonResponse({ object: { sha } })],
+    [(c) => c.method === 'GET' && c.url.endsWith('?ref=' + sha), () => jsonResponse({ type: 'file', encoding: 'base64', path, sha: blob, content: Buffer.from(content).toString('base64') })]
+  ]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides(), enforceStateManager: true });
+  const sourceHandoff = { recipient: 'CNAI', repository: 'owner/repo', branch: 'main', path,
+    commitSha: sha, contentSha: blob, contentSha256: crypto.createHash('sha256').update(content).digest('hex'),
+    target: { appId: 'test-app', environmentId: 'test-env' } };
+  for (const invoke of [rpc, legacy]) {
+    const response = await invoke(server, 'execute_powerplatform_request', { request: 'verify CNAI handoff', sourceHandoff });
+    const result = invoke === rpc ? response.structuredContent : response.body.result;
+    assert.equal(result?.conclusion, 'HANDOFF_VERIFIED', JSON.stringify(response));
+    assert.equal(result.saved, false); assert.equal(result.published, false);
+    assert.equal(result.readyForSave, false); assert.equal(result.readyForPublish, false);
+  }
+  const mutations = mock.calls.filter(c => c.method !== 'GET' && !c.url.includes('/oauth2/v2.0/token'));
+  assert.equal(mutations.length, 0);
+  const count = mock.calls.length;
+  const refused = await rpc(server, 'execute_powerplatform_request', { request: 'verify', sourceHandoff, publishApproval: true });
+  assert.equal(refused.isError, true);
+  assert.equal(mock.calls.length, count);
+});

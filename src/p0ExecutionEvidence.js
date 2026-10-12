@@ -1,6 +1,7 @@
 'use strict';
 // Strict adapter around the existing SharePoint ApprovalLedger. Never accepts caller-supplied approval flags.
 const SHA = /^[a-f0-9]{40}$/i;
+const CHANGE_HASH = /^[a-f0-9]{64}$/i;
 const OPERATIONS = new Set(['save', 'publish', 'merge', 'deploy']);
 const requiredStages = operation => operation === 'save' ? ['change'] : ['change', 'publish'];
 const deny = reason => Object.freeze({ allowed: false, reason });
@@ -8,7 +9,7 @@ async function verifyBeforeMutation({ ledger, operation, targetSha, observedSha,
   if (!OPERATIONS.has(operation)) return deny('unknown_operation');
   if (!SHA.test(targetSha || '') || targetSha !== observedSha) return deny('head_mismatch');
   if (!requestId || !actorId || backupVerified !== true || testsPassed !== true) return deny('preflight_evidence_missing');
-  if (!SHA.test(expected.changeHash || '') || !expected.environmentId || !expected.appId) return deny('binding_evidence_missing');
+  if (!CHANGE_HASH.test(expected.changeHash || '') || !expected.environmentId || !expected.appId) return deny('binding_evidence_missing');
   if (!ledger || ledger.configured !== true || typeof ledger.check !== 'function') return deny('ledger_not_configured');
   const approvers = [];
   for (const [stepIndex, stage] of requiredStages(operation).entries()) {

@@ -11,7 +11,7 @@ test('unconfigured runtime blocks before mutation', async () => {
 test('missing approval ledger blocks before mutation', async () => {
   let calls = 0;
   const p0 = {
-    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: sha, environmentId: 'env', appId: 'app' }),
+    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: 'b'.repeat(64), environmentId: 'env', appId: 'app' }),
     perform: async () => { calls++; }, verifyResult: async () => ({}),
     readCurrentSha: async () => sha
   };
@@ -22,7 +22,7 @@ test('HEAD changes after approval block mutation', async () => {
   let calls = 0;
   const p0 = {
     ledger: { configured: true, check: async () => ({ approved: true, approver: 'reviewer', bindingVerified: true }) },
-    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: sha, environmentId: 'env', appId: 'app' }),
+    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: 'b'.repeat(64), environmentId: 'env', appId: 'app' }),
     perform: async () => { calls++; }, verifyResult: async () => ({}),
     readCurrentSha: async () => 'b'.repeat(40)
   };
@@ -33,7 +33,7 @@ test('successful callback alone is not proof of saved version', async () => {
   let calls = 0;
   const p0 = {
     ledger: { configured: true, check: async () => ({ approved: true, approver: 'reviewer', bindingVerified: true }) },
-    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: sha, environmentId: 'env', appId: 'app' }),
+    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: 'b'.repeat(64), environmentId: 'env', appId: 'app' }),
     perform: async () => { calls++; return { success: true }; },
     verifyResult: async () => ({ actualSha: sha, operationConfirmed: true, appCheckerCritical: 0 }),
     readCurrentSha: async () => sha
@@ -45,7 +45,7 @@ test('successful callback alone is not proof of saved version', async () => {
 test('postflight cannot override operation or expected SHA', async () => {
   const p0 = {
     ledger: { configured: true, check: async () => ({ approved: true, approver: 'reviewer', bindingVerified: true }) },
-    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: sha, environmentId: 'env', appId: 'app' }),
+    getEvidence: async () => ({ backupVerified: true, testsPassed: true, changeHash: 'b'.repeat(64), environmentId: 'env', appId: 'app' }),
     perform: async () => ({ success: true }),
     verifyResult: async () => ({ operation: 'merge', expectedSha: 'b'.repeat(40), actualSha: sha, operationConfirmed: true, appCheckerCritical: 0 }),
     readCurrentSha: async () => sha
