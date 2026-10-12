@@ -3006,7 +3006,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
         // PAC evidence is optional and read-only; never trust request-supplied adapter or flags.
         // No registered internal adapter means no PAC evidence (Fail Closed).
-        const internalPacAdapter = powerAppsStore.runtimeSourceAdapter;
+        const internalPacAdapter = powerAppsStore._runtimeSource;
         if (internalPacAdapter instanceof PowerAppsRuntimeSourceAdapter
             && internalPacAdapter.getSourceFile === PowerAppsRuntimeSourceAdapter.prototype.getSourceFile) {
           const pacEvidence = await readPacEvidenceWithRegisteredState({
