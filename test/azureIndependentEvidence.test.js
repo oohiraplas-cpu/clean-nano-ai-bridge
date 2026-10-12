@@ -56,3 +56,29 @@ test('PAC source evidence requires registered State Manager callback', async () 
     environmentId: 'env-1', mode: 'pac' });
   await assert.rejects(adapter.getSourceEvidence('S1_Home.pa.yaml', {}));
 });
+
+test('registered State Manager evidence bridge revalidates before and after read', async () => {
+  const { readPacEvidenceWithRegisteredState } = require('../src/pacStateEvidence');
+  const record = { context: { appId: 'app' }, source: { path: 'S1_Home.pa.yaml' } };
+  let checks = 0;
+  const adapter = { getSourceEvidence: async (path, options) => {
+    assert.equal(path, record.source.path);
+    assert.equal(options.stateContext, record.context);
+    options.assertStateContext();
+    return { status: 'ok', trustedAdapterVerified: true };
+  } };
+  const evidence = await readPacEvidenceWithRegisteredState({
+    adapter, registeredRecord: record, relativePath: record.source.path,
+    validateRegisteredState: () => { checks++; return record; }
+  });
+  assert.equal(evidence.status, 'ok');
+  assert.equal(checks, 3);
+  await assert.rejects(readPacEvidenceWithRegisteredState({
+    adapter, registeredRecord: record, relativePath: '../other.pa.yaml',
+    validateRegisteredState: () => record
+  }));
+  await assert.rejects(readPacEvidenceWithRegisteredState({
+    adapter, registeredRecord: record, relativePath: record.source.path,
+    validateRegisteredState: () => ({ context: { appId: 'app' }, source: record.source })
+  }));
+});
