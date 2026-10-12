@@ -2,6 +2,7 @@
 // Pure read-only adapter. The caller provides GitHub's job-log reader.
 // No GitHub credentials, writes, reruns, merge or deployment operations.
 const { reviewCiFailure } = require('./ciFailureReview');
+const { assessStructuredDiagnostic } = require('./ciStructuredDiagnostic');
 const blocked = reason => Object.freeze({status:'blocked',reason,mayEditDraft:false,mayDeploy:false,mayMerge:false});
 async function reviewGitHubCiFailure({github,repositoryFullName,...input} = {}) {
   if (typeof repositoryFullName !== 'string' ||
@@ -25,4 +26,9 @@ async function reviewGitHubCiFailure({github,repositoryFullName,...input} = {}) 
     }
   });
 }
-module.exports = { reviewGitHubCiFailure };
+// Caller must independently verify artifact download and digest before supplying JSON.
+// This function cannot establish authenticity of arbitrary caller-provided bytes.
+function reviewGitHubStructuredDiagnostic(input = {}) {
+  return assessStructuredDiagnostic(input);
+}
+module.exports = { reviewGitHubCiFailure, reviewGitHubStructuredDiagnostic };
