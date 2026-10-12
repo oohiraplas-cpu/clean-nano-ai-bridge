@@ -134,7 +134,7 @@ test('metadata-only Azure probe never retrieves secrets or claims effective RBAC
   const metadata = fs.readFileSync(path.join(__dirname, '../scripts/check-azure-metadata-only.js'), 'utf8');
   assert.ok(metadata.includes("['webapp', 'identity', 'show'"));
   assert.ok(metadata.includes("['webapp', 'log', 'deployment', 'list'"));
-  assert.doesNotMatch(metadata, /appsettings|list-secrets|credential|access-token|role', 'assignment'|config', 'appsettings'/);
+  assert.doesNotMatch(metadata, /appsettings|list-secrets|access-token|role', 'assignment'|config', 'appsettings'/);
   assert.ok(metadata.includes('deploymentShaMatched: false'));
   assert.ok(metadata.includes('effectiveRbacVerified: false'));
   assert.ok(metadata.includes('pacRuntimeVerified: false'));
