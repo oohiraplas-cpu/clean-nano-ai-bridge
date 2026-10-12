@@ -39,3 +39,26 @@ test('HEAD mismatch, untrusted repo and no secret echo',()=>{
   assert.equal(JSON.stringify(r).includes(json),false);
  }
 });
+
+test('ZIP bit-3 descriptor (signature and unsigned) passes; corrupt CRC, sizes and position fail closed',()=>{
+ const raw=Buffer.from(json),packed=deflateRawSync(raw),name=Buffer.from('diagnostic.json'),crc=crc32(raw);
+ function descriptorZip(signed=true){
+  const local=Buffer.alloc(30),central=Buffer.alloc(46),end=Buffer.alloc(22),desc=Buffer.alloc(signed?16:12);
+  local.writeUInt32LE(0x04034b50);local.writeUInt16LE(8,6);local.writeUInt16LE(8,8);local.writeUInt16LE(name.length,26);
+  if(signed)desc.writeUInt32LE(0x08074b50);
+  const d=signed?4:0;desc.writeUInt32LE(crc,d);desc.writeUInt32LE(packed.length,d+4);desc.writeUInt32LE(raw.length,d+8);
+  central.writeUInt32LE(0x02014b50);central.writeUInt16LE(8,8);central.writeUInt16LE(8,10);
+  central.writeUInt32LE(crc,16);central.writeUInt32LE(packed.length,20);central.writeUInt32LE(raw.length,24);central.writeUInt16LE(name.length,28);
+  end.writeUInt32LE(0x06054b50);end.writeUInt16LE(1,8);end.writeUInt16LE(1,10);end.writeUInt32LE(central.length+name.length,12);end.writeUInt32LE(local.length+name.length+packed.length+desc.length,16);
+  return Buffer.concat([local,name,packed,desc,central,name,end]);
+ }
+ for(const signed of [true,false]){
+  const b=descriptorZip(signed);
+  assert.equal(reviewGitHubStructuredArtifact(input(b)).status,'no_repair_needed');
+  const corrupt=Buffer.from(b),at=30+name.length+packed.length+(signed?4:0);
+  corrupt[at]^=1;
+  assert.equal(reviewGitHubStructuredArtifact(input(corrupt)).status,'blocked');
+  const alteredSize=Buffer.from(b);alteredSize[at+4]^=1;
+  assert.equal(reviewGitHubStructuredArtifact(input(alteredSize)).status,'blocked');
+ }
+});
