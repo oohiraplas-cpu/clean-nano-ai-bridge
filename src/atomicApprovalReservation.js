@@ -17,7 +17,7 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
       const start = Date.parse(record?.approvedAt);
       const expiry = Date.parse(record?.expiresAt);
       const timestamp = now();
-      if (!snapshot?.etag || !record || record.requestId !== requestId ||
+      if (!snapshot?.etag || snapshot.etag === '*' || !record || record.requestId !== requestId ||
           record.tool !== operation || record.targetId !== appId ||
           record.environmentId !== environmentId || record.commitSha !== targetSha ||
           record.diffHash !== changeHash || record.status !== '承認' || record.revoked !== false ||
@@ -33,8 +33,14 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
         executionResult: JSON.stringify({ executionId, diffHash: changeHash, reservedAt: new Date(timestamp).toISOString() })
       });
       const confirmed = await store.read(approvalId);
-      if (confirmed?.record?.executionId !== executionId || confirmed?.record?.executionStatus !== 'reserved' ||
+      if (!confirmed?.etag || confirmed?.record?.executionId !== executionId || confirmed?.record?.executionStatus !== 'reserved' ||
+          confirmed.record.requestId !== requestId || confirmed.record.tool !== operation ||
+          confirmed.record.targetId !== appId || confirmed.record.environmentId !== environmentId ||
+          confirmed.record.commitSha !== targetSha || confirmed.record.diffHash !== changeHash ||
           confirmed.record.revoked !== false || confirmed.record.status !== '承認' ||
+          !Number.isFinite(Date.parse(confirmed.record.approvedAt)) ||
+          Date.parse(confirmed.record.approvedAt) > now() ||
+          !Number.isFinite(Date.parse(confirmed.record.expiresAt)) ||
           Date.parse(confirmed.record.expiresAt) <= now()) {
         return { reserved: false, reason: 'reservation_unconfirmed' };
       }
