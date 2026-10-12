@@ -11,11 +11,7 @@ function createGuardedSharePointExecutor({store,writer,readRuntimeSha,backup,aud
   return createSharePointMutationExecutor({
     loadApproval,
     verifyHuman:s=>store.verifyHuman(s),
-    reserveETag:async(id,etag,{plan})=>{
-      const current=await store.read(id);
-      if(current?.etag!==etag) return {reserved:false,reason:'pre_reservation_etag_changed'};
-      return gate.reserve(id,plan);
-    },
+    reserveETag:async(id,etag,{plan})=>gate.reserve(id,plan,etag),
     readReservation:async id=>{
       const snapshot=await store.read(id);
       return {etag:snapshot?.etag,executionId:snapshot?.record?.executionId,
