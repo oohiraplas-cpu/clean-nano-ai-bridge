@@ -11,6 +11,7 @@ function fixture(overrides = {}) {
     expiresAt: new Date(now + 60000).toISOString(), status: '承認', revoked: false };
   let version = 1, patches = 0;
   const store = {
+    assertConfigured() {},
     async read() { return { etag: String(version), record: { ...record } }; },
     async verifyHuman() { return true; },
     async patch(id, etag, values) {
