@@ -312,6 +312,25 @@ class PlatformOrchestrator {
 
       // Step 18-19: 公開後検証、監査証跡
       if (publishApproval) {
+        const publicationEvidence = this.mutationEvidence;
+        const publicationGate = await verifyBeforeMutation({
+          ledger: this.approvalLedger,
+          operation: 'publish',
+          targetSha: gitOps.headSha,
+          observedSha: publicationEvidence?.observedSha,
+          requestId: requestIdLocal,
+          actorId: publicationEvidence?.actorId,
+          backupVerified: publicationEvidence?.backupVerified,
+          testsPassed: publicationEvidence?.testsPassed,
+          expected: {
+            appId: target.id,
+            environmentId: target.environmentId,
+            changeHash: publicationEvidence?.changeHash
+          }
+        });
+        if (publicationGate.allowed !== true) {
+          return this._returnBlocked('公開承認・証跡不足', [publicationGate.reason], requestIdLocal);
+        }
         const publication = await this._publishChanges({
           target,
           requestId: requestIdLocal
