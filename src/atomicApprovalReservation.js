@@ -5,13 +5,14 @@ const crypto = require('node:crypto');
 function createAtomicApprovalReservation({ store, now = () => Date.now() } = {}) {
   return async function reserveApproval(context = {}) {
     const { approvalId, requestId, operation, targetSha, appId, environmentId, changeHash } = context;
-    if (!store || typeof store.read !== 'function' || typeof store.patch !== 'function' ||
+    if (!store || typeof store.assertConfigured !== 'function' || typeof store.read !== 'function' || typeof store.patch !== 'function' ||
         typeof store.verifyHuman !== 'function' || !/^[1-9][0-9]*$/.test(String(approvalId || '')) ||
         !['deploy', 'publish'].includes(operation) || !requestId || !appId || !environmentId ||
         !/^[a-f0-9]{40}$/i.test(targetSha || '') || !/^[a-f0-9]{64}$/i.test(changeHash || '')) {
       return { reserved: false, reason: 'reservation_not_configured' };
     }
     try {
+      store.assertConfigured();
       const snapshot = await store.read(approvalId);
       const record = snapshot?.record;
       const start = Date.parse(record?.approvedAt);
@@ -56,9 +57,10 @@ function createAtomicApprovalReservation({ store, now = () => Date.now() } = {})
 function createApprovalRecheck({ store, now = () => Date.now() } = {}) {
   return async function recheckApproval(context = {}) {
     const { approvalId, executionId, requestId, operation, targetSha, appId, environmentId, changeHash } = context;
-    if (!store || typeof store.read !== 'function' || typeof store.verifyHuman !== 'function' ||
+    if (!store || typeof store.assertConfigured !== 'function' || typeof store.read !== 'function' || typeof store.verifyHuman !== 'function' ||
         !/^[1-9][0-9]*$/.test(String(approvalId || '')) || !executionId) return false;
     try {
+      store.assertConfigured();
       const snapshot = await store.read(approvalId);
       const record = snapshot?.record;
       const start = Date.parse(record?.approvedAt), end = Date.parse(record?.expiresAt), time = now();
