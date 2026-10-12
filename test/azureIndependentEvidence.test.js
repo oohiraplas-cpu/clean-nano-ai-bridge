@@ -82,3 +82,11 @@ test('registered State Manager evidence bridge revalidates before and after read
     validateRegisteredState: () => ({ context: { appId: 'app' }, source: record.source })
   }));
 });
+
+test('PAC comparison hook is internal-only and requires registered state validation', () => {
+  const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
+  assert.match(server, /readPacEvidenceWithRegisteredState\(/);
+  assert.match(server, /internalPacAdapter instanceof PowerAppsRuntimeSourceAdapter/);
+  assert.match(server, /validateRegisteredState: \(\) => stateRegistry\.validate/);
+  assert.doesNotMatch(server, /params\.runtimeSourceAdapter/);
+});
