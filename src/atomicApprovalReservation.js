@@ -110,7 +110,7 @@ function createApprovalRecheck({ store, now = () => Date.now() } = {}) {
       const valid = Boolean(validETag(snapshot?.etag) && snapshot.etag === receipt.etag && record && decisionHash(record) === receipt.hash && record.executionId === executionId &&
         record.executionStatus === 'reserved' && record.requestId === requestId &&
         record.tool === operation && record.targetId === appId &&
-        record.environmentId === environmentId && record.commitSha === targetSha &&
+        record.environmentId === environmentId && record.commitSha === runtimeCommitSha &&
         record.diffHash === changeHash && record.revoked === false && record.status === '承認' &&
         Number.isFinite(start) && Number.isFinite(end) && start <= time && end > time &&
         end > start && end - start <= 86400000 &&
