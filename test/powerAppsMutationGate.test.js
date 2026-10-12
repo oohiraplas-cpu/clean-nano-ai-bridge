@@ -73,3 +73,22 @@ test('uncertain mutation outcome requires recovery without replay', async () => 
   assert.equal(result.retryAllowed, false);
   assert.equal(f.calls.filter(x => x === 'mutate').length, 1);
 });
+
+test('mutation exception requires manual recovery and never retries', async () => {
+  const f = fixture();
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: async () => {
+    f.calls.push('mutate'); throw new Error('network timeout after write');
+  } });
+  assert.equal(result.reason, 'mutation_outcome_unknown');
+  assert.equal(result.recoveryRequired, true);
+  assert.equal(result.retryAllowed, false);
+  assert.equal(f.calls.filter(x => x === 'mutate').length, 1);
+});
+test('postcondition exception requires manual recovery and never retries', async () => {
+  const f = fixture({ verifyPostcondition: async () => { throw new Error('read unavailable'); } });
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: f.mutate });
+  assert.equal(result.reason, 'mutation_outcome_unknown');
+  assert.equal(result.recoveryRequired, true);
+  assert.equal(result.retryAllowed, false);
+  assert.equal(f.calls.filter(x => x === 'mutate').length, 1);
+});
