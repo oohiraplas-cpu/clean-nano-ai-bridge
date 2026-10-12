@@ -1,0 +1,18 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { validateP0ExecutionGate } = require('../src/p0ExecutionGate');
+const sha = 'a'.repeat(40);
+const approval = stage => ({ stage, actorId: 'requester', approverId: 'reviewer', targetSha: sha, approved: true, revoked: false });
+const valid = { operation: 'publish', targetSha: sha, observedSha: sha, actorId: 'requester', backupVerified: true, testsPassed: true, approvalRecords: [approval('change'), approval('publish')], appCheckerCritical: 0, expectedPublishedVersion: 'v1', observedPublishedVersion: 'v1' };
+test('matching independent two-stage approval and publication evidence pass', () => assert.equal(validateP0ExecutionGate(valid).allowed, true));
+test('missing ledger fails closed', () => assert.equal(validateP0ExecutionGate({ ...valid, approvalRecords: undefined }).allowed, false));
+test('single-stage approval cannot publish', () => assert.equal(validateP0ExecutionGate({ ...valid, approvalRecords: [approval('change')] }).allowed, false));
+test('duplicate approval is ambiguous', () => assert.equal(validateP0ExecutionGate({ ...valid, approvalRecords: [...valid.approvalRecords, approval('publish')] }).allowed, false));
+test('self approval fails', () => assert.equal(validateP0ExecutionGate({ ...valid, approvalRecords: [approval('change'), { ...approval('publish'), approverId: 'requester' }] }).allowed, false));
+test('HEAD mismatch fails', () => assert.equal(validateP0ExecutionGate({ ...valid, observedSha: 'b'.repeat(40) }).allowed, false));
+test('missing backup fails', () => assert.equal(validateP0ExecutionGate({ ...valid, backupVerified: false }).allowed, false));
+test('App Checker critical issue fails', () => assert.equal(validateP0ExecutionGate({ ...valid, appCheckerCritical: 1 }).allowed, false));
+test('published version mismatch fails', () => assert.equal(validateP0ExecutionGate({ ...valid, observedPublishedVersion: 'v2' }).allowed, false));
+test('deploy SHA must be independently verified', () => assert.equal(validateP0ExecutionGate({ ...valid, operation: 'deploy' }).allowed, false));
+test('merge requires both stages', () => assert.equal(validateP0ExecutionGate({ ...valid, operation: 'merge' }).allowed, true));
