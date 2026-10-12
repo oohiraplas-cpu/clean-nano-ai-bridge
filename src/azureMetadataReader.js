@@ -8,11 +8,18 @@ function createAzureMetadataReader({ collectMetadata = collect } = {}) {
   if (typeof collectMetadata !== 'function') throw new TypeError('invalid_metadata_collector');
   return Object.freeze({
     readDeploymentMetadata: async () => {
-      const observed = await collectMetadata();
+      let observed;
+      try {
+        observed = await collectMetadata();
+      } catch {
+        // Missing Azure CLI, authentication, or metadata access remains an explicit
+        // read-only blocker; never leak upstream errors or turn it into an HTTP 500.
+        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unavailable', resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
+      }
       if (!observed || observed.resourceIdMatched !== true ||
           observed.deploymentMetadataAccessible !== true ||
           !Array.isArray(observed.deploymentEntries)) {
-        return Object.freeze({ resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
+        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unverified', resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
       }
       return Object.freeze({ resourceIdMatched: true, deploymentEntries: observed.deploymentEntries.slice(0, 30).map(entry => ({
         deploymentId: typeof entry?.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
