@@ -158,13 +158,14 @@ test('opt-in Azure metadata reader returns only scoped deployment metadata', asy
   const { createAzureMetadataReader } = require('../src/azureMetadataReader');
   const reader = createAzureMetadataReader({ collectMetadata: () => ({
     resourceIdMatched: true, deploymentMetadataAccessible: true,
-    deploymentEntries: [{ deploymentId: 'deploy-1', active: true, status: 4, receivedTime: '2026-10-12' }],
+    deploymentEntries: [{ deploymentId: 'deploy-1', active: true, status: 4, receivedTime: '2026-10-12', nestedSecret: 'must-not-escape-nested' }],
     secret: 'must-not-escape'
   }) });
   const result = await reader.readDeploymentMetadata();
   assert.equal(result.resourceIdMatched, true);
   assert.equal(result.deploymentEntries.length, 1);
   assert.ok(!JSON.stringify(result).includes('must-not-escape'));
+  assert.ok(!JSON.stringify(result).includes('must-not-escape-nested'));
   const blocked = createAzureMetadataReader({ collectMetadata: () => ({ resourceIdMatched: false }) });
   const blockedResult = await blocked.readDeploymentMetadata();
   assert.equal(blockedResult.resourceIdMatched, false);
@@ -206,4 +207,13 @@ test('Azure MCP refuses self-declared confirmed diagnostics', () => {
   assert.ok(handler.includes("diagnostic: require('./azureDiagnostic').assessAzureDiagnostic()"));
   assert.ok(!handler.includes("result.diagnostic.status === 'confirmed'"));
   assert.ok(!handler.includes('diagnostic: result.diagnostic'));
+});
+
+
+test('Azure CLI metadata collector emits only read-only ARM and identity observations', () => {
+  const script = fs.readFileSync(path.join(__dirname, '../scripts/check-azure-metadata-only.js'), 'utf8');
+  assert.match(script, /armResourceId: app\.id/);
+  assert.match(script, /armObservedIndependently: true/);
+  assert.match(script, /managedIdentityObservedIndependently: managedIdentityAssigned/);
+  assert.doesNotMatch(script, /appsettings|list-secrets|access-token|role', 'assignment'/);
 });
