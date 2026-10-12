@@ -83,7 +83,8 @@ class PowerPlatformRequestHandler {
       permissionsService,
       // Only server-injected providers are eligible; missing providers fail closed.
       approvalLedger: config?.p0Execution?.ledger || null,
-      mutationEvidence: null,
+      getMutationEvidence: typeof config?.p0Execution?.getEvidence === 'function'
+        ? (context) => config.p0Execution.getEvidence(context) : null,
       config
     });
 
