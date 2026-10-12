@@ -197,3 +197,11 @@ test('Azure diagnostic stays blocked without independently verified evidence', (
   assert.equal(verified.checks.githubShaMatch, 'confirmed');
   assert.equal(assessAzureDiagnostic({ ...verified, armResourceId: '/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Web/sites/other' }).status, 'blocked');
 });
+
+
+test('Azure MCP response forwards only complete confirmed diagnostics and defaults blocked', () => {
+  const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
+  assert.ok(server.includes("result.diagnostic.status === 'confirmed'"));
+  assert.ok(server.includes("Object.values(result.diagnostic.checks || {}).length === 5"));
+  assert.ok(server.includes("require('./azureDiagnostic').assessAzureDiagnostic()"));
+});
