@@ -1720,6 +1720,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return powerAppsStore.getAppState();
   }
+  // Fail closed: direct Power Apps mutation routes are not yet wired to the
+  // independently verified human identity, scoped ledger, atomic ETag reservation,
+  // immutable SHA re-read and single-use final approval recheck.
+  // Read-only inspection and source handoff remain available through their own routes.
+  if (['update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'].includes(method)) {
+    throw requestError('BLOCKED: direct Power Apps mutation approval gate is not configured');
+  }
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
