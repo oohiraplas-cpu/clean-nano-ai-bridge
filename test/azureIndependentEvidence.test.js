@@ -129,3 +129,16 @@ test('no PAC profile or source-map readiness without in-process trusted observat
   assert.equal(result.deploymentShaMatched, false);
   assert.equal(result.effectiveRbacVerified, false);
 });
+
+test('metadata-only Azure probe never retrieves secrets or claims effective RBAC', () => {
+  const metadata = fs.readFileSync(path.join(__dirname, '../scripts/check-azure-metadata-only.js'), 'utf8');
+  assert.ok(metadata.includes("['webapp', 'identity', 'show'"));
+  assert.ok(metadata.includes("['webapp', 'log', 'deployment', 'list'"));
+  assert.doesNotMatch(metadata, /appsettings|list-secrets|credential|access-token|role', 'assignment'|config', 'appsettings'/);
+  assert.ok(metadata.includes('deploymentShaMatched: false'));
+  assert.ok(metadata.includes('effectiveRbacVerified: false'));
+  assert.ok(metadata.includes('pacRuntimeVerified: false'));
+  const legacy = fs.readFileSync(path.join(__dirname, '../scripts/verify-production-bridge.js'), 'utf8');
+  assert.ok(legacy.includes('observed.rbacReadVerified = false'));
+  assert.ok(!legacy.includes('observed.rbacReadVerified = Array.isArray(assignments)'));
+});
