@@ -26,3 +26,10 @@ test('missing ledger or evidence blocks deployment approval', async () => {
   assert.equal(result.allowed, false);
   assert.equal(result.reason, 'ledger_not_configured');
 });
+
+test('orchestrator never marks publication complete when publish result is pending or failed', () => {
+  const resultCheck = source.indexOf("if (publication?.published !== true || publication?.status !== 'published')");
+  const publishLog = source.indexOf("this._logExecution('PUBLISHED', `公開完了`)");
+  assert.ok(resultCheck > 0 && publishLog > resultCheck);
+  assert.match(source.slice(resultCheck, publishLog), /return this\._returnBlocked\('公開未確認'/);
+});
