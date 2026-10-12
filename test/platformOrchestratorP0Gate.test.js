@@ -75,7 +75,8 @@ test('deploy and publish require fresh SHA and single-use reservation before mut
 test('handler only accepts explicitly injected SHA and reservation providers', () => {
   const handler = fs.readFileSync(path.join(__dirname, '../src/powerPlatformRequestHandler.js'), 'utf8');
   assert.match(handler, /readCurrentSha: typeof config\?\.p0Execution\?\.readCurrentSha === 'function'/);
-  assert.match(handler, /reserveApproval: typeof config\?\.p0Execution\?\.reserveApproval === 'function'/);
+  assert.match(handler, /reserveApproval: config\?\.p0Execution\?\.approvalStore/);
+  assert.match(handler, /typeof config\?\.p0Execution\?\.getApprovalId === 'function'/);
 });
 
 test('reservation contract requires single-use, active approval and exact operation binding', () => {
