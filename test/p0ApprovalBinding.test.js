@@ -13,3 +13,12 @@ test('unmapped immutable binding fails closed', async () => assert.equal((await 
 test('SHA mismatch fails closed', async () => assert.equal((await ledger(map,[{...row,sha:'b'.repeat(40)}]).check(expected)).reason,'binding_mismatch'));
 test('environment mismatch fails closed', async () => assert.equal((await ledger(map,[{...row,env:'other'}]).check(expected)).reason,'binding_mismatch'));
 test('stage mismatch fails closed', async () => assert.equal((await ledger(map,[{...row,stage:'publish'}]).check(expected)).reason,'binding_mismatch'));
+
+test('duplicate matching approval records fail closed even if first is approved', async () => {
+  const rows = [row, { ...row, v:true, s:'却下' }];
+  assert.equal((await ledger(map, rows).check(expected)).reason, 'ambiguous_approval_records');
+});
+test('unrelated approval row does not make a matching row ambiguous', async () => {
+  const rows = [row, { ...row, r:'different' }];
+  assert.equal((await ledger(map, rows).check(expected)).bindingVerified, true);
+});
