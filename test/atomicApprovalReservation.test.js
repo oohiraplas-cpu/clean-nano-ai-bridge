@@ -102,3 +102,13 @@ test('fresh recheck accepts only the exact reserved approval', async () => {
   const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
   assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash }), true);
 });
+
+test('unconfigured SharePoint store fails closed before reading or patching', async () => {
+  const f = fixture(); let reads = 0;
+  f.store.assertConfigured = () => { throw new Error('missing field map'); };
+  f.store.read = async () => { reads++; throw new Error('should not read'); };
+  const reserve = createAtomicApprovalReservation({ store: f.store, now: () => now });
+  assert.equal((await reserve(context)).reserved, false);
+  assert.equal(reads, 0);
+  assert.equal(f.patches(), 0);
+});
