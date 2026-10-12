@@ -10,7 +10,7 @@ async function reviewGitHubCiFailure({github,repositoryFullName,...input} = {}) 
     return blocked('repository_unverified');
   if (!github || typeof github.fetch_workflow_job_logs !== 'function')
     return blocked('github_log_reader_unavailable');
-  // reviewCiFailure verifies run/head/branch/event, full job count and
+  // reviewCiFailure verifies run/head/branch/event, full job count, step metadata and
   // failed job identity BEFORE invoking this reader.
   return reviewCiFailure({
     ...input,
