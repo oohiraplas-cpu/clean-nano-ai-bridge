@@ -1,0 +1,28 @@
+'use strict';
+// Pure read-only adapter. The caller provides GitHub's job-log reader.
+// No GitHub credentials, writes, reruns, merge or deployment operations.
+const { reviewCiFailure } = require('./ciFailureReview');
+const blocked = reason => Object.freeze({status:'blocked',reason,mayEditDraft:false,mayDeploy:false,mayMerge:false});
+async function reviewGitHubCiFailure({github,repositoryFullName,...input} = {}) {
+  if (typeof repositoryFullName !== 'string' ||
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repositoryFullName) ||
+      repositoryFullName !== 'oohiraplas-cpu/clean-nano-ai-bridge')
+    return blocked('repository_unverified');
+  if (!github || typeof github.fetch_workflow_job_logs !== 'function')
+    return blocked('github_log_reader_unavailable');
+  // reviewCiFailure verifies run/head/branch/event, full job count and
+  // failed job identity BEFORE invoking this reader.
+  return reviewCiFailure({
+    ...input,
+    readJobLog: async jobId => {
+      const response = await github.fetch_workflow_job_logs({
+        repo_full_name: repositoryFullName, job_id: jobId
+      });
+      if (!response || !response.result ||
+          typeof response.result.content !== 'string')
+        throw new Error('invalid_log_response');
+      return response.result.content;
+    }
+  });
+}
+module.exports = { reviewGitHubCiFailure };
