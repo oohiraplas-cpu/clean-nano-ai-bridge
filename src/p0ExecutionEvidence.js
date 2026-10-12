@@ -8,23 +8,22 @@ async function verifyBeforeMutation({ ledger, operation, targetSha, observedSha,
   if (!OPERATIONS.has(operation)) return deny('unknown_operation');
   if (!SHA.test(targetSha || '') || targetSha !== observedSha) return deny('head_mismatch');
   if (!requestId || !actorId || backupVerified !== true || testsPassed !== true) return deny('preflight_evidence_missing');
+  if (!SHA.test(expected.changeHash || '') || !expected.environmentId || !expected.appId) return deny('binding_evidence_missing');
   if (!ledger || ledger.configured !== true || typeof ledger.check !== 'function') return deny('ledger_not_configured');
   const approvers = [];
   for (const [stepIndex, stage] of requiredStages(operation).entries()) {
     // The existing ledger checks requestId, stepIndex, tool, status, expiry and revocation.
     let decision;
     try {
-      decision = await ledger.check({ requestId, stepIndex, tool: operation + ':' + stage });
+      decision = await ledger.check({ requestId, stepIndex, tool: operation + ':' + stage, targetSha, environmentId: expected.environmentId, appId: expected.appId, changeHash: expected.changeHash, approvalStage: stage });
     } catch {
       return deny('ledger_unreadable');
     }
     if (!decision || decision.approved !== true || typeof decision.approver !== 'string' || !decision.approver.trim()) return deny('approval_missing_' + stage);
     if (decision.approver === actorId) return deny('self_approval_' + stage);
+    if (decision.bindingVerified !== true) return deny('ledger_binding_unverified');
     approvers.push(decision.approver);
   }
-  // The existing ledger does not bind approvals to targetSha, environment or changeHash.
-  // A trustworthy independent binding must be supplied by a separate ledger extension.
-  if (expected.ledgerBindingVerified !== true) return deny('ledger_binding_unverified');
   return Object.freeze({ allowed: true, reason: null, stages: approvers.length });
 }
 function verifyAfterMutation({ operation, expectedSha, actualSha, appCheckerCritical, expectedVersion, observedVersion, operationConfirmed } = {}) {
