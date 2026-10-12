@@ -142,3 +142,13 @@ test('metadata-only Azure probe never retrieves secrets or claims effective RBAC
   assert.ok(legacy.includes('observed.rbacReadVerified = false'));
   assert.ok(!legacy.includes('observed.rbacReadVerified = Array.isArray(assignments)'));
 });
+
+
+test('Azure metadata MCP tool is registered and fail closed without a trusted reader', () => {
+  const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
+  assert.ok(server.includes("'get_azure_deployment_metadata'"));
+  assert.ok(server.includes("reason: 'azure_metadata_reader_unavailable'"));
+  assert.ok(server.includes('deploymentShaMatched: false'));
+  assert.ok(server.includes('effectiveRbacVerified: false'));
+  assert.ok(server.includes('pacRuntimeVerified: false'));
+});
