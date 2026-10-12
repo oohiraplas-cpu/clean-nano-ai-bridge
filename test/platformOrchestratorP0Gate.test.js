@@ -102,3 +102,12 @@ test('both mutation paths recheck SHA after single-use reservation', () => {
     assert.match(source.slice(recheck, mutate), /head_read_failed_after_reservation/);
   }
 });
+
+test('fresh approval recheck occurs immediately before each mutation', () => {
+  for (const [name, mutation] of [['deployReservation', 'const deployment = await this._deployChanges({'], ['publishReservation', 'const publication = await this._publishChanges({']]) {
+    const recheck = source.indexOf('await this.recheckApproval({ ...' + name);
+    const mutate = source.indexOf(mutation);
+    assert.ok(recheck > 0 && mutate > recheck);
+    assert.match(source.slice(recheck, mutate), /approval_invalid_after_reservation/);
+  }
+});
