@@ -495,6 +495,408 @@ class PowerAppsGitStore {
       }
       throw error;
     }
+  }  /**
+   * Power Apps画像アセット統合操作
+   *
+   * operation:
+   * - list   : 指定された画像パスを確認
+   * - get    : 画像をBase64で取得
+   * - export : 画像をエクスポート用形式で取得
+   * - import : 新しい画像をGitHub正本へ登録
+   *
+   * 注意:
+   * - GitHub正本に存在する画像だけが対象
+   * - 元画像の上書きは禁止
+   * - mainブランチへの直接登録は禁止
+   */
+  async powerAppsMediaAsset({
+    operation,
+    relativePath,
+    relativePaths = [],
+    base64Content,
+    contentType,
+    expectedBranch,
+    message,
+    approvedByHuman = false
+  } = {}) {
+    const supportedExtensions =
+      /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
+
+    const supportedContentTypes = new Set([
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml',
+      'image/bmp'
+    ]);
+
+    const normalizePath = value => {
+      if (typeof value !== 'string') return null;
+
+      const normalized = value
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '');
+
+      if (
+        !normalized ||
+        normalized.includes('../') ||
+        normalized.includes('/..') ||
+        normalized.startsWith('..')
+      ) {
+        return null;
+      }
+
+      return normalized;
+    };
+
+    const getAsset = async targetPath => {
+      const normalizedPath = normalizePath(targetPath);
+
+      if (!normalizedPath) {
+        return {
+          status: 'blocked',
+          error: 'INVALID_RELATIVE_PATH',
+          reason:
+            'relativePath is required and path traversal is prohibited'
+        };
+      }
+
+      if (!supportedExtensions.test(normalizedPath)) {
+        return {
+          status: 'blocked',
+          error: 'UNSUPPORTED_MEDIA_TYPE',
+          relativePath: normalizedPath
+        };
+      }
+
+      try {
+        const file =
+          await this.getSourceFile(normalizedPath);
+
+        if (!file) {
+          return {
+            status: 'not_found',
+            error: 'MEDIA_ASSET_NOT_FOUND',
+            relativePath: normalizedPath
+          };
+        }
+
+        return {
+          status: 'ok',
+          name: normalizedPath.split('/').pop(),
+          relativePath: normalizedPath,
+          sha: file.sha || null,
+          branch: file.branch || expectedBranch || null,
+          size:
+            typeof file.size === 'number'
+              ? file.size
+              : null,
+          encoding: file.encoding || 'base64',
+          content:
+            file.content ||
+            file.base64Content ||
+            null,
+          downloadUrl:
+            file.downloadUrl ||
+            file.download_url ||
+            null
+        };
+      } catch (error) {
+        const detail =
+          String(error?.message || error);
+
+        if (/FILE_NOT_FOUND|NOT_FOUND|404/i.test(detail)) {
+          return {
+            status: 'not_found',
+            error: 'MEDIA_ASSET_NOT_FOUND',
+            relativePath: normalizedPath
+          };
+        }
+
+        return {
+          status: 'blocked',
+          error: 'MEDIA_ASSET_GET_FAILED',
+          reason: detail,
+          relativePath: normalizedPath
+        };
+      }
+    };
+
+    if (
+      !['list', 'get', 'export', 'import'].includes(operation)
+    ) {
+      return {
+        status: 'blocked',
+        error: 'INVALID_OPERATION',
+        reason:
+          'operation must be list, get, export, or import'
+      };
+    }
+
+    /*
+     * LIST
+     * ファイルシステム全体を推測探索せず、
+     * 指定された候補パスだけを確認する。
+     */
+    if (operation === 'list') {
+      if (
+        !Array.isArray(relativePaths) ||
+        relativePaths.length === 0
+      ) {
+        return {
+          status: 'blocked',
+          error: 'RELATIVE_PATHS_REQUIRED',
+          reason:
+            'relativePaths must contain one or more candidate paths'
+        };
+      }
+
+      const assets = [];
+
+      for (const candidatePath of relativePaths) {
+        const result = await getAsset(candidatePath);
+
+        assets.push({
+          name:
+            result.name ||
+            String(candidatePath).split('/').pop(),
+          relativePath:
+            result.relativePath || candidatePath,
+          sha: result.sha || null,
+          branch: result.branch || null,
+          size: result.size ?? null,
+          encoding: result.encoding || null,
+          status: result.status,
+          error: result.error || null
+        });
+      }
+
+      return {
+        status: 'ok',
+        operation: 'list',
+        count: assets.length,
+        assets,
+        verified:
+          assets.some(asset => asset.status === 'ok')
+      };
+    }
+
+    /*
+     * GET
+     */
+    if (operation === 'get') {
+      const asset = await getAsset(relativePath);
+
+      return {
+        operation: 'get',
+        ...asset,
+        verified: asset.status === 'ok'
+      };
+    }
+
+    /*
+     * EXPORT
+     */
+    if (operation === 'export') {
+      const asset = await getAsset(relativePath);
+
+      if (asset.status !== 'ok') {
+        return {
+          operation: 'export',
+          ...asset,
+          verified: false
+        };
+      }
+
+      return {
+        status: 'ok',
+        operation: 'export',
+        fileName: asset.name,
+        relativePath: asset.relativePath,
+        sha: asset.sha,
+        branch: asset.branch,
+        size: asset.size,
+        encoding: asset.encoding,
+        base64Content: asset.content,
+        downloadUrl: asset.downloadUrl,
+        verified: Boolean(
+          asset.content || asset.downloadUrl
+        ),
+        warning:
+          'Binary image content must remain Base64 encoded'
+      };
+    }
+
+    /*
+     * IMPORT
+     */
+    if (operation === 'import') {
+      if (approvedByHuman !== true) {
+        return {
+          status: 'blocked',
+          error: 'HUMAN_APPROVAL_REQUIRED'
+        };
+      }
+
+      const normalizedPath =
+        normalizePath(relativePath);
+
+      if (!normalizedPath) {
+        return {
+          status: 'blocked',
+          error: 'INVALID_RELATIVE_PATH'
+        };
+      }
+
+      if (!supportedExtensions.test(normalizedPath)) {
+        return {
+          status: 'blocked',
+          error: 'UNSUPPORTED_MEDIA_TYPE',
+          relativePath: normalizedPath
+        };
+      }
+
+      if (
+        typeof contentType !== 'string' ||
+        !supportedContentTypes.has(contentType)
+      ) {
+        return {
+          status: 'blocked',
+          error: 'UNSUPPORTED_CONTENT_TYPE',
+          contentType
+        };
+      }
+
+      if (
+        typeof expectedBranch !== 'string' ||
+        !expectedBranch.trim()
+      ) {
+        return {
+          status: 'blocked',
+          error: 'EXPECTED_BRANCH_REQUIRED'
+        };
+      }
+
+      if (
+        expectedBranch.trim().toLowerCase() === 'main'
+      ) {
+        return {
+          status: 'blocked',
+          error: 'MAIN_BRANCH_WRITE_PROHIBITED',
+          reason:
+            'Create and use a feature branch'
+        };
+      }
+
+      if (
+        typeof message !== 'string' ||
+        !message.trim()
+      ) {
+        return {
+          status: 'blocked',
+          error: 'COMMIT_MESSAGE_REQUIRED'
+        };
+      }
+
+      if (
+        typeof base64Content !== 'string' ||
+        !base64Content.trim()
+      ) {
+        return {
+          status: 'blocked',
+          error: 'BASE64_CONTENT_REQUIRED'
+        };
+      }
+
+      const cleanBase64 = base64Content
+        .replace(
+          /^data:image\/[a-zA-Z0-9.+-]+;base64,/,
+          ''
+        )
+        .replace(/\s/g, '');
+
+      if (
+        !cleanBase64 ||
+        cleanBase64.length % 4 !== 0 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(cleanBase64)
+      ) {
+        return {
+          status: 'blocked',
+          error: 'INVALID_BASE64_CONTENT'
+        };
+      }
+
+      const estimatedBytes =
+        Math.floor(cleanBase64.length * 0.75);
+
+      const maximumBytes = 10 * 1024 * 1024;
+
+      if (estimatedBytes > maximumBytes) {
+        return {
+          status: 'blocked',
+          error: 'MEDIA_ASSET_TOO_LARGE',
+          maximumBytes,
+          estimatedBytes
+        };
+      }
+
+      /*
+       * 既存ファイルの上書きを禁止
+       */
+      const existing = await getAsset(normalizedPath);
+
+      if (existing.status === 'ok') {
+        return {
+          status: 'blocked',
+          error: 'MEDIA_ASSET_ALREADY_EXISTS',
+          reason:
+            'Use a new asset name such as 20260922_185456027_iOS_v2',
+          relativePath: normalizedPath,
+          existingSha: existing.sha
+        };
+      }
+
+      if (
+        existing.status !== 'not_found' &&
+        existing.error !== 'MEDIA_ASSET_NOT_FOUND'
+      ) {
+        return {
+          status: 'blocked',
+          error: 'MEDIA_EXISTENCE_CHECK_FAILED',
+          reason:
+            existing.reason ||
+            existing.error ||
+            'Unknown error',
+          relativePath: normalizedPath
+        };
+      }
+
+      const updateResult =
+        await this.updateSourceFile(
+          normalizedPath,
+          cleanBase64,
+          message.trim(),
+          expectedBranch.trim()
+        );
+
+      return {
+        status: 'ok',
+        operation: 'import',
+        relativePath: normalizedPath,
+        contentType,
+        branch: expectedBranch.trim(),
+        estimatedBytes,
+        result: updateResult,
+        verified: Boolean(updateResult)
+      };
+    }
+
+    return {
+      status: 'blocked',
+      error: 'UNREACHABLE_OPERATION'
+    };
   }
 }
 
