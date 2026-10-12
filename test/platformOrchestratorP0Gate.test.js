@@ -77,3 +77,16 @@ test('handler only accepts explicitly injected SHA and reservation providers', (
   assert.match(handler, /readCurrentSha: typeof config\?\.p0Execution\?\.readCurrentSha === 'function'/);
   assert.match(handler, /reserveApproval: typeof config\?\.p0Execution\?\.reserveApproval === 'function'/);
 });
+
+test('reservation contract requires single-use, active approval and exact operation binding', () => {
+  const deploy = source.slice(source.indexOf("const reservation = await this.reserveApproval({ operation: 'deploy'"));
+  const publish = source.slice(source.indexOf("const reservation = await this.reserveApproval({ operation: 'publish'"));
+  for (const region of [deploy, publish]) {
+    assert.match(region, /reservation\?\.singleUseVerified !== true/);
+    assert.match(region, /reservation\?\.approvalActiveVerified !== true/);
+    assert.match(region, /reservation\?\.targetSha !== gitOps\.headSha/);
+    assert.match(region, /reservation\?\.requestId !== requestIdLocal/);
+  }
+  assert.match(deploy, /reservation\?\.operation !== 'deploy'/);
+  assert.match(publish, /reservation\?\.operation !== 'publish'/);
+});
