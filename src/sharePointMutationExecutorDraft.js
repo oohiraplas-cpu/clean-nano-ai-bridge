@@ -39,7 +39,8 @@ function createSharePointMutationExecutor(deps = {}) {
       }
       const verified = await deps.readback({plan,result,backup});
       if (verified !== true) return blocked('post_write_verification_failed');
-      await deps.audit({approvalId,executionId:receipt.executionId,changeHash:digest,backupReference:backup.reference,status:'VERIFIED'});
+      const auditReceipt = await deps.audit({approvalId,executionId:receipt.executionId,changeHash:digest,backupReference:backup.reference,status:'VERIFIED'});
+      if (!auditReceipt || auditReceipt.persisted !== true || typeof auditReceipt.reference !== 'string' || !auditReceipt.reference.trim()) return blocked('audit_not_persisted');
       return {status:'VERIFIED',executionId:receipt.executionId,backupReference:backup.reference};
     } catch (error) {
       // A write may have occurred: never automatically retry or claim rollback.
