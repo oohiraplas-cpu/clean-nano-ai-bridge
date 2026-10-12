@@ -19,13 +19,14 @@ function createSharePointMutationExecutor(deps = {}) {
       if (!snapshot?.etag || snapshot.etag === '*' || await deps.verifyHuman(snapshot) !== true) return blocked('human_or_etag_unverified');
       const backup = await deps.backup(plan);
       if (!backup || backup.verified !== true || !backup.reference) return blocked('backup_unverified');
-      const receipt = await deps.reserveETag(approvalId,snapshot.etag,{changeHash:digest,operation:plan.operation});
+      const receipt = await deps.reserveETag(approvalId,snapshot.etag,{changeHash:digest,operation:plan.operation,plan});
       if (!receipt?.executionId || receipt?.reserved !== true) return blocked('reservation_failed');
       reserved = true;
       const confirmed = await deps.readReservation(approvalId);
-      if (!confirmed || confirmed.executionId !== receipt.executionId || confirmed.changeHash !== digest || confirmed.status !== 'reserved') return blocked('reservation_unconfirmed');
-      if (await deps.verifyHuman(snapshot) !== true || await deps.recheck({plan,approvalId,receipt,snapshot}) !== true) return blocked('approval_recheck_failed');
+      if (!confirmed || confirmed.executionId !== receipt.executionId || confirmed.changeHash !== digest || confirmed.status !== 'reserved' || !confirmed.etag || confirmed.etag === snapshot.etag) return blocked('reservation_unconfirmed');
+      if (await deps.verifyHuman(snapshot) !== true || await deps.recheck({plan,approvalId,receipt,snapshot,confirmed}) !== true) return blocked('approval_recheck_failed');
       // A single trusted writer executes only the approved operation.
+      if (await deps.readRuntimeSha() !== plan.runtimeCommitSha) return blocked('runtime_sha_changed');
       const writer = deps.writer;
       const p = plan.params;
       let result;
