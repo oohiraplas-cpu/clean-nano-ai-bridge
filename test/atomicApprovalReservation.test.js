@@ -54,3 +54,31 @@ test('approval identity and exact target binding are required', async () => {
   assert.equal((await createAtomicApprovalReservation({ store: g.store, now: () => now })({ ...context, targetSha: 'c'.repeat(40) })).reserved, false);
   assert.equal(g.patches(), 0);
 });
+
+test('post-reservation revocation or expiry fails closed without retry', async () => {
+  for (const mutate of [
+    record => { record.revoked = true; },
+    record => { record.expiresAt = new Date(now - 1).toISOString(); },
+    record => { record.targetId = 'other-app'; },
+    record => { record.diffHash = 'c'.repeat(64); }
+  ]) {
+    const f = fixture(), patch = f.store.patch;
+    f.store.patch = async (...args) => { await patch(...args); mutate(f.record); };
+    const result = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+    assert.equal(result.reserved, false);
+    assert.equal(f.patches(), 1);
+  }
+});
+test('simultaneous reservations cannot both win ETag compare-and-set', async () => {
+  const f = fixture();
+  const reserve = createAtomicApprovalReservation({ store: f.store, now: () => now });
+  const results = await Promise.all([reserve(context), reserve(context)]);
+  assert.equal(results.filter(x => x.reserved).length, 1);
+  assert.equal(f.patches(), 1);
+});
+test('invalid approval identifier and missing store fail closed', async () => {
+  assert.equal((await createAtomicApprovalReservation()({ ...context })).reserved, false);
+  const f = fixture();
+  assert.equal((await createAtomicApprovalReservation({ store: f.store, now: () => now })({ ...context, approvalId: '*' })).reserved, false);
+  assert.equal(f.patches(), 0);
+});
