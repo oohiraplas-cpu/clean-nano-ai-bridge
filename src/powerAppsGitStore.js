@@ -474,8 +474,29 @@ class PowerAppsGitStore {
     return { status: 'ok', action: 'PullChangesFromGit', solutionUniqueName, result };
   }
 
-  async applySourceFileChange(relativePath, content, message, expectedBranch) {
+  async applySourceFileChange(relativePath, content, message, expectedBranch, deferSync = false) {
+    if (typeof deferSync !== 'boolean') throw new Error('deferSync must be boolean');
     const update = await this.updateSourceFile(relativePath, content, message, expectedBranch);
+    if (deferSync) {
+      // Source-only handoff. No Dataverse authentication, sync, save or publish.
+      const expectedBlobSha = crypto.createHash('sha1')
+        .update(`blob ${Buffer.byteLength(content, 'utf8')}\0`).update(content).digest('hex');
+      if (!/^[a-f0-9]{40}$/.test(update.commitSha || '') || update.contentSha !== expectedBlobSha) {
+        return { status: 'blocked', reason: 'source_commit_unverified', update,
+          retryAllowed: false, saved: false, published: false };
+      }
+      return { status: 'handoff_prepared', update, saved: false, published: false,
+        sync: { status: 'deferred', reason: 'cnai_save_publish' },
+        handoff: { recipient: 'CNAI', repository: `${this.githubOwner}/${this.githubRepo}`,
+          branch: update.branch, path: update.path, commitSha: update.commitSha,
+          contentSha: update.contentSha, contentSha256: crypto.createHash('sha256').update(content).digest('hex'),
+          readbackRequired: true, humanApprovalRequired: true,
+          readyForSave: false, readyForPublish: false,
+          nextSteps: ['verify_source_and_target', 'verify_backup_and_app_checker',
+            'verify_save_approval', 'save_powerapps_app', 'verify_saved_source',
+            'verify_publish_approval', 'publish_powerapps_app', 'verify_published_version'] }
+      };
+    }
     try {
       const refresh = await this.refreshFromGit();
       const pull = await this.pullFromGit();
@@ -484,7 +505,9 @@ class PowerAppsGitStore {
       const detail = String(error?.message || error);
       if (/Not a valid solution|Unable to retrieve solution components from root folder path/i.test(detail)) {
         return {
-          status: 'ok',
+          status: 'blocked',
+          reason: 'application_sync_incomplete',
+          sourceUpdated: true, saved: false, published: false, retryAllowed: false,
           update,
           sync: {
             status: 'skipped',

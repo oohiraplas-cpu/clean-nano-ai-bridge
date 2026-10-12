@@ -77,8 +77,10 @@ test('Git統合されていないSolutionでもGitHubソース更新を失わな
     githubBranch: 'main', githubRoot: 'powerapps/app/Source', fetchImpl
   });
   const result = await store.applySourceFileChange('App.pa.yaml', 'new', 'sync source', 'main');
-  assert.equal(result.status, 'ok');
   assert.equal(result.update.commitSha, 'commit-sha');
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.saved, false);
+  assert.equal(result.retryAllowed, false);
   assert.equal(result.sync.status, 'skipped');
   assert.equal(result.sync.reason, 'solution_not_git_integrated');
 });
@@ -106,8 +108,10 @@ test('GitHub正本ルートをSolutionルートとして取得できない場合
     githubBranch: 'main', githubRoot: 'powerapps/CN_AI依頼台帳/Source', fetchImpl
   });
   const result = await store.applySourceFileChange('S1_Home.pa.yaml', 'new', 'sync source', 'main');
-  assert.equal(result.status, 'ok');
   assert.equal(result.update.commitSha, 'commit-sha');
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.saved, false);
+  assert.equal(result.retryAllowed, false);
   assert.equal(result.sync.status, 'skipped');
   assert.equal(result.sync.reason, 'solution_not_git_integrated');
 });

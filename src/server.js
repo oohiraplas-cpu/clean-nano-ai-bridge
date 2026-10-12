@@ -297,11 +297,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'update_powerapps_app',
-    description: '既存Power Appsアプリを更新します。ソース更新時はGitHubへ保存後、Power Platformへ同期します。',
+    description: '既存Power Appsアプリを更新します。deferSync:trueではGitHubソースのみ更新しCNAIへの保存公開引渡し情報を返します。省略時は従来の同期経路です。',
     inputSchema: {
       type: 'object',
       properties: {
         updateData: { type: 'object', description: 'Power Apps管理APIへ送る更新内容' },
+        deferSync: { type: 'boolean', description: 'trueの場合はソース編集のみ。Power Platform同期・保存・公開を実行せずCNAIに引き渡します。' },
         relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
         content: { type: 'string', description: '更新後のファイル内容' },
         message: { type: 'string', description: '更新のコミットメッセージ' },
@@ -1722,9 +1723,16 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertSourceControlCompatible?.('編集')));
-    return params.updateData
-      ? powerAppsStore.updateApp(params.updateData)
-      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message, params.branch));
+    if (params.deferSync === true && (!powerAppsStore.appId || !powerAppsStore.environmentId)) {
+      throw requestError('CNAI引渡しには設定済みappId・environmentIdが必要です');
+    }
+    if (params.updateData) return powerAppsStore.updateApp(params.updateData);
+    const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(
+      params.relativePath, params.content, params.message, params.branch, params.deferSync));
+    if (result.handoff) result.handoff.target = {
+      appId: powerAppsStore.appId, environmentId: powerAppsStore.environmentId
+    };
+    return result;
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);

@@ -1769,3 +1769,27 @@ test('SharePointの新規作成・編集ツールは人間承認なしでは書�
   }
   assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
 });
+
+
+test('update_powerapps_app deferSync passes a scoped CNAI handoff without Power Platform calls', async (t) => {
+  const content = 'Screens:\n  S1_Home: {}\n';
+  const crypto = require('node:crypto');
+  const blob = crypto.createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+  const mock = routedFetch([
+    githubContentsRoute({ main: { [`${GITHUB_ROOT}/Screen3.pa.yaml`]: 'old' } }),
+    [(c) => c.url.includes('api.github.com') && c.method === 'PUT', () => jsonResponse({ commit: { sha: 'a'.repeat(40) }, content: { sha: blob } })]
+  ]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
+  for (const invoke of [rpc, legacy]) {
+    const response = await invoke(server, 'update_powerapps_app', { relativePath: 'Screen3.pa.yaml', content, branch: 'main', deferSync: true });
+    const result = invoke === rpc ? response.structuredContent : response.body.result;
+    assert.equal(result.status, 'handoff_prepared');
+    assert.equal(result.saved, false);
+    assert.equal(result.published, false);
+    assert.equal(result.handoff.recipient, 'CNAI');
+    assert.ok(result.handoff.target.appId);
+    assert.ok(result.handoff.target.environmentId);
+    assert.equal(result.handoff.readyForPublish, false);
+  }
+  assert.equal(mock.calls.filter(c => !c.url.includes('api.github.com')).length, 0);
+});
