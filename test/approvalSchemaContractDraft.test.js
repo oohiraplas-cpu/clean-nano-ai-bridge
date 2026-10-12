@@ -92,10 +92,16 @@ test('backup boundary: 60,000 UTF-8 bytes accepted, 60,001 rejected before reser
     const record = { ...input, status: '承認', revoked: false,
       approvedAt: '2026-10-13T09:00:00Z', expiresAt: '2026-10-13T11:00:00Z',
       executionId: '', executionStatus: '' };
+    let version = 1;
     const store = {
-      async read() { return { record, etag: '"v1"' }; },
+      async read() { return { record: { ...record }, etag: '"v' + version + '"' }; },
       async verifyHuman() { return true; },
-      async patch() { patches++; }
+      async patch(id, etag, values) {
+        assert.equal(etag, '"v' + version + '"');
+        Object.assign(record, values);
+        version++;
+        patches++;
+      }
     };
     const executor = new ScopedApprovalExecutor({ store, commitSha: 'a'.repeat(40),
       now: () => now, operations: { edit: {
