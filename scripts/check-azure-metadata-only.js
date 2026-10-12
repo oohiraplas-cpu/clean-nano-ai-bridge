@@ -11,7 +11,7 @@ function collect() {
     "[?name=='clean-nano-ai-bridge'].{name:name,id:id,resourceGroup:resourceGroup,state:state}"]);
   if (!Array.isArray(apps) || apps.length !== 1) throw new Error('azure_target_unverified');
   const app = apps[0];
-  const expected = /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.Web\/sites\/clean-nano-ai-bridge$/i;
+  const expected = /^\/subscriptions\/[^/]+\/resourceGroups\/clean-nano-ai-bridge_group\/providers\/Microsoft\.Web\/sites\/clean-nano-ai-bridge$/i;
   if (!expected.test(app.id || '')) throw new Error('azure_resource_id_unverified');
   const args = ['--name', app.name, '--resource-group', app.resourceGroup];
   let managedIdentityAssigned = false;
