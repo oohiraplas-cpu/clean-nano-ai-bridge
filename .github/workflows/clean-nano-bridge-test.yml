@@ -46,15 +46,19 @@ jobs:
 
       # ステップ 6: npm test (テスト実行)
       - name: "6. Run test suite"
+        id: npm_test
         run: npm test
 
       - name: "7. Validate OpenAPI"
+        id: openapi_validation
         run: npm run validate:openapi
 
       - name: "8. Validate MCP tool contract"
+        id: mcp_contract
         run: npm run test:mcp-tools
 
       - name: "9. Validate canonical branch safety"
+        id: safety_validation
         run: npm run test:safety
 
       # ステップ 10: サーバーをバックグラウンド起動
@@ -262,3 +266,51 @@ jobs:
             sleep 1
             kill -9 $(cat server.pid) 2>/dev/null || true
           fi
+
+      # Metadata-only diagnostic: never copy stdout, stderr, env, or secrets.
+      - name: "Structured CI diagnostic"
+        id: structured_ci_diagnostic
+        if: always()
+        env:
+          DIAG_RUN_ID: ${{ github.run_id }}
+          DIAG_RUN_ATTEMPT: ${{ github.run_attempt }}
+          DIAG_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DIAG_NPM_TEST: ${{ steps.npm_test.outcome }}
+          DIAG_OPENAPI: ${{ steps.openapi_validation.outcome }}
+          DIAG_MCP: ${{ steps.mcp_contract.outcome }}
+          DIAG_SAFETY: ${{ steps.safety_validation.outcome }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const values = {
+            npm_test: process.env.DIAG_NPM_TEST,
+            openapi_validation: process.env.DIAG_OPENAPI,
+            mcp_contract: process.env.DIAG_MCP,
+            safety_validation: process.env.DIAG_SAFETY
+          };
+          const allowed = new Set(['success','failure','skipped','cancelled']);
+          if (!Object.values(values).every(v => allowed.has(v))) process.exit(1);
+          const data = {
+            schema_version: 1,
+            source: 'github_actions',
+            run_id: Number(process.env.DIAG_RUN_ID),
+            run_attempt: Number(process.env.DIAG_RUN_ATTEMPT),
+            head_sha: process.env.DIAG_HEAD_SHA,
+            job_key: 'test',
+            steps: values
+          };
+          if (!Number.isSafeInteger(data.run_id) || data.run_id <= 0 ||
+              !Number.isSafeInteger(data.run_attempt) || data.run_attempt <= 0 ||
+              !/^[a-f0-9]{40}$/i.test(data.head_sha)) process.exit(1);
+          fs.mkdirSync('ci-diagnostic', { recursive: true });
+          fs.writeFileSync('ci-diagnostic/diagnostic.json', JSON.stringify(data));
+          NODE
+
+      - name: "Upload structured CI diagnostic"
+        if: always() && steps.structured_ci_diagnostic.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-diagnostic/diagnostic.json
+          if-no-files-found: error
+          retention-days: 1

@@ -17,6 +17,8 @@ const { PowerAutomateRunner } = require('./powerAutomateRunner');
 const { PaymentMonitorService } = require('./paymentMonitorService');
 const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
+const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
+const { createAzureMetadataReader } = require('./azureMetadataReader');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
@@ -91,6 +93,8 @@ const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
 const { discoverPowerAppsStructure, resolveAppTargetById } = require('./powerAppsDiscovery');
 const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError, blobSha } = require('./stateContext');
+const { readPacEvidenceWithRegisteredState } = require('./pacStateEvidence');
+const { PowerAppsRuntimeSourceAdapter } = require('./powerAppsRuntimeSource');
 const {
   FAIL_CLOSED_TOOLS,
   validateStateContext,
@@ -187,7 +191,8 @@ const MCP_METHODS = Object.freeze([
   'create_execution_request',
   'get_execution_queue',
   'get_execution_status',
-  'get_checkpoint'
+  'get_checkpoint',
+  'get_azure_deployment_metadata', 'verify_github_ci_artifact'
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
@@ -1363,7 +1368,28 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       additionalProperties: false
     },
     annotations: { readOnlyHint: true, destructiveHint: false }
-  }
+  },
+  {
+    name: 'verify_github_ci_artifact',
+    description: 'GitHub Actionsの診断ZIPを認証付きで取得し、SHA-256・HEAD・実行回・REST結果を照合します。読み取り専用。修正・マージ・デプロイは許可しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'integer', minimum: 1 },
+        artifactId: { type: 'integer', minimum: 1 },
+        expectedHeadSha: { type: 'string', pattern: '^[a-f0-9]{40}$' },
+        expectedRunAttempt: { type: 'integer', minimum: 1 }
+      },
+      required: ['runId', 'artifactId', 'expectedHeadSha', 'expectedRunAttempt'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_azure_deployment_metadata',
+    description: 'Azureデプロイの非機密メタデータを取得します。読み取り専用。未接続の場合はFail Closed。デプロイIDをGit SHAと見なしません。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
 ]);
 
 async function tasksPayload(store) {
@@ -1451,6 +1477,30 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'verify_github_ci_artifact') {
+    if (!config.mcpApiKey) return { status: 'blocked', reason: 'mcp_authentication_required', mayEditDraft: false, mayMerge: false, mayDeploy: false };
+    return bridgeServices.ciArtifact.verify(params);
+  }
+  if (method === 'get_azure_deployment_metadata') {
+    if (params && Object.keys(params).length) throw requestError('parameters_not_allowed');
+    const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_metadata_reader_unavailable' };
+    const result = await reader();
+    if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
+      return { status: 'blocked', reason: 'azure_metadata_unverified' };
+    return { status: 'observed_not_verified', resourceIdMatched: true,
+      // Only the trusted adapter's already assessed diagnostic is forwarded.
+      // Missing or malformed diagnostic must remain blocked.
+      // Untrusted adapter results are observational only. Never accept a
+      // self-declared confirmed status as independent Azure proof.
+      diagnostic: require('./azureDiagnostic').assessAzureDiagnostic(),
+      deploymentEntries: result.deploymentEntries.map(entry => ({
+        deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
+        active: entry.active === true,
+        status: Number.isInteger(entry.status) ? entry.status : null,
+        receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
+      })).slice(0, 30), deploymentShaMatched: false, effectiveRbacVerified: false, pacRuntimeVerified: false };
+  }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
@@ -2565,10 +2615,17 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     });
   }
 
+  // Constructing the reader performs no Azure request. Azure CLI metadata is read
+  // only when the authenticated read-only MCP method is called. Tests/operators may inject a reader.
+  const azureMetadata = injected.azureMetadata &&
+    typeof injected.azureMetadata.readDeploymentMetadata === 'function'
+    ? injected.azureMetadata : createAzureMetadataReader();
   return {
     deployment,
+    ciArtifact: createGitHubCiArtifactService(config.deployment || {}),
     permissions,
     userProtection,
+    azureMetadata,
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
     verifySaveResult: injected.verifySaveResult || verifySave
   };
@@ -3002,6 +3059,20 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
           targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
           stateContext: record.context,
           assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
+        // PAC evidence is optional and read-only; never trust request-supplied adapter or flags.
+        // No registered internal adapter means no PAC evidence (Fail Closed).
+        const internalPacAdapter = powerAppsStore._runtimeSource;
+        if (internalPacAdapter instanceof PowerAppsRuntimeSourceAdapter
+            && internalPacAdapter.getSourceFile === PowerAppsRuntimeSourceAdapter.prototype.getSourceFile) {
+          const pacEvidence = await readPacEvidenceWithRegisteredState({
+            adapter: internalPacAdapter, registeredRecord: record,
+            validateRegisteredState: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method),
+            relativePath: record.source.path
+          });
+          result.pacEvidence = { status: pacEvidence.status, source: pacEvidence.source,
+            runtimeHash: pacEvidence.runtimeHash, appId: pacEvidence.appId,
+            environment: pacEvidence.environment };
+        }
         // Export may take time: reject provider or Git drift during the read.
         const afterState = await powerAppsStore.getAppState();
         const afterSource = await powerAppsGitStore.getSourceFile(record.source.path);

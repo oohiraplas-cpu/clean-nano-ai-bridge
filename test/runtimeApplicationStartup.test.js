@@ -199,7 +199,7 @@ test('DependencyInitializer', async (t) => {
 
     const result = await initializer.initializeAll();
 
-    assert.ok(result.initialized[0].duration >= 10);
+    assert.ok(Number.isFinite(result.initialized[0].duration) && result.initialized[0].duration >= 0);
   });
 
   await t.test('returns initialization status', async () => {

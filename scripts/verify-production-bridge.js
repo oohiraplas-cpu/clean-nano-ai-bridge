@@ -2,6 +2,8 @@
 const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const { MCP_PUBLIC_TOOLS } = require('../src/server');
+const { assessAzureReadiness } = require('../src/azureReadiness');
+const { collectRuntimeEvidence } = require('../src/azureRuntimeEvidence');
 const azure = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8000000 }));
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 async function main() {
@@ -13,7 +15,30 @@ async function main() {
   const sourceBranch = settings.POWERAPPS_GITHUB_BRANCH || 'main';
   const sourceRoot = settings.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_AI依頼台帳/Source';
   const report = { verificationCommit: process.env.GITHUB_SHA, mode: process.env.VERIFICATION_MODE || 'smoke', azure: { name: app.name, state: app.state, host: app.defaultHostName }, settingsPresent: Object.keys(settings).filter(k => /^(POWERAPPS_|DEPLOY_|PERMISSIONS_|MCP_API_KEY|TASK_STORE_BACKEND|SHAREPOINT_)/.test(k)).sort(), sourceBranch, sourceRoot, health: null, initialize: null, tools: null, smoke: {}, availability: {}, mutations: [] };
-  try { report.azure.deployments = azure(['webapp', 'log', 'deployment', 'list', ...args]).slice(0, 3).map(d => ({ id: d.id, status: d.status, active: d.active, endTime: d.end_time })); } catch { report.azure.deploymentMetadata = 'access_denied_or_unavailable'; }
+  try { report.azure.deployments = azure(['webapp', 'log', 'deployment', 'list', ...args]).slice(0, 3).map(d => ({ id: d.id, status: d.status, active: d.active, endTime: d.end_time, commitSha: typeof d.commitSha === 'string' && /^[a-f0-9]{40}$/i.test(d.commitSha) ? d.commitSha : null })); } catch { report.azure.deploymentMetadata = 'access_denied_or_unavailable'; }
+  // Read-only Azure identity and RBAC observations. Never print tokens, settings values or role assignments.
+  // A successful list request verifies query access, NOT sufficient permissions.
+  const observed = {
+    resourceIdMatched: typeof app.id === 'string' && /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.Web\/sites\/[^/]+$/i.test(app.id) && app.id.split('/').pop().toLowerCase() === app.name.toLowerCase(),
+    runtimeKeysPresent: ['POWERAPPS_RUNTIME_SOURCE_ADAPTER', 'POWERAPPS_RUNTIME_AUTH_MODE', 'POWERAPPS_RUNTIME_PAC_PROFILE_HOME', 'POWERAPPS_RUNTIME_SOURCE_MAP'].every(k => Object.prototype.hasOwnProperty.call(settings, k)),
+    healthVerified: false,
+    // Presence of configuration keys does not prove PAC CLI/profile/authentication or source mapping.
+    pacProfileVerified: false, sourceMapVerified: false, deploymentShaMatched: false,
+    managedIdentityAssigned: false, rbacReadVerified: false
+  };
+  try {
+    const identity = azure(['webapp', 'identity', 'show', ...args]);
+    const principalId = identity?.principalId;
+    observed.managedIdentityAssigned = typeof principalId === 'string' && /^[0-9a-f-]{36}$/i.test(principalId);
+    if (observed.managedIdentityAssigned && observed.resourceIdMatched) {
+      const assignments = azure(['role', 'assignment', 'list', '--assignee', principalId, '--scope', app.id]);
+      // Assignment listing is not proof of effective RBAC; remain unverified.
+      observed.rbacReadVerified = false;
+    }
+  } catch {
+    // Missing access or identity must remain unverified, not assumed healthy.
+  }
+  report.azureReadiness = null;
   const baseUrl = 'https://' + app.defaultHostName;
   const request = async (route, body) => {
     try {
@@ -63,6 +88,35 @@ async function main() {
       report.availability[t.name] = smoke?.status === 'not_configured' ? 'not_configured' : smoke?.status === 'blocked' || (smoke && (smoke.httpStatus !== 200 || (smoke.isError && smoke.status !== 'incomplete'))) ? 'blocked' : smoke ? 'ready' : 'mock_verified_only';
     }
   }
+  // Runtime source provenance is only accepted when the trusted adapter reports
+  // a saved .msapp source and its digest. GitHub-only source is never accepted.
+  // Only a trusted in-process PAC adapter can establish source provenance.
+  // Remote MCP responses are caller-visible and cannot establish trustedAdapterVerified.
+  const sourceProbe = null;
+  // Azure deployment listing is read-only. Treat a SHA as independent only when
+  // explicitly provided by Azure deployment metadata and strictly equal to the expected SHA.
+  // Azure deployment IDs are opaque, even if they look like a 40-character SHA.
+  // Only an explicitly named commit field in Azure deployment metadata is eligible.
+  const shaPattern = /^[a-f0-9]{40}$/i;
+  const activeDeployment = report.azure.deployments?.find(d => d.active === true);
+  const azureDeploymentSha = typeof activeDeployment?.commitSha === 'string'
+    && shaPattern.test(activeDeployment.commitSha) ? activeDeployment.commitSha : null;
+  const deployment = {
+    azureDeployedSha: azureDeploymentSha,
+    expectedSha: process.env.EXPECTED_DEPLOYMENT_SHA || null,
+    independentAzureSource: azureDeploymentSha !== null
+  };
+  const runtimeEvidence = collectRuntimeEvidence({ settings, deployment, pacProbe: sourceProbe });
+  observed.pacProfileVerified = runtimeEvidence.pacProfileVerified;
+  observed.sourceMapVerified = runtimeEvidence.sourceMapVerified;
+  observed.deploymentShaMatched = runtimeEvidence.deploymentShaMatched;
+  report.runtimeEvidence = runtimeEvidence;
+  observed.healthVerified = report.health?.httpStatus === 200 && report.health.status === 'ok';
+  // PAC runtime authentication and source-map validity require actual isolated runtime
+  // checks. Presence of keys alone is never evidence of a working PAC profile.
+  // A deployment SHA must be independently matched against the deployed revision.
+  // RBAC listing confirms read access only, not effective authorization.
+  report.azureReadiness = assessAzureReadiness(observed);
   const gate = report.health?.httpStatus === 200 && report.health.status === 'ok' && report.initialize.success && (report.mode === 'baseline' || report.tools.matchesCheckout === true);
   report.publicationGatePassed = gate;
   console.log('::notice title=Production Bridge evidence::' + JSON.stringify(report));
