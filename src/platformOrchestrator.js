@@ -76,7 +76,7 @@ class PlatformOrchestrator {
     deploymentService,
     permissionsService,
     approvalLedger = null,
-    mutationEvidence = null,
+    getMutationEvidence = null,
     config
   }) {
     this.powerAppsStore = powerAppsStore;
@@ -87,7 +87,7 @@ class PlatformOrchestrator {
     this.deploymentService = deploymentService;
     this.permissionsService = permissionsService;
     this.approvalLedger = approvalLedger;
-    this.mutationEvidence = mutationEvidence;
+    this.getMutationEvidence = typeof getMutationEvidence === 'function' ? getMutationEvidence : null;
     this.config = config;
     this.executionLog = [];
     this.auditTrail = [];
@@ -256,7 +256,13 @@ class PlatformOrchestrator {
 
       // P0: independent ledger-backed evidence is mandatory before deployment.
       // Never treat approvalToken/publishApproval or a successful CI as approval.
-      const evidence = this.mutationEvidence;
+      let evidence = null;
+      try {
+        if (this.getMutationEvidence) evidence = await this.getMutationEvidence({ operation: 'deploy', targetSha: gitOps.headSha, requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
+      } catch { return this._returnBlocked('デプロイ証跡取得失敗', ['evidence_unavailable'], requestIdLocal); }
+      if (evidence && (evidence.appId !== target.id || evidence.environmentId !== target.environmentId || evidence.targetSha !== gitOps.headSha)) {
+        return this._returnBlocked('デプロイ証跡対象不一致', ['evidence_target_mismatch'], requestIdLocal);
+      }
       const deploymentGate = await verifyBeforeMutation({
         ledger: this.approvalLedger,
         operation: 'deploy',
@@ -312,7 +318,13 @@ class PlatformOrchestrator {
 
       // Step 18-19: 公開後検証、監査証跡
       if (publishApproval) {
-        const publicationEvidence = this.mutationEvidence;
+        let publicationEvidence = null;
+        try {
+          if (this.getMutationEvidence) publicationEvidence = await this.getMutationEvidence({ operation: 'publish', targetSha: gitOps.headSha, requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
+        } catch { return this._returnBlocked('公開証跡取得失敗', ['evidence_unavailable'], requestIdLocal); }
+        if (publicationEvidence && (publicationEvidence.appId !== target.id || publicationEvidence.environmentId !== target.environmentId || publicationEvidence.targetSha !== gitOps.headSha)) {
+          return this._returnBlocked('公開証跡対象不一致', ['evidence_target_mismatch'], requestIdLocal);
+        }
         const publicationGate = await verifyBeforeMutation({
           ledger: this.approvalLedger,
           operation: 'publish',
