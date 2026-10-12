@@ -152,3 +152,22 @@ test('Azure metadata MCP tool is registered and fail closed without a trusted re
   assert.ok(server.includes('effectiveRbacVerified: false'));
   assert.ok(server.includes('pacRuntimeVerified: false'));
 });
+
+
+test('opt-in Azure metadata reader returns only scoped deployment metadata', async () => {
+  const { createAzureMetadataReader } = require('../src/azureMetadataReader');
+  const reader = createAzureMetadataReader({ collectMetadata: () => ({
+    resourceIdMatched: true, deploymentMetadataAccessible: true,
+    deploymentEntries: [{ deploymentId: 'deploy-1', active: true, status: 4, receivedTime: '2026-10-12' }],
+    secret: 'must-not-escape'
+  }) });
+  const result = await reader.readDeploymentMetadata();
+  assert.equal(result.resourceIdMatched, true);
+  assert.equal(result.deploymentEntries.length, 1);
+  assert.ok(!JSON.stringify(result).includes('must-not-escape'));
+  const blocked = createAzureMetadataReader({ collectMetadata: () => ({ resourceIdMatched: false }) });
+  assert.deepEqual(await blocked.readDeploymentMetadata(), { resourceIdMatched: false, deploymentEntries: [] });
+  const server = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
+  assert.ok(server.includes('azureMetadata,'));
+  assert.ok(server.includes("typeof injected.azureMetadata.readDeploymentMetadata === 'function'"));
+});
