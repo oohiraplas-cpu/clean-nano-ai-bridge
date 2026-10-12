@@ -7,6 +7,7 @@ const { getConfig } = require('./config');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
+const { createPowerAppsMutationGate } = require('./powerAppsMutationGate');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -1720,6 +1721,12 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return powerAppsStore.getAppState();
   }
+  // Draft integration point. Trusted adapters are intentionally NOT injected here;
+  // the common gate returns BLOCKED until SharePoint schema, directory identity,
+  // atomic reservation, immutable source, backup and postcondition are verified.
+  const powerAppsMutationGate = createPowerAppsMutationGate();
+  // Retain legacy dispatch guard below; do not route production writes through
+  // the draft gate until its trusted runtime dependencies have been validated.
   // Fail closed: direct Power Apps mutation routes are not yet wired to the
   // independently verified human identity, scoped ledger, atomic ETag reservation,
   // immutable SHA re-read and single-use final approval recheck.
