@@ -151,7 +151,7 @@ function apiKeyMiddleware(getKey) {
 
 const MCP_METHODS = Object.freeze([
   'get_executive_policy', 'get_executive_brief',
-  'health_check', 'get_tasks', 'get_next_task',
+  'health_check', 'get_azure_deployment_metadata', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
@@ -210,6 +210,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_azure_deployment_metadata',
+    description: 'Azureデプロイの非機密メタデータを取得します。読み取り専用。未接続の場合はFail Closed。デプロイIDをGit SHAと見なしません。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -1453,6 +1458,21 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'get_azure_deployment_metadata') {
+    if (params && Object.keys(params).length) throw requestError('parameters_not_allowed');
+    const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_metadata_reader_unavailable' };
+    const result = await reader();
+    if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
+      return { status: 'blocked', reason: 'azure_metadata_unverified' };
+    return { status: 'observed_not_verified', resourceIdMatched: true,
+      deploymentEntries: result.deploymentEntries.map(entry => ({
+        deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
+        active: entry.active === true,
+        status: Number.isInteger(entry.status) ? entry.status : null,
+        receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
+      })).slice(0, 30), deploymentShaMatched: false, effectiveRbacVerified: false, pacRuntimeVerified: false };
+  }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
