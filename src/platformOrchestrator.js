@@ -300,6 +300,13 @@ class PlatformOrchestrator {
         }
       } catch { return this._returnBlocked('デプロイ単回承認失敗', ['reservation_unavailable'], requestIdLocal); }
 
+      // Recheck the immutable HEAD immediately after reservation. A changed HEAD
+      // consumes the reservation; never retry or mutate under the stale approval.
+      try {
+        const postReservationSha = await this.readCurrentSha({ operation: 'deploy', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
+        if (postReservationSha !== gitOps.headSha) return this._returnBlocked('予約後デプロイSHA変更', ['head_changed_after_reservation'], requestIdLocal);
+      } catch { return this._returnBlocked('予約後SHA取得失敗', ['head_read_failed_after_reservation'], requestIdLocal); }
+
       // Step 12-14: 環境反映、検証
       const deployment = await this._deployChanges({
         gitOps,
@@ -372,6 +379,10 @@ class PlatformOrchestrator {
             return this._returnBlocked('公開単回承認失敗', ['approval_not_reserved'], requestIdLocal);
           }
         } catch { return this._returnBlocked('公開単回承認失敗', ['reservation_unavailable'], requestIdLocal); }
+        try {
+          const postReservationSha = await this.readCurrentSha({ operation: 'publish', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
+          if (postReservationSha !== gitOps.headSha) return this._returnBlocked('予約後公開SHA変更', ['head_changed_after_reservation'], requestIdLocal);
+        } catch { return this._returnBlocked('予約後SHA取得失敗', ['head_read_failed_after_reservation'], requestIdLocal); }
         const publication = await this._publishChanges({
           target,
           requestId: requestIdLocal
