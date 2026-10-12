@@ -20,6 +20,7 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
       return blocked('mutation_gate_not_configured');
     }
     const scope = { operation, approvalId, requestId, appId, environmentId, targetSha, changeHash };
+    let mutationAttempted = false;
     try {
       if (await verifyTarget(scope) !== true || await verifyBackup(scope) !== true) {
         return blocked('target_or_backup_unverified');
@@ -40,6 +41,7 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
         return blocked('approval_revoked_or_unverified');
       }
       // Recheck is single-use; do not retry after any uncertain mutation result.
+      mutationAttempted = true;
       const result = await mutate({ ...scope, executionId: reservation.executionId });
       if (result?.success !== true) return { ...blocked('mutation_failed_or_uncertain'), recoveryRequired: true, retryAllowed: false };
       if (await verifyPostcondition({ ...scope, result, expectedPostcondition }) !== true) {
@@ -49,7 +51,9 @@ function createPowerAppsMutationGate({ reserveApproval, recheckApproval, readCur
       }
       return { status: 'VERIFIED', success: true, result };
     } catch {
-      return blocked('mutation_gate_exception');
+      return mutationAttempted
+        ? { ...blocked('mutation_outcome_unknown'), recoveryRequired: true, retryAllowed: false }
+        : blocked('mutation_gate_exception');
     }
   };
 }
