@@ -97,9 +97,12 @@ class PowerAppsRuntimeSourceAdapter {
   // Trusted in-process caller only: never accept a caller-supplied proof flag.
   // Reuses the adapter's validated read-only PAC download and strips source content.
   async getSourceEvidence(relativePath, context) {
+    if (this.getSourceFile !== PowerAppsRuntimeSourceAdapter.prototype.getSourceFile)
+      throw validationBlocked(['trusted PAC reader must not be overridden']);
     const source = await this.getSourceFile(relativePath, context);
     if (source.status !== 'ok' || source.source !== 'power-apps-saved-msapp'
-        || source.appId !== this.config.appId || source.environment !== this.config.environmentId)
+        || source.appId !== this.config.appId || source.environment !== this.config.environmentId
+        || !/^[a-f0-9]{64}$/i.test(source.runtimeHash || ''))
       throw validationBlocked(['trusted PAC provenance mismatch']);
     return Object.freeze({
       status: 'ok', source: 'power-apps-saved-msapp',
