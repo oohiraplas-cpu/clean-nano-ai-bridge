@@ -91,3 +91,14 @@ test('reservation contract requires single-use, active approval and exact operat
   assert.match(deploy, /reservation\?\.operation !== 'deploy'/);
   assert.match(publish, /reservation\?\.operation !== 'publish'/);
 });
+
+test('both mutation paths recheck SHA after single-use reservation', () => {
+  for (const [operation, mutation] of [['deploy', 'const deployment = await this._deployChanges({'], ['publish', 'const publication = await this._publishChanges({']]) {
+    const reserved = source.indexOf("const reservation = await this.reserveApproval({ operation: '" + operation + "'");
+    const recheck = source.indexOf("const postReservationSha = await this.readCurrentSha({ operation: '" + operation + "'");
+    const mutate = source.indexOf(mutation);
+    assert.ok(reserved >= 0 && recheck > reserved && mutate > recheck);
+    assert.match(source.slice(recheck, mutate), /head_changed_after_reservation/);
+    assert.match(source.slice(recheck, mutate), /head_read_failed_after_reservation/);
+  }
+});
