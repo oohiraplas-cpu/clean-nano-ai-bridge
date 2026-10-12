@@ -79,6 +79,7 @@ class PlatformOrchestrator {
     getMutationEvidence = null,
     readCurrentSha = null,
     reserveApproval = null,
+    recheckApproval = null,
     config
   }) {
     this.powerAppsStore = powerAppsStore;
@@ -92,6 +93,7 @@ class PlatformOrchestrator {
     this.getMutationEvidence = typeof getMutationEvidence === 'function' ? getMutationEvidence : null;
     this.readCurrentSha = typeof readCurrentSha === 'function' ? readCurrentSha : null;
     this.reserveApproval = typeof reserveApproval === 'function' ? reserveApproval : null;
+    this.recheckApproval = typeof recheckApproval === 'function' ? recheckApproval : null;
     this.config = config;
     this.executionLog = [];
     this.auditTrail = [];
@@ -288,9 +290,10 @@ class PlatformOrchestrator {
 
       // A verified ledger read is not single-use authorization. Require an atomic
       // server-side reservation and a fresh SHA read before any mutation.
-      if (!this.reserveApproval || !this.readCurrentSha) {
+      if (!this.reserveApproval || !this.readCurrentSha || !this.recheckApproval) {
         return this._returnBlocked('デプロイ単回承認未設定', ['single_use_gate_not_configured'], requestIdLocal);
       }
+      let deployReservation;
       try {
         const currentSha = await this.readCurrentSha({ operation: 'deploy', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
         if (currentSha !== gitOps.headSha) return this._returnBlocked('デプロイSHA変更', ['head_changed'], requestIdLocal);
@@ -298,6 +301,7 @@ class PlatformOrchestrator {
         if (reservation?.reserved !== true || reservation?.singleUseVerified !== true || reservation?.approvalActiveVerified !== true || reservation?.targetSha !== gitOps.headSha || reservation?.requestId !== requestIdLocal || reservation?.operation !== 'deploy' || typeof reservation.executionId !== 'string' || !reservation.executionId) {
           return this._returnBlocked('デプロイ単回承認失敗', ['approval_not_reserved'], requestIdLocal);
         }
+        deployReservation = reservation;
       } catch { return this._returnBlocked('デプロイ単回承認失敗', ['reservation_unavailable'], requestIdLocal); }
 
       // Recheck the immutable HEAD immediately after reservation. A changed HEAD
@@ -307,6 +311,9 @@ class PlatformOrchestrator {
         if (postReservationSha !== gitOps.headSha) return this._returnBlocked('予約後デプロイSHA変更', ['head_changed_after_reservation'], requestIdLocal);
       } catch { return this._returnBlocked('予約後SHA取得失敗', ['head_read_failed_after_reservation'], requestIdLocal); }
 
+      if (await this.recheckApproval({ ...deployReservation, appId: target.id, environmentId: target.environmentId, changeHash: evidence.changeHash }) !== true) {
+        return this._returnBlocked('デプロイ直前承認失効', ['approval_invalid_after_reservation'], requestIdLocal);
+      }
       // Step 12-14: 環境反映、検証
       const deployment = await this._deployChanges({
         gitOps,
@@ -368,9 +375,10 @@ class PlatformOrchestrator {
         if (publicationGate.allowed !== true) {
           return this._returnBlocked('公開承認・証跡不足', [publicationGate.reason], requestIdLocal);
         }
-        if (!this.reserveApproval || !this.readCurrentSha) {
+        if (!this.reserveApproval || !this.readCurrentSha || !this.recheckApproval) {
           return this._returnBlocked('公開単回承認未設定', ['single_use_gate_not_configured'], requestIdLocal);
         }
+        let publishReservation;
         try {
           const currentSha = await this.readCurrentSha({ operation: 'publish', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
           if (currentSha !== gitOps.headSha) return this._returnBlocked('公開SHA変更', ['head_changed'], requestIdLocal);
@@ -378,11 +386,15 @@ class PlatformOrchestrator {
           if (reservation?.reserved !== true || reservation?.singleUseVerified !== true || reservation?.approvalActiveVerified !== true || reservation?.targetSha !== gitOps.headSha || reservation?.requestId !== requestIdLocal || reservation?.operation !== 'publish' || typeof reservation.executionId !== 'string' || !reservation.executionId) {
             return this._returnBlocked('公開単回承認失敗', ['approval_not_reserved'], requestIdLocal);
           }
+          publishReservation = reservation;
         } catch { return this._returnBlocked('公開単回承認失敗', ['reservation_unavailable'], requestIdLocal); }
         try {
           const postReservationSha = await this.readCurrentSha({ operation: 'publish', requestId: requestIdLocal, appId: target.id, environmentId: target.environmentId });
           if (postReservationSha !== gitOps.headSha) return this._returnBlocked('予約後公開SHA変更', ['head_changed_after_reservation'], requestIdLocal);
         } catch { return this._returnBlocked('予約後SHA取得失敗', ['head_read_failed_after_reservation'], requestIdLocal); }
+        if (await this.recheckApproval({ ...publishReservation, appId: target.id, environmentId: target.environmentId, changeHash: publicationEvidence.changeHash }) !== true) {
+          return this._returnBlocked('公開直前承認失効', ['approval_invalid_after_reservation'], requestIdLocal);
+        }
         const publication = await this._publishChanges({
           target,
           requestId: requestIdLocal
