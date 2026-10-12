@@ -18,6 +18,7 @@ const { PaymentMonitorService } = require('./paymentMonitorService');
 const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
+const { createAzureMetadataReader } = require('./azureMetadataReader');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
@@ -2614,11 +2615,11 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     });
   }
 
-  // Azure reader is explicitly injected by a trusted operator. No implicit CLI,
-  // credential retrieval, or Azure requests are performed by Bridge startup.
+  // Constructing the reader performs no Azure request. Azure CLI metadata is read
+  // only when the authenticated read-only MCP method is called. Tests/operators may inject a reader.
   const azureMetadata = injected.azureMetadata &&
     typeof injected.azureMetadata.readDeploymentMetadata === 'function'
-    ? injected.azureMetadata : null;
+    ? injected.azureMetadata : createAzureMetadataReader();
   return {
     deployment,
     ciArtifact: createGitHubCiArtifactService(config.deployment || {}),
