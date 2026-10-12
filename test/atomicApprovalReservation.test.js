@@ -8,7 +8,7 @@ const context = { approvalId: '7', requestId: 'req-1', operation: 'deploy', targ
 function fixture(overrides = {}) {
   const record = { requestId: 'req-1', tool: 'deploy', targetId: 'app-1', environmentId: 'env-1',
     commitSha: sha, diffHash: hash, approvedAt: new Date(now - 1000).toISOString(),
-    expiresAt: new Date(now + 60000).toISOString(), status: '承認', revoked: false };
+    expiresAt: new Date(now + 60000).toISOString(), approverId: 'human-approver', status: '承認', revoked: false };
   let version = 1, patches = 0;
   const store = {
     assertConfigured() {},
@@ -107,7 +107,7 @@ test('service-side reservation changes lastModifiedBy: human recheck fails close
   f.store.patch = async (...args) => { await patch(...args); actor = 'bridge-service'; };
   f.store.verifyHuman = async () => actor === 'human-approver';
   const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
-  assert.equal(reserved.reserved, true);
+  assert.equal(reserved.reserved, false);
   const valid = await createApprovalRecheck({ store: f.store, now: () => now })({
     ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash
   });
@@ -128,4 +128,74 @@ test('unconfigured SharePoint store fails closed before reading or patching', as
   assert.equal((await reserve(context)).reserved, false);
   assert.equal(reads, 0);
   assert.equal(f.patches(), 0);
+});
+
+test('original Graph human identity survives service actor PATCH and is freshly checked', async () => {
+  const f = fixture(); let actor = 'human-approver', enabled = true, checks = 0;
+  const read = f.store.read, patch = f.store.patch;
+  f.store.read = async () => ({ ...await read(), actor: { user: { id: actor } } });
+  f.store.patch = async (...args) => { await patch(...args); actor = 'bridge-service'; };
+  f.store.verifyHuman = async snapshot => {
+    checks++;
+    return enabled && snapshot.actor.user.id === snapshot.record.approverId;
+  };
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  assert.equal(reserved.reserved, true);
+  const input = { ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash };
+  const recheck = createApprovalRecheck({ store: f.store, now: () => now });
+  assert.equal(await recheck(input), true);
+  assert.equal(checks, 3);
+  enabled = false;
+  assert.equal(await recheck(input), false);
+});
+test('decision identity and lifetime cannot change during reservation or recheck', async () => {
+  for (const field of ['approverId', 'approvedAt', 'expiresAt']) {
+    for (const duringPatch of [true, false]) {
+      const f = fixture(), patch = f.store.patch;
+      const mutate = () => { f.record[field] = field === 'approverId' ? 'other-human' : new Date(now + 30000).toISOString(); };
+      if (duringPatch) f.store.patch = async (...args) => { await patch(...args); mutate(); };
+      const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+      if (duringPatch) assert.equal(reserved.reserved, false);
+      else {
+        assert.equal(reserved.reserved, true); mutate();
+        assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, ...context }), false);
+      }
+    }
+  }
+});
+test('caller cannot reconstruct an authenticated receipt on another store instance', async () => {
+  const f = fixture();
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  assert.equal(await createApprovalRecheck({ store: { ...f.store }, now: () => now })({ ...reserved, ...context }), false);
+});
+test('ledger change during independent directory verification is denied', async () => {
+  const f = fixture();
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  f.store.verifyHuman = async () => { f.record.revoked = true; return true; };
+  assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, ...context }), false);
+});
+test('unchanged or wildcard reservation ETag never yields a usable receipt', async () => {
+  for (const etag of ['1', '*']) {
+    const f = fixture(), read = f.store.read; let reads = 0;
+    f.store.read = async () => { const snapshot = await read(); if (++reads > 1) snapshot.etag = etag; return snapshot; };
+    assert.equal((await createAtomicApprovalReservation({ store: f.store, now: () => now })(context)).reserved, false);
+  }
+});
+
+test('disabled or removed human is denied before the first recheck', async () => {
+  const f = fixture();
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  let checks = 0;
+  f.store.verifyHuman = async () => { checks++; return false; };
+  assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, ...context }), false);
+  assert.equal(checks, 1);
+});
+test('concurrent final rechecks authorize at most one mutation', async () => {
+  const f = fixture();
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  const recheck = createApprovalRecheck({ store: f.store, now: () => now });
+  const input = { ...reserved, ...context };
+  const results = await Promise.all([recheck(input), recheck(input)]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(await recheck(input), false);
 });
