@@ -98,6 +98,22 @@ test('fresh recheck denies revoked, expired or replaced reservation', async () =
     assert.equal(await createApprovalRecheck({ store: f.store, now: () => now })({ ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash }), false);
   }
 });
+test('service-side reservation changes lastModifiedBy: human recheck fails closed', async () => {
+  // SharePoint lastModifiedBy may change to the Bridge service identity after PATCH.
+  // Do not mistake the service actor for the original human approver.
+  const f = fixture();
+  let actor = 'human-approver';
+  const patch = f.store.patch;
+  f.store.patch = async (...args) => { await patch(...args); actor = 'bridge-service'; };
+  f.store.verifyHuman = async () => actor === 'human-approver';
+  const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
+  assert.equal(reserved.reserved, true);
+  const valid = await createApprovalRecheck({ store: f.store, now: () => now })({
+    ...reserved, appId: context.appId, environmentId: context.environmentId, changeHash: context.changeHash
+  });
+  assert.equal(valid, false, 'service write must not be accepted as human approval');
+});
+
 test('fresh recheck accepts only the exact reserved approval', async () => {
   const f = fixture();
   const reserved = await createAtomicApprovalReservation({ store: f.store, now: () => now })(context);
