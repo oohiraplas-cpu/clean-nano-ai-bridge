@@ -1,0 +1,56 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { createPowerAppsMutationGate } = require('../src/powerAppsMutationGate');
+const scope = { operation: 'save', approvalId: '1', requestId: 'req-1',
+  appId: 'app-1', environmentId: 'env-1', targetSha: 'a'.repeat(40),
+  changeHash: 'b'.repeat(64) };
+function fixture(overrides = {}) {
+  const calls = [];
+  const deps = {
+    verifyTarget: async () => { calls.push('target'); return true; },
+    verifyBackup: async () => { calls.push('backup'); return true; },
+    readCurrentSha: async () => { calls.push('sha'); return scope.targetSha; },
+    reserveApproval: async x => { calls.push('reserve'); return {
+      reserved: true, singleUseVerified: true, approvalActiveVerified: true,
+      executionId: 'execution-1', targetSha: x.targetSha, requestId: x.requestId, operation: x.operation }; },
+    recheckApproval: async () => { calls.push('recheck'); return true; },
+    verifyPostcondition: async () => { calls.push('post'); return true; },
+    ...overrides
+  };
+  const mutate = async () => { calls.push('mutate'); return { success: true }; };
+  return { calls, deps, mutate };
+}
+test('missing trusted dependencies fail closed without mutation', async () => {
+  let mutated = false;
+  const gate = createPowerAppsMutationGate();
+  const result = await gate({ ...scope, mutate: async () => { mutated = true; } });
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(mutated, false);
+});
+test('verified authorization sequence and postcondition', async () => {
+  const f = fixture();
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: f.mutate });
+  assert.equal(result.status, 'VERIFIED');
+  assert.deepEqual(f.calls, ['target','backup','sha','reserve','sha','recheck','mutate','post']);
+});
+for (const [name, overrides, reason] of [
+  ['independent target check', { verifyTarget: async () => false }, 'target_or_backup_unverified'],
+  ['backup', { verifyBackup: async () => false }, 'target_or_backup_unverified'],
+  ['ETag reservation', { reserveApproval: async () => ({ reserved: false }) }, 'approval_reservation_failed'],
+  ['revoked approval', { recheckApproval: async () => false }, 'approval_revoked_or_unverified'],
+  ['postcondition', { verifyPostcondition: async () => false }, 'postcondition_unverified']
+]) test(name + ' fails closed', async () => {
+  const f = fixture(overrides);
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: f.mutate });
+  assert.equal(result.status, 'BLOCKED');
+  assert.equal(result.reason, reason);
+  if (name !== 'postcondition') assert.equal(f.calls.includes('mutate'), false);
+});
+test('SHA mismatch after reservation never mutates', async () => {
+  let n = 0;
+  const f = fixture({ readCurrentSha: async () => ++n === 1 ? scope.targetSha : 'c'.repeat(40) });
+  const result = await createPowerAppsMutationGate(f.deps)({ ...scope, mutate: f.mutate });
+  assert.equal(result.reason, 'sha_changed_after_reservation');
+  assert.equal(f.calls.includes('mutate'), false);
+});
