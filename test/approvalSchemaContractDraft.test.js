@@ -80,3 +80,53 @@ test('approval validity requires explicit false revocation and <=24h UTC window'
   assert.throws(() => executor.validate({ ...record, approvedAt: 'invalid' }, input));
   assert.throws(() => executor.validate({ ...record, executionId: 'used' }, input));
 });
+
+test('backup boundary: 60,000 UTF-8 bytes accepted, 60,001 rejected before reservation', async () => {
+  const { changeHash } = require('../src/scopedApprovalExecution');
+  async function run(size) {
+    let patches = 0, invocations = 0;
+    const now = Date.parse('2026-10-13T10:00:00Z');
+    const input = { approvalId: '1', requestId: 'r', tool: 'edit', targetId: 'target',
+      environmentId: 'env', commitSha: 'a'.repeat(40), params: {} };
+    input.diffHash = changeHash(input);
+    const record = { ...input, status: '承認', revoked: false,
+      approvedAt: '2026-10-13T09:00:00Z', expiresAt: '2026-10-13T11:00:00Z',
+      executionId: '', executionStatus: '' };
+    const store = {
+      async read() { return { record, etag: '"v1"' }; },
+      async verifyHuman() { return true; },
+      async patch() { patches++; }
+    };
+    const executor = new ScopedApprovalExecutor({ store, commitSha: 'a'.repeat(40),
+      now: () => now, operations: { edit: {
+        assertTarget() {},
+        async preflight() { return 'x'.repeat(size); },
+        async invoke() { invocations++; },
+        async verify() { return true; }
+      } } });
+    const result = await executor.execute(input).then(() => 'accepted', () => 'rejected');
+    return { result, patches, invocations };
+  }
+  // JSON.stringify adds two quotation-mark bytes.
+  const atLimit = await run(59998);
+  assert.equal(atLimit.result, 'accepted');
+  assert.equal(atLimit.patches, 1);
+  const overLimit = await run(59999);
+  assert.equal(overLimit.result, 'rejected');
+  assert.equal(overLimit.patches, 0);
+  assert.equal(overLimit.invocations, 0);
+});
+
+test('approval replay and changed ETag cannot be silently authorized', () => {
+  const { store } = storeWith();
+  const now = Date.parse('2026-10-13T10:00:00Z');
+  const executor = new ScopedApprovalExecutor({ store, commitSha: 'a'.repeat(40), now: () => now });
+  const { changeHash } = require('../src/scopedApprovalExecution');
+  const input = { requestId: 'r', tool: 't', targetId: 'target', environmentId: 'env',
+    commitSha: 'a'.repeat(40), params: {} };
+  input.diffHash = changeHash(input);
+  const record = { ...input, status: '承認', revoked: false,
+    approvedAt: '2026-10-13T09:00:00Z', expiresAt: '2026-10-13T11:00:00Z',
+    executionId: 'already-reserved', executionStatus: 'reserved' };
+  assert.throws(() => executor.validate(record, input), /approval_already_used/);
+});
