@@ -81,6 +81,9 @@ class PowerPlatformRequestHandler {
       stateRegistry,
       deploymentService,
       permissionsService,
+      // Only server-injected providers are eligible; missing providers fail closed.
+      approvalLedger: config?.p0Execution?.ledger || null,
+      mutationEvidence: null,
       config
     });
 
