@@ -2,6 +2,7 @@
 const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const { MCP_PUBLIC_TOOLS } = require('../src/server');
+const { assessAzureReadiness } = require('../src/azureReadiness');
 const azure = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8000000 }));
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 async function main() {
@@ -14,6 +15,28 @@ async function main() {
   const sourceRoot = settings.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_AI依頼台帳/Source';
   const report = { verificationCommit: process.env.GITHUB_SHA, mode: process.env.VERIFICATION_MODE || 'smoke', azure: { name: app.name, state: app.state, host: app.defaultHostName }, settingsPresent: Object.keys(settings).filter(k => /^(POWERAPPS_|DEPLOY_|PERMISSIONS_|MCP_API_KEY|TASK_STORE_BACKEND|SHAREPOINT_)/.test(k)).sort(), sourceBranch, sourceRoot, health: null, initialize: null, tools: null, smoke: {}, availability: {}, mutations: [] };
   try { report.azure.deployments = azure(['webapp', 'log', 'deployment', 'list', ...args]).slice(0, 3).map(d => ({ id: d.id, status: d.status, active: d.active, endTime: d.end_time })); } catch { report.azure.deploymentMetadata = 'access_denied_or_unavailable'; }
+  // Read-only Azure identity and RBAC observations. Never print tokens, settings values or role assignments.
+  // A successful list request verifies query access, NOT sufficient permissions.
+  const observed = {
+    resourceIdMatched: typeof app.id === 'string' && /^\\/subscriptions\\/[^/]+\\/resourceGroups\\/[^/]+\\/providers\\/Microsoft\\.Web\\/sites\\/[^/]+$/i.test(app.id) && app.id.split('/').pop().toLowerCase() === app.name.toLowerCase(),
+    runtimeKeysPresent: ['POWERAPPS_RUNTIME_SOURCE_ADAPTER', 'POWERAPPS_RUNTIME_AUTH_MODE', 'POWERAPPS_RUNTIME_PAC_PROFILE_HOME', 'POWERAPPS_RUNTIME_SOURCE_MAP'].every(k => Object.prototype.hasOwnProperty.call(settings, k)),
+    healthVerified: false,
+    // Presence of configuration keys does not prove PAC CLI/profile/authentication or source mapping.
+    pacProfileVerified: false, sourceMapVerified: false, deploymentShaMatched: false,
+    managedIdentityAssigned: false, rbacReadVerified: false
+  };
+  try {
+    const identity = azure(['webapp', 'identity', 'show', ...args]);
+    const principalId = identity?.principalId;
+    observed.managedIdentityAssigned = typeof principalId === 'string' && /^[0-9a-f-]{36}$/i.test(principalId);
+    if (observed.managedIdentityAssigned && observed.resourceIdMatched) {
+      const assignments = azure(['role', 'assignment', 'list', '--assignee', principalId, '--scope', app.id]);
+      observed.rbacReadVerified = Array.isArray(assignments);
+    }
+  } catch {
+    // Missing access or identity must remain unverified, not assumed healthy.
+  }
+  report.azureReadiness = null;
   const baseUrl = 'https://' + app.defaultHostName;
   const request = async (route, body) => {
     try {
@@ -63,6 +86,8 @@ async function main() {
       report.availability[t.name] = smoke?.status === 'not_configured' ? 'not_configured' : smoke?.status === 'blocked' || (smoke && (smoke.httpStatus !== 200 || (smoke.isError && smoke.status !== 'incomplete'))) ? 'blocked' : smoke ? 'ready' : 'mock_verified_only';
     }
   }
+  observed.healthVerified = report.health?.httpStatus === 200 && report.health.status === 'ok';
+  report.azureReadiness = assessAzureReadiness(observed);
   const gate = report.health?.httpStatus === 200 && report.health.status === 'ok' && report.initialize.success && (report.mode === 'baseline' || report.tools.matchesCheckout === true);
   report.publicationGatePassed = gate;
   console.log('::notice title=Production Bridge evidence::' + JSON.stringify(report));
