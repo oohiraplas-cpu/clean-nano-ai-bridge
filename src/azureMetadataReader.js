@@ -14,7 +14,12 @@ function createAzureMetadataReader({ collectMetadata = collect } = {}) {
           !Array.isArray(observed.deploymentEntries)) {
         return Object.freeze({ resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
       }
-      return Object.freeze({ resourceIdMatched: true, deploymentEntries: observed.deploymentEntries,
+      return Object.freeze({ resourceIdMatched: true, deploymentEntries: observed.deploymentEntries.slice(0, 30).map(entry => ({
+        deploymentId: typeof entry?.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
+        active: entry?.active === true,
+        status: Number.isInteger(entry?.status) ? entry.status : null,
+        receivedTime: typeof entry?.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
+      })),
         diagnostic: assessAzureDiagnostic({
           armResourceId: observed.armResourceId,
           armObservedIndependently: observed.armObservedIndependently === true,
