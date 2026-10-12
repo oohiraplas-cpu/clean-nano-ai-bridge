@@ -1,0 +1,10 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { verifyPowerAppsMutation } = require('../src/p0PowerAppsMutationVerifier');
+const base = { operation:'publish', expectedAppId:'app', expectedEnvironmentId:'env', expectedVersion:'v1', operationResult:{ status:'ok', operationId:'op1', appId:'app' }, store:{ getAppState: async () => ({ status:'ok', appId:'app', environmentId:'env', versionNumber:'v1' }) } };
+test('dispatch and current version alone never prove publish', async () => assert.equal((await verifyPowerAppsMutation(base)).reason,'independent_evidence_unavailable'));
+test('independent evidence with wrong operation is rejected', async () => assert.equal((await verifyPowerAppsMutation({ ...base, independentlyReadPublishedVersion: async () => ({ verified:true, appId:'app', environmentId:'env', operationId:'other', version:'v1' }) })).reason,'independent_evidence_mismatch'));
+test('independent matching publication evidence passes', async () => assert.equal((await verifyPowerAppsMutation({ ...base, independentlyReadPublishedVersion: async () => ({ verified:true, appId:'app', environmentId:'env', operationId:'op1', version:'v1' }) })).verified,true));
+test('save requires its own independent reader', async () => assert.equal((await verifyPowerAppsMutation({ ...base, operation:'save', independentlyReadPublishedVersion: async () => ({ verified:true }) })).reason,'independent_evidence_unavailable'));
+test('wrong app version blocks independent evidence', async () => assert.equal((await verifyPowerAppsMutation({ ...base, expectedVersion:'v2', independentlyReadPublishedVersion: async () => ({ verified:true }) })).reason,'state_mismatch'));
