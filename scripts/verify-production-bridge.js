@@ -19,7 +19,7 @@ async function main() {
   // Read-only Azure identity and RBAC observations. Never print tokens, settings values or role assignments.
   // A successful list request verifies query access, NOT sufficient permissions.
   const observed = {
-    resourceIdMatched: typeof app.id === 'string' && /^\\/subscriptions\\/[^/]+\\/resourceGroups\\/[^/]+\\/providers\\/Microsoft\\.Web\\/sites\\/[^/]+$/i.test(app.id) && app.id.split('/').pop().toLowerCase() === app.name.toLowerCase(),
+    resourceIdMatched: typeof app.id === 'string' && /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.Web\/sites\/[^/]+$/i.test(app.id) && app.id.split('/').pop().toLowerCase() === app.name.toLowerCase(),
     runtimeKeysPresent: ['POWERAPPS_RUNTIME_SOURCE_ADAPTER', 'POWERAPPS_RUNTIME_AUTH_MODE', 'POWERAPPS_RUNTIME_PAC_PROFILE_HOME', 'POWERAPPS_RUNTIME_SOURCE_MAP'].every(k => Object.prototype.hasOwnProperty.call(settings, k)),
     healthVerified: false,
     // Presence of configuration keys does not prove PAC CLI/profile/authentication or source mapping.
