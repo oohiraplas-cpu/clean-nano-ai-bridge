@@ -29,3 +29,43 @@ test('invalid source map never leaks its content', () => {
   assert.equal(result.sourceMapSchemaValid, false);
   assert.equal(JSON.stringify(result).includes('password'), false);
 });
+
+test('Unicode canonical SOURCE_MAP path is accepted without claiming PAC verification', () => {
+  const sourceMap = JSON.stringify({
+    'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml'
+  });
+  const result = collectRuntimeEvidence({ settings: { ...settings, POWERAPPS_RUNTIME_SOURCE_MAP: sourceMap } });
+  assert.equal(result.sourceMapSchemaValid, true);
+  assert.equal(result.sourceMapVerified, false);
+  assert.equal(result.pacProfileVerified, false);
+});
+
+test('SOURCE_MAP rejects traversal, absolute paths, empty segments and malformed entries', () => {
+  const invalid = [
+    { '../S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml' },
+    { '/powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml' },
+    { 'powerapps//S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml' },
+    { 'powerapps\\\\S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src/../S1_Home.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src//S1_Home.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': '/Src/S1_Home.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src/Other.txt' }
+  ];
+  for (const map of invalid) {
+    const result = collectRuntimeEvidence({
+      settings: { ...settings, POWERAPPS_RUNTIME_SOURCE_MAP: JSON.stringify(map) }
+    });
+    assert.equal(result.sourceMapSchemaValid, false, JSON.stringify(map));
+    assert.equal(result.sourceMapVerified, false);
+  }
+});
+
+test('SOURCE_MAP accepts observed backslash archive entries but not unverifiable runtime evidence', () => {
+  const sourceMap = JSON.stringify({
+    'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src\\\\S1_Home.pa.yaml'
+  });
+  const result = collectRuntimeEvidence({ settings: { ...settings, POWERAPPS_RUNTIME_SOURCE_MAP: sourceMap } });
+  assert.equal(result.sourceMapSchemaValid, true);
+  assert.equal(result.sourceMapVerified, false);
+  assert.equal(result.deploymentShaMatched, false);
+});
