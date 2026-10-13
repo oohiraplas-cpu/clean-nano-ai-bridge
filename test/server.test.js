@@ -148,6 +148,13 @@ test('MCPの新览3ツール（create_task/update_task_status/get_task_result）
   const taskId = createdBody.result.task_id;
   assert.ok(taskId);
 
+  const missingEvidence = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ method: 'update_task_status', params: { task_id: taskId, status: '完了' } })
+  });
+  const missingEvidenceBody = await missingEvidence.json();
+  assert.notEqual(missingEvidenceBody.result?.task?.status, '完了');
+
   const updated = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers,
     body: JSON.stringify({ method: 'update_task_status', params: { task_id: taskId, status: '完了', result: '完了しました' } })
