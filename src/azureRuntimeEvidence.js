@@ -8,13 +8,15 @@ const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4})
 // Keep legacy short keys while allowing canonical Unicode Git paths.
 // Validate archive entries consistently with the PAC source reader.
 function safeSegments(value, separator) {
-  return value.split(separator).every(part => part !== '' && part !== '.' && part !== '..' && !part.includes('\0'));
+  return value.split(separator).every(part =>
+    part !== '' && part !== '.' && part !== '..' &&
+    !part.includes('\0') && !/[\r\n]/.test(part));
 }
 function validGitKey(value) {
   return typeof value === 'string' && !value.includes('\\') &&
     value.endsWith('.pa.yaml') && safeSegments(value, '/') &&
     (/^[\w.-]+\.pa\.yaml$/.test(value) ||
-      (value.startsWith('powerapps/') && value.split('/').length >= 3));
+      (value.startsWith('powerapps/') && value.split('/').length >= 4));
 }
 function validArchiveEntry(value) {
   return typeof value === 'string' && /^Src[\\/]/.test(value) &&
