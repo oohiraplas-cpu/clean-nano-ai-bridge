@@ -12,7 +12,7 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID))
+        If(!gblIdentityVerified || IsBlank(gblEmpID), Set(gblEmpID, Blank()); Clear(colAttend))
     Children:
       - S6_Title:
           Control: Label@2.5.1
@@ -40,11 +40,9 @@ Screens:
           Variant: Vertical
           Properties:
             Height: =Parent.Height - 92 - 70 - 10
-            Items: =Sort(CN_社員台帳, Title)
+            Items: =Filter(CN_社員台帳, !IsBlank(User().EntraObjectId) && EntraObjectId = Text(User().EntraObjectId))
             OnSelect: |-
-              =Set(gblEmpID, ThisItem.EmployeeID);
-              ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)));
-              Navigate(S1_Home, ScreenTransition.None)
+              =If(gblIdentityVerified && !IsBlank(User().EntraObjectId) && ThisItem.EntraObjectId = Text(User().EntraObjectId) && Trim(ThisItem.EmployeeID) = gblEmpID, Navigate(S1_Home, ScreenTransition.None), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が必要です。", NotificationType.Error))
             TemplatePadding: =3
             TemplateSize: =72
             Width: =Parent.Width - 32
