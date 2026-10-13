@@ -2,7 +2,7 @@ Screens:
   S3_Register:
     Properties:
       Fill: =RGBA(10, 10, 10, 1)
-      OnVisible: =If(IsBlank(gblCalType) || gblCalType = "運営", Set(gblCalType, "解体")); If(IsBlank(gblSelDate), Set(gblSelDate, Today())); Set(gblSaving, false)
+      OnVisible: =If(IsBlank(gblCalType) || gblCalType = "運営", Set(gblCalType, "解体")); If(IsBlank(gblSelDate), Set(gblSelDate, Today())); Set(gblSaving, false); Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank())); If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true))
     Children:
       - S3_RegisterScroll:
           Control: GroupContainer@1.5.0
