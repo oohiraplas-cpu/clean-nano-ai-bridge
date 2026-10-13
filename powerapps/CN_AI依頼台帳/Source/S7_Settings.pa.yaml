@@ -53,7 +53,7 @@ Screens:
             Color: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
             Height: =30
-            Text: ="表示中の作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択") & "（" & gblEmpID & "）"
+            Text: ="表示中の作業員：" & If(gblIdentityVerified && !IsBlank(gblCurrentEmployee) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID, Coalesce(gblCurrentEmployee.Title, "氏名未登録"), "未認証") & "（" & gblEmpID & "）"
             Width: =Parent.Width - 64
             X: =32
             Y: =132
@@ -91,7 +91,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend)); Notify("最新のデータを読み込みました", NotificationType.Success)
+             OnSelect: =Set(gblAttendanceComplete, false); Set(gblSalaryReady, false); Set(gblSalaryRecord, Blank()); Clear(colAttend); IfError(Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Notify("本人確認が完了していません", NotificationType.Error)); Notify("再読み込み処理が完了しました。集計の完全性は未確認です。", NotificationType.Information), Clear(colAttend); Set(gblAttendanceComplete, false); Set(gblSalaryReady, false); Notify("再読み込みに失敗しました", NotificationType.Error))
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="データを再読み込み"
             Width: =Parent.Width - 32
