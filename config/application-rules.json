@@ -12,7 +12,8 @@
         "AI依頼台帳",
         "依頼台帳",
         "解体工カレンダー",
-        "CN_解体工カレンダー"
+        "CN_解体工カレンダー",
+        "clean nano kk"
       ],
       "gitRoot": "powerapps/CN_AI依頼台帳/Source",
       "sourceControl": {
