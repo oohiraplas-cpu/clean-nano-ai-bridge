@@ -94,6 +94,27 @@ class PowerAppsRuntimeSourceAdapter {
       runtimeHash: crypto.createHash('sha256').update(observed.content).digest('hex'),
       encoding: observed.encoding, source: 'power-apps-saved-msapp', format: 'pa.yaml' };
   }
+  // In-process only: retrieve and validate PAC source, then bind to an already
+  // registered StateRegistry session. Never treat GitHub mirror as PAC evidence.
+  async bindRuntimeObservation(relativePath, { stateContext, assertStateContext,
+    stateRegistry, stateSessionId, scope } = {}) {
+    if (!stateRegistry || typeof stateRegistry.bindSourceObservation !== 'function' ||
+        typeof stateRegistry.lookup !== 'function' || !stateSessionId || !scope)
+      throw validationBlocked(['registered state session required']);
+    if (typeof assertStateContext !== 'function')
+      throw validationBlocked(['trusted State Manager validation required']);
+    const source = await this.getSourceFile(relativePath, { stateContext, assertStateContext });
+    const { validateRuntimeObservation } = require('./productionEvidenceGateDraft');
+    const checked = validateRuntimeObservation(source, {
+      appId: stateContext.appId, environment: stateContext.environment, path: relativePath
+    });
+    if (checked.status !== 'PASS') throw validationBlocked([checked.reason]);
+    assertStateContext();
+    const bound = stateRegistry.bindSourceObservation(stateContext.correlationId,
+      stateSessionId, scope, checked.sourceObservation, relativePath);
+    return { ...bound, runtimeSourceVerified: true, runtimeHash: checked.runtimeHash };
+  }
+
   // Trusted in-process caller only: never accept a caller-supplied proof flag.
   // Reuses the adapter's validated read-only PAC download and strips source content.
   async getSourceEvidence(relativePath, context) {
