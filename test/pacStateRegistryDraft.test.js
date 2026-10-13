@@ -12,7 +12,7 @@ test('PAC observation is bound using Git blob SHA',async()=>{
  let observed;
  const registry={lookup(){return {}},bindSourceObservation(correlation,session,scope,source,path){observed={correlation,session,scope,source,path};return {stateContextComplete:true}}};
  const result=await adapter.bindRuntimeObservation('S1.pa.yaml',{stateContext,assertStateContext(){},stateRegistry:registry,stateSessionId:'session',scope:'POWERAPPS_SOURCE_RESOLUTION'});
- const expected=crypto.createHash('sha1').update('blob '+Buffer.byteLength(content)+'\\0').update(content).digest('hex');
+ const expected=crypto.createHash('sha1').update('blob '+Buffer.byteLength(content)+'\0').update(content).digest('hex');
  assert.equal(observed.source.sha,expected);assert.equal(result.runtimeSourceVerified,true);
 });
 test('no registered session blocks PAC binding',async()=>{
