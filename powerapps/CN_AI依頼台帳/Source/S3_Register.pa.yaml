@@ -319,7 +319,7 @@ Screens:
                           );
                           Set(gblSaving, false); Refresh(CN_勤怠明細台帳);
                           If(IsEmpty(colCalendarErrors),
-                          Set(gblEmpID, First(S3_Workers.SelectedItems).EmployeeID); Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1)); Set(gblReportFromCalendar, true); Set(gblReportSite, siteName); Set(gblReportPrime, company); Set(gblReportContact, Trim(S3_Contact.Text)); Set(gblReportContent, S3_Note.Text); Set(gblReportStart, s); Set(gblReportEnd, e); Navigate(S11_Report, ScreenTransition.None),
+                          Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1)); Set(gblReportFromCalendar, true); Set(gblReportSite, siteName); Set(gblReportPrime, company); Set(gblReportContact, Trim(S3_Contact.Text)); Set(gblReportContent, S3_Note.Text); Set(gblReportStart, s); Set(gblReportEnd, e); Navigate(S11_Report, ScreenTransition.None),
                           Notify("登録できなかった作業員：" & Concat(colCalendarErrors, workerName & "：" & message, " / "), NotificationType.Error)
                           )
                           )
