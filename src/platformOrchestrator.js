@@ -249,6 +249,11 @@ class PlatformOrchestrator {
         );
       }
 
+      // Production deployment is also a mutation. A caller-supplied token is not
+      // independently reserved approval; stop BEFORE any deployment or publish.
+      return this._returnBlocked('本番変更の独立承認予約未接続',
+        ['approved_single_use_gate_not_wired'], requestIdLocal);
+
       // Step 12-14: 環境反映、検証
       const deployment = await this._deployChanges({
         gitOps,
