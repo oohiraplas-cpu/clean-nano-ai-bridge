@@ -34,7 +34,9 @@ function githubDraftEvidenceAdapter({request,owner,repo,branch}) {
          !Array.isArray(updated.commit?.parents)||updated.commit.parents.length!==1||updated.commit.parents[0]?.sha!==plan.headSha)return {verified:false};
       const after=await call('/contents/'+path+'?ref='+encodeURIComponent(branch));
       const actual=crypto.createHash('sha1').update(Buffer.concat([Buffer.from('blob '+Buffer.byteLength(evidence.content)+'\0'),Buffer.from(evidence.content)])).digest('hex');
-      if(after.sha!==actual||updated.content.sha!==actual)return {verified:false};\n      const newRef=await call('/git/ref/heads/'+branch.split('/').map(encodeURIComponent).join('/'));\n      if(newRef.object?.sha!==updated.commit.sha)return {verified:false};
+      if(after.sha!==actual||updated.content.sha!==actual)return {verified:false};
+      const newRef=await call('/git/ref/heads/'+branch.split('/').map(encodeURIComponent).join('/'));
+      if(newRef.object?.sha!==updated.commit.sha)return {verified:false};
       return {verified:true,planHash,evidenceId:'github-commit:'+updated.commit.sha};
     }
   };
