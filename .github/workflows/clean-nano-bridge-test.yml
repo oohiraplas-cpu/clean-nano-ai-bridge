@@ -314,3 +314,38 @@ jobs:
           path: ci-diagnostic/diagnostic.json
           if-no-files-found: error
           retention-days: 1
+
+      # Single concise status card; evidence-only, never implies production release.
+      - name: "Bridge one-page execution status"
+        if: always()
+        env:
+          CHECK_TEST: ${{ steps.npm_test.outcome }}
+          CHECK_OPENAPI: ${{ steps.openapi_validation.outcome }}
+          CHECK_MCP: ${{ steps.mcp_contract.outcome }}
+          CHECK_SAFETY: ${{ steps.safety_validation.outcome }}
+          CHECK_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const checks = [process.env.CHECK_TEST, process.env.CHECK_OPENAPI, process.env.CHECK_MCP, process.env.CHECK_SAFETY];
+          const pass = checks.every(x => x === 'success');
+          const sha = process.env.CHECK_HEAD || '';
+          const validSha = /^[a-f0-9]{40}$/i.test(sha);
+          const status = pass && validSha ? 'PASS' : 'BLOCKED';
+          const report = [
+            '## clean nano Bridge — 一括実行状況',
+            '| 工程 | 状態 |',
+            '| --- | --- |',
+            '| Draft / HEAD | ' + (validSha ? sha : 'BLOCKED') + ' |',
+            '| npm test | ' + (checks[0] === 'success' ? 'PASS' : 'BLOCKED') + ' |',
+            '| OpenAPI | ' + (checks[1] === 'success' ? 'PASS' : 'BLOCKED') + ' |',
+            '| MCP | ' + (checks[2] === 'success' ? 'PASS' : 'BLOCKED') + ' |',
+            '| Safety | ' + (checks[3] === 'success' ? 'PASS' : 'BLOCKED') + ' |',
+            '| CI test gates | ' + status + ' |',
+            '| Azure production / Power Apps publish | NOT EXECUTED |',
+            '',
+            'Production changes require separate human approval and independent runtime evidence.'
+          ].join('\n') + '\n';
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, report);
+          if (!pass || !validSha) process.exitCode = 1;
+          NODE
