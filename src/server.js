@@ -1388,6 +1388,11 @@ async function createTaskPayload(store, params) {
 }
 
 async function updateTaskStatusPayload(store, params) {
+  // A delegated AI task cannot be reported as complete without execution evidence.
+  // This is a task-status guard, not proof that an external AI actually ran.
+  if (params.status === '完了' && (params.result == null || (typeof params.result === 'string' && params.result.trim() === ''))) {
+    throw requestError('完了には実行結果が必要です');
+  }
   const patch = { status: params.status };
   if (params.result !== undefined) patch.result = params.result;
   return store.update(params.task_id, patch);
