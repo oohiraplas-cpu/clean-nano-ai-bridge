@@ -285,11 +285,10 @@ class PlatformOrchestrator {
 
       // Step 18-19: 公開後検証、監査証跡
       if (publishApproval) {
-        await this._publishChanges({
-          target,
-          requestId: requestIdLocal
-        });
-        this._logExecution('PUBLISHED', `公開完了`);
+        // Fail closed until an independently verified, single-use approval gate
+        // is wired to this orchestration path. A boolean/token alone is not proof.
+        return this._returnBlocked('独立承認ゲート未接続',
+          ['approved_single_use_gate_not_wired'], requestIdLocal);
 
         const postPublish = await this._verifyPostPublish({
           target,
