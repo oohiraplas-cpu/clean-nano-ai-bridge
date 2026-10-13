@@ -286,10 +286,10 @@ Screens:
                         Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        DisplayMode: =If(gblSaving, DisplayMode.Disabled, DisplayMode.Edit)
+                        DisplayMode: =If(gblSaving || !gblIdentityVerified || IsBlank(gblEmpID) || IsBlank(User().EntraObjectId) || Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) <> Lower(Text(User().EntraObjectId)), DisplayMode.Disabled, DisplayMode.Edit)
                         Text: ="全員を登録 → 日報へ"
                         OnSelect: |-
-                          =If(!gblSaving,
+                          =If(!gblSaving && gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)),
                           With({siteName: Coalesce(Trim(S3_SiteManual.Text), S3_Site.Selected.Title), company: Trim(S3_Prime.Text), s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
                           With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
                           If(IsEmpty(S3_Workers.SelectedItems), Notify("全員の作業員を選択してください", NotificationType.Error),
