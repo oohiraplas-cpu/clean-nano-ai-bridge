@@ -16,7 +16,7 @@ Screens:
         Set(gblIdentityVerified, false);
         Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank()));
         If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true));
-        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
+        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
     Children:
       - S5_Title:
           Control: Label@2.5.1
@@ -39,7 +39,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＜"
@@ -55,7 +55,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＞"
@@ -79,7 +79,7 @@ Screens:
             Color: =RGBA(255, 51, 51, 1)
             Height: =60
             Text: ="CN_社員マスタにこの作業員（社員ID：" & gblEmpID & "）の登録がありません。金額は表示できません。"
-            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
             Y: =510
@@ -88,7 +88,7 @@ Screens:
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
             Height: =330
-            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
             Y: =100
