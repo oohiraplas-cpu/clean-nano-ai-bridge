@@ -93,6 +93,49 @@ class SharePointListWriter {
     });
   }
 
+  // Read-only evidence for list schema and individual items. No permission changes.
+  async getList(siteId, listId) {
+    this._assertAuthConfig();
+    if (!siteId || !listId) throw new Error('siteIdとlistIdは必須です');
+    return this._graphFetch(`/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(listId)}`);
+  }
+
+  async getColumns(siteId, listId) {
+    this._assertAuthConfig();
+    if (!siteId || !listId) throw new Error('siteIdとlistIdは必須です');
+    return this._graphFetch(`/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(listId)}/columns`);
+  }
+
+  async getItemFields(siteId, listId, itemId) {
+    this._assertAuthConfig();
+    if (!siteId || !listId || !itemId) throw new Error('siteId・listId・itemIdは必須です');
+    return this._graphFetch(`/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}/fields`);
+  }
+
+  // Restricted column creation; caller MUST enforce human approval, atomic
+  // reservation, backup and final recheck. This is not a public MCP mutation.
+  async createColumn(siteId, listId, columnDefinition) {
+    this._assertAuthConfig();
+    if (!siteId || !listId || !columnDefinition || typeof columnDefinition !== 'object' ||
+        Array.isArray(columnDefinition) || typeof columnDefinition.name !== 'string' ||
+        !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(columnDefinition.name) ||
+        typeof columnDefinition.displayName !== 'string' || !columnDefinition.displayName.trim() ||
+        columnDefinition.required === true || columnDefinition.hidden === true) {
+      throw new Error('列定義が不正または許可されていません');
+    }
+    const typeKeys = ['text', 'number', 'boolean', 'dateTime', 'choice'];
+    if (typeKeys.filter(key => Object.prototype.hasOwnProperty.call(columnDefinition, key)).length !== 1) {
+      throw new Error('列型は許可された型を一つだけ指定してください');
+    }
+    const allowed = new Set(['name', 'displayName', 'description', 'required', 'hidden', ...typeKeys]);
+    if (Object.keys(columnDefinition).some(key => !allowed.has(key))) {
+      throw new Error('未許可の列属性です');
+    }
+    return this._graphFetch(`/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(listId)}/columns`, {
+      method: 'POST', body: JSON.stringify(columnDefinition)
+    });
+  }
+
   // 指定されたSharePoint内部列名でアイテムを作成する。内部名は呼び出し側が明示する。
   async createItemFields(siteId, listId, fields) {
     this._assertAuthConfig();

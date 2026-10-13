@@ -1,0 +1,11 @@
+'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');
+const {verifyApprovalColumns,REQUIRED}=require('../src/p0ApprovalColumnVerification');
+const fieldMap=Object.fromEntries(REQUIRED.map((k,i)=>[k,'internal_'+i]));
+const reader={listColumns:async()=>({status:'ok',siteId:'site',listId:'list',columns:Object.values(fieldMap).map(name=>({name,displayName:'display'}))})};
+const base={reader,siteId:'site',listId:'list',fieldMap};
+test('exact internal column names verified',async()=>assert.equal((await verifyApprovalColumns(base)).verified,true));
+test('display names alone do not count',async()=>assert.equal((await verifyApprovalColumns({...base,reader:{listColumns:async()=>({status:'ok',siteId:'site',listId:'list',columns:Object.values(fieldMap).map(displayName=>({name:'other',displayName}))})}})).reason,'internal_names_unverified'));
+test('duplicate field mapping blocks',async()=>assert.equal((await verifyApprovalColumns({...base,fieldMap:{...fieldMap,appId:fieldMap.environmentId}})).reason,'field_map_duplicate'));
+test('missing binding field blocks',async()=>assert.equal((await verifyApprovalColumns({...base,fieldMap:{...fieldMap,changeHash:undefined}})).reason,'field_map_incomplete'));
+test('wrong list response blocks',async()=>assert.equal((await verifyApprovalColumns({...base,reader:{listColumns:async()=>({status:'ok',siteId:'site',listId:'wrong',columns:[]})}})).reason,'columns_invalid'));

@@ -274,12 +274,8 @@ test('save_powerapps_appはGitHub再書込なしでPower Platform同期後に保
     headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
     body: JSON.stringify({ method: 'save_powerapps_app', params: { branch: 'main' } })
   });
-  assert.equal(saved.status, 200);
-  const savedBody = await saved.json();
-  assert.equal(savedBody.result.status, 'ok');
-  assert.equal(savedBody.result.sync.refresh.action, 'RefreshChangesFromGit');
-  assert.equal(savedBody.result.sync.pull.action, 'PullChangesFromGit');
-  assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
+  assert.equal(saved.status, 400, '承認ゲート未設定の保存を拒否');
+  assert.deepEqual(actions, [], 'Power Platform同期を呼ばない');
 });
 
 test('save_powerapps_appはPower Apps APIが2xx成功かつ空bodyでもJSON解析エラーにしない', async (t) => {
@@ -301,9 +297,8 @@ test('save_powerapps_appはPower Apps APIが2xx成功かつ空bodyでもJSON解�
   });
   t.after(() => server.close());
   const saved = await fetch(`${server.baseUrl}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' }, body: JSON.stringify({ method: 'save_powerapps_app', params: { branch: 'main' } }) });
-  assert.equal(saved.status, 200);
-  assert.equal((await saved.json()).result.status, 'ok');
-  assert.deepEqual(actions, ['RefreshChangesFromGit', 'PullChangesFromGit']);
+  assert.equal(saved.status, 400, '空bodyでも承認ゲート未設定なら保存拒否');
+  assert.deepEqual(actions, [], 'Power Platform同期を呼ばない');
 });
 
 test('get_powerapps_sourceはGitHub設定不足時も生の500/502で落ちずJSON-RPCエラーとして応答する', async (t) => {
@@ -1367,76 +1362,22 @@ test('update_permissions: Dataverseの強い権限（System Administrator）は�
 
 // ---- 安全修正: 過去branchへの更新・保存・公開の拒否 ----
 
-test('update_powerapps_app: フォールバック（過去）branchでしか見つからないソースは更新を拒否し、PUTしない', async (t) => {
-  const mock = routedFetch([githubContentsRoute({ [FALLBACK_BRANCH]: { [`${GITHUB_ROOT}/Screen3.pa.yaml`]: 'old' } }), githubPutRoute]);
+test('Power Apps update/save/publish は承認ゲート未設定で拒否し、副作用ゼロ', async (t) => {
+  const mock = routedFetch([githubPutRoute, tokenRoute]);
   const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
-  const args = { relativePath: 'Screen3.pa.yaml', content: 'new', message: 'm', branch: 'main' };
-
-  const viaRpc = await rpc(server, 'update_powerapps_app', args);
-  assert.equal(viaRpc.httpStatus, 200);
-  assert.equal(viaRpc.isError, true);
-  assert.equal(viaRpc.structuredContent.status, 'branch_mismatch');
-  assert.match(viaRpc.structuredContent.error, new RegExp(FALLBACK_BRANCH));
-  const viaLegacy = await legacy(server, 'update_powerapps_app', args);
-  assert.equal(viaLegacy.httpStatus, 409);
-  assert.equal(mock.calls.filter((c) => c.method === 'PUT').length, 0, '過去branchへ書き込まない');
-});
-
-test('update_powerapps_app: get_powerapps_sourceが返したbranchを渡し、正本と異なれば通信前に拒否する／正本なら更新できる', async (t) => {
-  const mock = routedFetch([
-    githubContentsRoute({ main: { [`${GITHUB_ROOT}/Screen3.pa.yaml`]: 'old' } }), githubPutRoute, tokenRoute,
-    [(c) => c.url.includes('/solutions?'), () => jsonResponse({ value: [{ uniquename: 'S' }] })],
-    [(c) => c.url.endsWith('RefreshChangesFromGit') || c.url.endsWith('PullChangesFromGit'), () => jsonResponse({})]
-  ]);
-  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides({ orgUrl: 'https://org.crm.dynamics.com', solutionUniqueName: 'S' }) });
-
-  const refused = await rpc(server, 'update_powerapps_app', { relativePath: 'Screen3.pa.yaml', content: 'new', branch: FALLBACK_BRANCH });
-  assert.equal(refused.isError, true);
-  assert.equal(refused.structuredContent.status, 'branch_mismatch');
-  assert.equal(mock.calls.length, 0);
-
-  const accepted = await rpc(server, 'update_powerapps_app', { relativePath: 'Screen3.pa.yaml', content: 'new', branch: 'main' });
-  assert.equal(accepted.isError, false);
-  assert.equal(accepted.structuredContent.update.branch, 'main');
-  assert.equal(mock.calls.find((c) => c.method === 'PUT').body.branch, 'main');
-});
-
-test('save_powerapps_app / publish_powerapps_app: State Lock未成立・branch不一致を拒否し、正本一致のみ実行する', async (t) => {
-  const mock = routedFetch([
-    tokenRoute,
-    [(c) => c.url.includes('/solutions?'), () => jsonResponse({ value: [{ solutionid: '1', uniquename: 'ActualSolution', friendlyname: 'A', version: '1', ismanaged: false }] })],
-    [(c) => c.url.endsWith('RefreshChangesFromGit') || c.url.endsWith('PullChangesFromGit'), () => jsonResponse({ ok: true })],
-    [(c) => c.url.includes('/canvasapps('), () => jsonResponse({ displayname: 'Test App', appversion: '1.1' })],
-    [(c) => c.url.includes('/apps/test-app/publish'), () => jsonResponse({})],
-    [(c) => c.url.includes('/apps/test-app'), () => jsonResponse({ properties: { displayName: 'Test App', appVersion: '1.1' } })]
-  ]);
-  const server = await newServer(t, {
-    fetchImpl: mock.fetchImpl,
-    powerAppsOverrides: gitOverrides({ orgUrl: 'https://example.crm.dynamics.com', solutionUniqueName: 'CN_CompanyOS' })
-  });
-  const sideEffects = () => mock.calls.filter((c) => c.url.endsWith('RefreshChangesFromGit') || c.url.endsWith('PullChangesFromGit') || c.url.includes('/publish')).length;
-
-  const saveRefused = await rpc(server, 'save_powerapps_app', { branch: FALLBACK_BRANCH });
-  assert.equal(saveRefused.isError, true);
-  assert.equal(saveRefused.structuredContent.status, 'branch_mismatch');
-  const publishRefused = await rpc(server, 'publish_powerapps_app', { branch: FALLBACK_BRANCH });
-  assert.equal(publishRefused.isError, true);
-  assert.equal(publishRefused.structuredContent.status, 'branch_mismatch');
-  assert.equal((await legacy(server, 'publish_powerapps_app', { branch: FALLBACK_BRANCH })).httpStatus, 409);
-  assert.equal(sideEffects(), 0, '拒否時は同期も公開も実行しない');
-
-  const saveOk = await rpc(server, 'save_powerapps_app', { branch: 'main' });
-  assert.equal(saveOk.isError, false);
-  const saveUnlocked = await rpc(server, 'save_powerapps_app', {});
-  assert.equal(saveUnlocked.isError, true, 'branch未指定はState Lock未成立として拒否');
-  assert.equal(saveUnlocked.structuredContent.status, 'branch_mismatch');
-  // 契約2026-10-11: stateSessionIdなしの旧callerは明示拒否され、公開処理へ到達しない（フォールバックなし）
-  const publishCallsBefore = mock.calls.filter((c) => c.url.includes('/publish')).length;
-  const publishNoSession = await rpc(server, 'publish_powerapps_app', { branch: 'main' });
-  assert.equal(publishNoSession.isError, true);
-  assert.equal(publishNoSession.structuredContent.status, 'state_session_required');
-  assert.equal(mock.calls.filter((c) => c.url.includes('/publish')).length, publishCallsBefore, 'stateSessionIdなしでは公開APIを呼ばない');
-  assert.equal((await rpc(server, 'publish_powerapps_app', { branch: '' })).isError, true);
+  const cases = [
+    ['update_powerapps_app', { relativePath: 'Screen3.pa.yaml', content: 'new', branch: 'main' }],
+    ['update_powerapps_app', { relativePath: 'Screen3.pa.yaml', content: 'new', branch: FALLBACK_BRANCH }],
+    ['save_powerapps_app', { branch: 'main' }],
+    ['save_powerapps_app', { branch: FALLBACK_BRANCH }],
+    ['publish_powerapps_app', { branch: 'main' }],
+    ['publish_powerapps_app', { branch: FALLBACK_BRANCH }]
+  ];
+  for (const [method, params] of cases) {
+    const result = await rpc(server, method, params);
+    assert.equal(result.isError, true, method + ' must fail closed');
+  }
+  assert.equal(mock.calls.length, 0, 'GitHub PUT・Power Platform保存公開・認証通信はゼロ');
 });
 
 test('get_powerapps_sourceは取得したbranchと正本branchの一致状況を返す', async (t) => {
@@ -1768,4 +1709,48 @@ test('SharePointの新規作成・編集ツールは人間承認なしでは書�
     assert.equal(body.result.isError, true, `${name} should reject missing human approval`);
   }
   assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
+});
+
+
+test('update_powerapps_app deferSync でも未承認のGitHub PUTを拒否する', async (t) => {
+  const mock = routedFetch([githubPutRoute]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides() });
+  for (const invoke of [rpc, legacy]) {
+    const response = await invoke(server, 'update_powerapps_app', {
+      relativePath: 'Screen3.pa.yaml', content: 'Screens:\\n  S1_Home: {}\\n', branch: 'main', deferSync: true
+    });
+    assert.equal(invoke === rpc ? response.isError : response.httpStatus !== 200, true);
+  }
+  assert.equal(mock.calls.length, 0, 'deferSync must not bypass approval to write GitHub');
+});
+
+test('CNAI sourceHandoff uses read-only receiver on HTTP and MCP with State Manager enabled', async (t) => {
+  const crypto = require('node:crypto');
+  const content = 'Screens:\n  S1_Home: {}\n';
+  const path = `${GITHUB_ROOT}/S1_Home.pa.yaml`;
+  const blob = crypto.createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+  const sha = 'a'.repeat(40);
+  const mock = routedFetch([
+    tokenRoute,
+    [(c) => c.method === 'GET' && c.url.includes('/apps/test-app?'), () => jsonResponse({ properties: { displayName: 'App', appVersion: '1' } })],
+    [(c) => c.method === 'GET' && c.url.includes('/git/refs/heads/main'), () => jsonResponse({ object: { sha } })],
+    [(c) => c.method === 'GET' && c.url.endsWith('?ref=' + sha), () => jsonResponse({ type: 'file', encoding: 'base64', path, sha: blob, content: Buffer.from(content).toString('base64') })]
+  ]);
+  const server = await newServer(t, { fetchImpl: mock.fetchImpl, powerAppsOverrides: gitOverrides(), enforceStateManager: true });
+  const sourceHandoff = { recipient: 'CNAI', repository: 'owner/repo', branch: 'main', path,
+    commitSha: sha, contentSha: blob, contentSha256: crypto.createHash('sha256').update(content).digest('hex'),
+    target: { appId: 'test-app', environmentId: 'test-env' } };
+  for (const invoke of [rpc, legacy]) {
+    const response = await invoke(server, 'execute_powerplatform_request', { request: 'verify CNAI handoff', sourceHandoff });
+    const result = invoke === rpc ? response.structuredContent : response.body.result;
+    assert.equal(result?.conclusion, 'HANDOFF_VERIFIED', JSON.stringify(response));
+    assert.equal(result.saved, false); assert.equal(result.published, false);
+    assert.equal(result.readyForSave, false); assert.equal(result.readyForPublish, false);
+  }
+  const mutations = mock.calls.filter(c => c.method !== 'GET' && !c.url.includes('/oauth2/v2.0/token'));
+  assert.equal(mutations.length, 0);
+  const count = mock.calls.length;
+  const refused = await rpc(server, 'execute_powerplatform_request', { request: 'verify', sourceHandoff, publishApproval: true });
+  assert.equal(refused.isError, true);
+  assert.equal(mock.calls.length, count);
 });

@@ -492,8 +492,80 @@ class PowerAppsGitStore {
     return { status: 'ok', action: 'PullChangesFromGit', solutionUniqueName, result };
   }
 
-  async applySourceFileChange(relativePath, content, message, expectedBranch) {
+  // Read-only CNAI receipt verification. It never grants save/publication authority.
+  async verifySourceHandoff(input, powerAppsStore) {
+    const deny = reason => ({ status: 'blocked', reason, sourceVerified: false,
+      saved: false, published: false, readyForSave: false, readyForPublish: false });
+    try {
+      // Do not let a caller change the receipt while external reads are awaited.
+      const h = structuredClone(input);
+      if (!h || typeof h !== 'object' || Array.isArray(h) || h.recipient !== 'CNAI' ||
+          !/^[a-f0-9]{40}$/.test(h.commitSha || '') || !/^[a-f0-9]{40}$/.test(h.contentSha || '') ||
+          !/^[a-f0-9]{64}$/.test(h.contentSha256 || '')) return deny('handoff_invalid');
+      if (!this.githubOwner || !this.githubRepo || !this.githubRoot ||
+          h.repository !== `${this.githubOwner}/${this.githubRepo}` ||
+          h.branch !== this.canonicalBranch) return deny('handoff_source_scope_mismatch');
+      if (typeof h.path !== 'string' || !h.path.startsWith(this.githubRoot + '/') ||
+          !h.path.endsWith('.pa.yaml') || /[\\%?#\x00-\x1f]/.test(h.path) ||
+          h.path.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+        return deny('handoff_path_invalid');
+      }
+      if (!powerAppsStore?.appId || !powerAppsStore?.environmentId ||
+          typeof powerAppsStore.getAppState !== 'function' ||
+          h.target?.appId !== powerAppsStore.appId ||
+          h.target?.environmentId !== powerAppsStore.environmentId) return deny('handoff_target_mismatch');
+      this.assertSourceControlCompatible('CNAI引渡し検証');
+      const targetMatches = state => state?.status === 'ok' &&
+        state.appId === h.target.appId && state.environmentId === h.target.environmentId;
+      if (!targetMatches(await powerAppsStore.getAppState())) return deny('handoff_live_target_mismatch');
+      const root = `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}`;
+      const ref = `${root}/git/refs/heads/${encodeURIComponent(h.branch)}`;
+      if ((await this._githubRequest(ref))?.object?.sha !== h.commitSha) return deny('handoff_stale_head');
+      const encodedPath = h.path.split('/').map(encodeURIComponent).join('/');
+      const file = await this._githubRequest(`${root}/contents/${encodedPath}?ref=${h.commitSha}`);
+      if (file?.type !== 'file' || file.encoding !== 'base64' || file.path !== h.path ||
+          file.sha !== h.contentSha || typeof file.content !== 'string') return deny('handoff_source_unverified');
+      const bytes = Buffer.from(file.content, 'base64');
+      const blob = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+      if (blob !== h.contentSha || crypto.createHash('sha256').update(bytes).digest('hex') !== h.contentSha256) {
+        return deny('handoff_content_mismatch');
+      }
+      // Recheck target and branch after content retrieval. No fallback ref is used.
+      if (!targetMatches(await powerAppsStore.getAppState())) return deny('handoff_live_target_mismatch');
+      if ((await this._githubRequest(ref))?.object?.sha !== h.commitSha) return deny('handoff_stale_head');
+      return { status: 'handoff_verified', sourceVerified: true, saved: false, published: false,
+        readyForSave: false, readyForPublish: false,
+        source: { repository: h.repository, branch: h.branch, path: h.path,
+          commitSha: h.commitSha, contentSha: h.contentSha, contentSha256: h.contentSha256 },
+        target: { appId: h.target.appId, environmentId: h.target.environmentId },
+        blockers: ['native_git_binding_unverified', 'verified_backup_required',
+          'app_checker_required', 'bound_single_use_save_approval_required'] };
+    } catch { return deny('handoff_verification_unavailable'); }
+  }
+
+  async applySourceFileChange(relativePath, content, message, expectedBranch, deferSync = false) {
+    if (typeof deferSync !== 'boolean') throw new Error('deferSync must be boolean');
     const update = await this.updateSourceFile(relativePath, content, message, expectedBranch);
+    if (deferSync) {
+      // Source-only handoff. No Dataverse authentication, sync, save or publish.
+      const expectedBlobSha = crypto.createHash('sha1')
+        .update(`blob ${Buffer.byteLength(content, 'utf8')}\0`).update(content).digest('hex');
+      if (!/^[a-f0-9]{40}$/.test(update.commitSha || '') || update.contentSha !== expectedBlobSha) {
+        return { status: 'blocked', reason: 'source_commit_unverified', update,
+          retryAllowed: false, saved: false, published: false };
+      }
+      return { status: 'handoff_prepared', update, saved: false, published: false,
+        sync: { status: 'deferred', reason: 'cnai_save_publish' },
+        handoff: { recipient: 'CNAI', repository: `${this.githubOwner}/${this.githubRepo}`,
+          branch: update.branch, path: update.path, commitSha: update.commitSha,
+          contentSha: update.contentSha, contentSha256: crypto.createHash('sha256').update(content).digest('hex'),
+          readbackRequired: true, humanApprovalRequired: true,
+          readyForSave: false, readyForPublish: false,
+          nextSteps: ['verify_source_and_target', 'verify_backup_and_app_checker',
+            'verify_save_approval', 'save_powerapps_app', 'verify_saved_source',
+            'verify_publish_approval', 'publish_powerapps_app', 'verify_published_version'] }
+      };
+    }
     try {
       const refresh = await this.refreshFromGit();
       const pull = await this.pullFromGit();
@@ -502,7 +574,9 @@ class PowerAppsGitStore {
       const detail = String(error?.message || error);
       if (/Not a valid solution|Unable to retrieve solution components from root folder path/i.test(detail)) {
         return {
-          status: 'ok',
+          status: 'blocked',
+          reason: 'application_sync_incomplete',
+          sourceUpdated: true, saved: false, published: false, retryAllowed: false,
           update,
           sync: {
             status: 'skipped',

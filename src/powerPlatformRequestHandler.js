@@ -4,6 +4,8 @@
  */
 
 const crypto = require('node:crypto');
+const { verifyBeforeMutation, verifyAfterMutation } = require('./p0ExecutionEvidence');
+const { createAtomicApprovalReservation, createApprovalRecheck } = require('./atomicApprovalReservation');
 const { PlatformOrchestrator } = require('./platformOrchestrator');
 const {
   PowerAppsExecutionAdapter,
@@ -80,11 +82,65 @@ class PowerPlatformRequestHandler {
       stateRegistry,
       deploymentService,
       permissionsService,
+      // Only server-injected providers are eligible; missing providers fail closed.
+      approvalLedger: config?.p0Execution?.ledger || null,
+      getMutationEvidence: typeof config?.p0Execution?.getEvidence === 'function'
+        ? (context) => config.p0Execution.getEvidence(context) : null,
+      readCurrentSha: typeof config?.p0Execution?.readCurrentSha === 'function'
+        ? (context) => config.p0Execution.readCurrentSha(context) : null,
+      reserveApproval: config?.p0Execution?.approvalStore && typeof config?.p0Execution?.getApprovalId === 'function'
+        ? async (context) => {
+            const approvalId = await config.p0Execution.getApprovalId(context);
+            return createAtomicApprovalReservation({ store: config.p0Execution.approvalStore })({ ...context, approvalId });
+          } : null,
+      recheckApproval: config?.p0Execution?.approvalStore
+        ? createApprovalRecheck({ store: config.p0Execution.approvalStore }) : null,
       config
     });
 
+    this.powerAppsStore = powerAppsStore;
+    this.powerAppsGitStore = powerAppsGitStore;
     this.config = config;
     this.stateRegistry = stateRegistry;
+    // Runtime wiring remains fail-closed until an independently authenticated ledger and evidence provider are injected.
+    this.p0Execution = config?.p0Execution || null;
+  }
+
+  /**
+   * Explicit P0 mutation entrypoint, intentionally NOT routed from arbitrary text requests.
+   * All evidence and execution callbacks must come from server-side trusted wiring.
+   * Never infer approval from approvalToken, publishApproval or user-supplied flags.
+   */
+  async executeP0Mutation({ operation, targetSha, observedSha, requestId, actorId, expected } = {}) {
+    const runtime = this.p0Execution;
+    if (!runtime || typeof runtime.getEvidence !== 'function' ||
+        typeof runtime.perform !== 'function' || typeof runtime.verifyResult !== 'function') {
+      return { conclusion: 'BLOCKED', reason: 'p0_runtime_not_configured' };
+    }
+    let evidence;
+    try { evidence = await runtime.getEvidence({ operation, targetSha, requestId, actorId, expected }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'p0_evidence_unavailable' }; }
+    const pre = await verifyBeforeMutation({
+      ledger: runtime.ledger, operation, targetSha, observedSha, requestId, actorId,
+      backupVerified: evidence?.backupVerified, testsPassed: evidence?.testsPassed,
+      expected: { changeHash: evidence?.changeHash, environmentId: evidence?.environmentId, appId: evidence?.appId }
+    });
+    if (!pre.allowed) return { conclusion: 'BLOCKED', reason: pre.reason };
+    // Require a second HEAD read immediately before any state-changing call.
+    let currentSha;
+    try { currentSha = await runtime.readCurrentSha({ operation, requestId }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'head_read_failed' }; }
+    if (currentSha !== targetSha) return { conclusion: 'BLOCKED', reason: 'head_changed' };
+    let execution;
+    try { execution = await runtime.perform({ operation, targetSha, requestId }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'operation_failed' }; }
+    let observed;
+    try { observed = await runtime.verifyResult({ operation, targetSha, requestId, execution }); }
+    catch { return { conclusion: 'BLOCKED', reason: 'postflight_unavailable' }; }
+    const post = verifyAfterMutation({ ...observed, operation, expectedSha: targetSha });
+    return post.allowed
+      ? { conclusion: 'VERIFIED', requestId, operation }
+      : { conclusion: 'BLOCKED', reason: post.reason, requestId };
   }
 
   /**
@@ -101,7 +157,7 @@ class PowerPlatformRequestHandler {
    * }
    */
   async executePowerPlatformRequest(input) {
-    const requestId = input.requestId || crypto.randomUUID();
+    const requestId = input?.requestId || crypto.randomUUID();
     const startTime = Date.now();
 
     // ユーザー入力回数: 1
@@ -111,6 +167,17 @@ class PowerPlatformRequestHandler {
     const validation = this._validateInput(input);
     if (!validation.valid) {
       return this._returnBlocked(validation.error, validation.errors, requestId);
+    }
+
+    if (input.sourceHandoff !== undefined) {
+      // Receipt verification is read-only; never fall through to orchestration.
+      const invalid = validateExecutePowerPlatformRequestParams(input);
+      if (invalid) return this._returnBlocked(invalid, [], requestId);
+      if (typeof this.powerAppsGitStore?.verifySourceHandoff !== 'function') {
+        return this._returnBlocked('handoff_verifier_not_configured', [], requestId);
+      }
+      const result = await this.powerAppsGitStore.verifySourceHandoff(input.sourceHandoff, this.powerAppsStore);
+      return { ...result, requestId, conclusion: result.sourceVerified === true ? 'HANDOFF_VERIFIED' : 'BLOCKED' };
     }
 
     // Step 2: 秘密値検査
@@ -248,6 +315,16 @@ function validateExecutePowerPlatformRequestParams(params) {
 
   if (!params.request || typeof params.request !== 'string') {
     return 'requestは文字列が必要です';
+  }
+
+  if (params.sourceHandoff !== undefined) {
+    const h = params.sourceHandoff;
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return 'sourceHandoffはオブジェクトが必要です';
+    if (params.publishApproval === true || params.approvalToken) return 'sourceHandoffは読取り検証専用です';
+    const targetId = params.targetId ?? params.target?.appId ?? params.target?.id;
+    const environmentId = params.environmentId ?? params.target?.environmentId;
+    if ((targetId !== undefined && targetId !== h.target?.appId) ||
+        (environmentId !== undefined && environmentId !== h.target?.environmentId)) return 'sourceHandoffの対象が一致しません';
   }
 
   if (params.targetName !== undefined && typeof params.targetName !== 'string') {
