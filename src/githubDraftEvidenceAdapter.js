@@ -30,7 +30,8 @@ function githubDraftEvidenceAdapter({request,owner,repo,branch}) {
       const updated=await call('/contents/'+path,{method:'PUT',body:JSON.stringify({
         message:evidence.message,content:Buffer.from(evidence.content,'utf8').toString('base64'),sha:current.sha,branch
       })});
-      if(!SHA.test(updated.commit?.sha||'')||!SHA.test(updated.content?.sha||'')||\n         !Array.isArray(updated.commit?.parents)||updated.commit.parents.length!==1||updated.commit.parents[0]?.sha!==plan.headSha)return {verified:false};
+      if(!SHA.test(updated.commit?.sha||'')||!SHA.test(updated.content?.sha||'')||
+         !Array.isArray(updated.commit?.parents)||updated.commit.parents.length!==1||updated.commit.parents[0]?.sha!==plan.headSha)return {verified:false};
       const after=await call('/contents/'+path+'?ref='+encodeURIComponent(branch));
       const actual=crypto.createHash('sha1').update(Buffer.concat([Buffer.from('blob '+Buffer.byteLength(evidence.content)+'\0'),Buffer.from(evidence.content)])).digest('hex');
       if(after.sha!==actual||updated.content.sha!==actual)return {verified:false};\n      const newRef=await call('/git/ref/heads/'+branch.split('/').map(encodeURIComponent).join('/'));\n      if(newRef.object?.sha!==updated.commit.sha)return {verified:false};
