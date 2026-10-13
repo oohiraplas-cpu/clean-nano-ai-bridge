@@ -75,7 +75,7 @@ Screens:
                   Height: =26
                   OnSelect: =Select(Parent)
                   Size: =11
-                  Text: ="社員ID " & ThisItem.EmployeeID & "　" & Coalesce(ThisItem.Department.Value, "所属未設定") & "　" & Coalesce(ThisItem.EmploymentStatus.Value, "") & "　" & If(IsBlank(LookUp(CN_社員マスタ, 社員ID = ThisItem.EmployeeID)), "給与マスタ未登録", "給与マスタ登録済")
+                  Text: ="社員ID " & ThisItem.EmployeeID & "　" & Coalesce(ThisItem.Department.Value, "所属未設定") & "　" & Coalesce(ThisItem.EmploymentStatus.Value, "")
                   Width: =Parent.TemplateWidth - 24
                   X: =12
                   Y: =38
