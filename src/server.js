@@ -2702,6 +2702,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   // Read-only Draft CI evidence endpoint. Draft writes are deliberately NOT routed.
   app.post('/api/draft/ci-evidence', mcpAuth, async (req, res) => {
+    if (!config.mcpApiKey) return res.status(503).json({ status: 'BLOCKED', reason: 'mcp_auth_not_configured' });
     const plan = req.body?.plan;
     if (!plan || plan.operation !== 'ci_verify' ||
         plan.targetId !== 'oohiraplas-cpu/clean-nano-ai-bridge' ||
