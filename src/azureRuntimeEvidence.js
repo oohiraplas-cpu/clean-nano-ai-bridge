@@ -10,18 +10,17 @@ function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = nul
   const map = settings.POWERAPPS_RUNTIME_SOURCE_MAP;
   let mapping = null;
   try { mapping = JSON.parse(map); } catch { /* no contents in report */ }
-  // Match the canonical Git path (including Japanese directory names) to a saved .msapp Src entry.
-  // Reject absolute paths, traversal, empty segments and mixed separators; never infer ZIP entries.
-  const validSegments = (value, separator) => typeof value === 'string'
-    && value.length > 0 && !value.includes('\\0')
-    && value.split(separator).every(part => part && part !== '.' && part !== '..' && !part.includes(':'));
+  // Accept Unicode canonical Git paths while rejecting traversal and malformed ZIP entries.
+  const validSegments = value => typeof value === 'string'
+    && value.length > 0 && !value.includes('\0')
+    && value.split('/').every(part => part && part !== '.' && part !== '..' && !part.includes(':'));
   const sourceMapSchemaValid = !!mapping && typeof mapping === 'object' && !Array.isArray(mapping)
     && Object.keys(mapping).length > 0 && Object.entries(mapping).every(([key, value]) => {
-      if (typeof key !== 'string' || key.includes('\\\\') || !validSegments(key, '/')) return false;
-      if (!/[^/\\\\]+\\.pa\\.yaml$/u.test(key)) return false;
-      if (typeof value !== 'string' || !/^Src[\\\\/]/.test(value)) return false;
-      const entry = value.replace(/\\\\/g, '/');
-      return validSegments(entry, '/') && /^Src\\/(?:[^/]+\\/)*[^/]+\\.pa\\.yaml$/u.test(entry);
+      if (typeof key !== 'string' || key.includes('\\') || !validSegments(key)) return false;
+      if (!/[^/\\]+\.pa\.yaml$/u.test(key)) return false;
+      if (typeof value !== 'string' || !/^Src[\\/]/.test(value)) return false;
+      const entry = value.replace(/\\/g, '/');
+      return validSegments(entry) && /^Src\/(?:[^/]+\/)*[^/]+\.pa\.yaml$/u.test(entry);
     });
   const runtimeProbeVerified = pacProbe?.trustedAdapterVerified === true
     && pacProbe?.status === 'ok'
