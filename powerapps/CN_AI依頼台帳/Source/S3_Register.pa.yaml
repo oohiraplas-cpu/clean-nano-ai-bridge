@@ -2,7 +2,7 @@ Screens:
   S3_Register:
     Properties:
       Fill: =RGBA(10, 10, 10, 1)
-      OnVisible: =If(IsBlank(gblCalType) || gblCalType = "運営", Set(gblCalType, "解体")); If(IsBlank(gblSelDate), Set(gblSelDate, Today())); Set(gblSaving, false)
+      OnVisible: =If(IsBlank(gblCalType) || gblCalType = "運営", Set(gblCalType, "解体")); If(IsBlank(gblSelDate), Set(gblSelDate, Today())); Set(gblSaving, false); Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank())); If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true))
     Children:
       - S3_RegisterScroll:
           Control: GroupContainer@1.5.0
@@ -286,10 +286,10 @@ Screens:
                         Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        DisplayMode: =If(gblSaving, DisplayMode.Disabled, DisplayMode.Edit)
+                        DisplayMode: =If(gblSaving || !gblIdentityVerified || IsBlank(gblEmpID) || IsBlank(User().EntraObjectId) || !(Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), DisplayMode.Disabled, DisplayMode.Edit)
                         Text: ="全員を登録 → 日報へ"
                         OnSelect: |-
-                          =If(!gblSaving,
+                          =If(!gblSaving && gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))),
                           With({siteName: Coalesce(Trim(S3_SiteManual.Text), S3_Site.Selected.Title), company: Trim(S3_Prime.Text), s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
                           With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
                           If(IsEmpty(S3_Workers.SelectedItems), Notify("全員の作業員を選択してください", NotificationType.Error),
@@ -319,7 +319,7 @@ Screens:
                           );
                           Set(gblSaving, false); Refresh(CN_勤怠明細台帳);
                           If(IsEmpty(colCalendarErrors),
-                          Set(gblEmpID, First(S3_Workers.SelectedItems).EmployeeID); Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1)); Set(gblReportFromCalendar, true); Set(gblReportSite, siteName); Set(gblReportPrime, company); Set(gblReportContact, Trim(S3_Contact.Text)); Set(gblReportContent, S3_Note.Text); Set(gblReportStart, s); Set(gblReportEnd, e); Navigate(S11_Report, ScreenTransition.None),
+                          Set(gblMonth, Date(Year(gblSelDate), Month(gblSelDate), 1)); Set(gblReportFromCalendar, true); Set(gblReportSite, siteName); Set(gblReportPrime, company); Set(gblReportContact, Trim(S3_Contact.Text)); Set(gblReportContent, S3_Note.Text); Set(gblReportStart, s); Set(gblReportEnd, e); Navigate(S11_Report, ScreenTransition.None),
                           Notify("登録できなかった作業員：" & Concat(colCalendarErrors, workerName & "：" & message, " / "), NotificationType.Error)
                           )
                           )

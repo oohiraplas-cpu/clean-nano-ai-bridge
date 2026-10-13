@@ -12,8 +12,11 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        Set(gblEmpID, Blank());
+        Set(gblIdentityVerified, false);
+        Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank()));
+        If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true));
+        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
     Children:
       - S5_Title:
           Control: Label@2.5.1
@@ -36,7 +39,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＜"
@@ -52,7 +55,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＞"
@@ -76,7 +79,7 @@ Screens:
             Color: =RGBA(255, 51, 51, 1)
             Height: =60
             Text: ="CN_社員マスタにこの作業員（社員ID：" & gblEmpID & "）の登録がありません。金額は表示できません。"
-            Visible: =IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
             Y: =510
@@ -85,13 +88,14 @@ Screens:
           Properties:
             Fill: =RGBA(26, 58, 42, 1)
             Height: =330
-            Visible: =!IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Width: =Parent.Width - 32
             X: =16
             Y: =100
       - S5_BaseCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="基本給"
@@ -101,6 +105,7 @@ Screens:
       - S5_BaseVal:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
@@ -112,6 +117,7 @@ Screens:
       - S5_DayCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="日勤手当 × " & CountRows(Filter(colAttend, WorkStatus.Value = "日勤")) & "日"
@@ -121,6 +127,7 @@ Screens:
       - S5_DayVal:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
@@ -132,6 +139,7 @@ Screens:
       - S5_NightCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="夜勤手当 × " & CountRows(Filter(colAttend, WorkStatus.Value = "夜勤")) & "日"
@@ -141,6 +149,7 @@ Screens:
       - S5_NightVal:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
@@ -152,6 +161,7 @@ Screens:
       - S5_EarlyCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="早出手当 × " & CountRows(Filter(colAttend, WorkStatus.Value = "早出")) & "日"
@@ -161,6 +171,7 @@ Screens:
       - S5_EarlyVal:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
@@ -172,6 +183,7 @@ Screens:
       - S5_TaxCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="税金控除"
@@ -181,6 +193,7 @@ Screens:
       - S5_TaxVal:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(255, 51, 51, 1)
             Height: =30
@@ -192,6 +205,7 @@ Screens:
       - S5_InsCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="保険控除"
@@ -201,6 +215,7 @@ Screens:
       - S5_InsVal:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(255, 51, 51, 1)
             Height: =30
@@ -212,6 +227,7 @@ Screens:
       - S5_NetCap:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(255, 255, 255, 1)
             Height: =30
             Text: ="差引支給見込み"
@@ -221,6 +237,7 @@ Screens:
       - S5_Net:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Align: =Align.Right
             Color: =RGBA(0, 204, 102, 1)
             FontWeight: =FontWeight.Bold
@@ -234,6 +251,7 @@ Screens:
       - S5_Note:
           Control: Label@2.5.1
           Properties:
+            Visible: =gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))) && !IsBlank(LookUp(CN_社員マスタ, 社員ID = gblEmpID))
             Color: =RGBA(120, 120, 120, 1)
             Height: =70
             Size: =11

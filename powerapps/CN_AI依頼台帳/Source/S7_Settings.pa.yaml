@@ -12,7 +12,11 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID))
+        Set(gblEmpID, Blank());
+        Set(gblIdentityVerified, false);
+        Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank()));
+        If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true));
+        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
     Children:
       - S7_Title:
           Control: Label@2.5.1
@@ -43,6 +47,16 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =80
+      - S7_Emp:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =30
+            Text: ="表示中の作業員：" & Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).Title, "未選択") & "（" & gblEmpID & "）"
+            Width: =Parent.Width - 64
+            X: =32
+            Y: =132
       - S7_Month:
           Control: Label@2.5.1
           Properties:
@@ -53,6 +67,21 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =170
+      - S7_GoMembers:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderThickness: =0
+            Color: =RGBA(10, 10, 10, 1)
+            Fill: =RGBA(0, 204, 102, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =52
+            HoverFill: =RGBA(0, 230, 115, 1)
+            OnSelect: =Navigate(S6_Members, ScreenTransition.None)
+            PressedFill: =RGBA(0, 160, 80, 1)
+            Text: ="作業員を切り替える（メンバー一覧）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =236
       - S7_Reload:
           Control: Classic/Button@2.2.0
           Properties:
@@ -62,12 +91,12 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("最新のデータを読み込みました", NotificationType.Success)
+            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend)); Notify("最新のデータを読み込みました", NotificationType.Success)
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="データを再読み込み"
             Width: =Parent.Width - 32
             X: =16
-            Y: =236
+            Y: =300
       - S7_ThisMonth:
           Control: Classic/Button@2.2.0
           Properties:
@@ -77,12 +106,12 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("今月に戻しました", NotificationType.Information)
+            OnSelect: =Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend)); Notify("今月に戻しました", NotificationType.Information)
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="表示を今月に戻す"
             Width: =Parent.Width - 32
             X: =16
-            Y: =300
+            Y: =364
       - S7_Src:
           Control: Label@2.5.1
           Properties:
