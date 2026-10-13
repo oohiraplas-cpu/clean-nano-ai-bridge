@@ -13,12 +13,12 @@ function safeSegments(value, separator) {
 function validGitKey(value) {
   return typeof value === 'string' && !value.includes('\\') &&
     value.endsWith('.pa.yaml') && safeSegments(value, '/') &&
-    (/^[\\w.-]+\\.pa\\.yaml$/.test(value) ||
+    (/^[\w.-]+\.pa\.yaml$/.test(value) ||
       (value.startsWith('powerapps/') && value.split('/').length >= 3));
 }
 function validArchiveEntry(value) {
-  return typeof value === 'string' && /^Src[\\\\/]/.test(value) &&
-    value.endsWith('.pa.yaml') && safeSegments(value, /[\\\\/]/);
+  return typeof value === 'string' && /^Src[\\/]/.test(value) &&
+    value.endsWith('.pa.yaml') && safeSegments(value, /[\\/]/);
 }
 function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = null } = {}) {
   const authMode = settings.POWERAPPS_RUNTIME_AUTH_MODE;
