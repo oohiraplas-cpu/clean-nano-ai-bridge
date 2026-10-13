@@ -11,6 +11,7 @@ const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
+const { createAuthenticatedDraftRunner } = require('./authenticatedDraftRunner');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
@@ -2699,6 +2700,28 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
   app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  // Read-only Draft CI evidence endpoint. Draft writes are deliberately NOT routed.
+  app.post('/api/draft/ci-evidence', mcpAuth, async (req, res) => {
+    const plan = req.body?.plan;
+    if (!plan || plan.operation !== 'ci_verify' ||
+        plan.targetId !== 'oohiraplas-cpu/clean-nano-ai-bridge' ||
+        plan.environmentId !== 'draft/approved-execution-engine-20261014') {
+      return res.status(403).json({ status: 'BLOCKED', reason: 'draft_ci_scope_required' });
+    }
+    try {
+      const run = createAuthenticatedDraftRunner({
+        store: powerAppsGitStore,
+        owner: 'oohiraplas-cpu',
+        repo: 'clean-nano-ai-bridge',
+        branch: 'draft/approved-execution-engine-20261014'
+      });
+      const result = await run({ plan });
+      return res.status(result.status === 'PASS' ? 200 : 503).json(result);
+    } catch {
+      return res.status(503).json({ status: 'BLOCKED', reason: 'authenticated_github_unavailable' });
+    }
+  });
+
   app.post('/mcp', mcpAuth, (req, res, next) => {
     handleMcpRequest(req, res, next).catch(next);
   });
