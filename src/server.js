@@ -7,6 +7,9 @@ const { getConfig } = require('./config');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
+const { createPowerAppsMutationGate } = require('./powerAppsMutationGate');
+const { createPowerAppsMediaTools } = require('./powerAppsMediaTools');
+const { screenStructurePreview } = require('./powerAppsScreenPreview');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -156,7 +159,8 @@ const MCP_METHODS = Object.freeze([
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
-  'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
+  'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_screen_preview',
+  'list_powerapps_media_assets', 'get_powerapps_media_asset', 'export_powerapps_asset', 'get_powerapps_operation_result',
   'get_powerapps_source',
   'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
   'create_employee_ledger_entry', 'update_employee_ledger_entry',
@@ -297,11 +301,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'update_powerapps_app',
-    description: '既存Power Appsアプリを更新します。ソース更新時はGitHubへ保存後、Power Platformへ同期します。',
+    description: '既存Power Appsアプリを更新します。deferSync:trueではGitHubソースのみ更新しCNAIへの保存公開引渡し情報を返します。省略時は従来の同期経路です。',
     inputSchema: {
       type: 'object',
       properties: {
         updateData: { type: 'object', description: 'Power Apps管理APIへ送る更新内容' },
+        deferSync: { type: 'boolean', description: 'trueの場合はソース編集のみ。Power Platform同期・保存・公開を実行せずCNAIに引き渡します。' },
         relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
         content: { type: 'string', description: '更新後のファイル内容' },
         message: { type: 'string', description: '更新のコミットメッセージ' },
@@ -487,6 +492,31 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（true必須）' }
       },
       required: ['itemId', 'record', 'approvedByHuman'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_powerapps_media_assets',
+    description: '既存Power Appsのメディア資産一覧（読み取り専用。未接続時BLOCKED）。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_media_asset',
+    description: '既存Power Appsの指定メディア資産を取得（読み取り専用）。',
+    inputSchema: { type: 'object', properties: { assetId: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['assetId'], additionalProperties: false }
+  },
+  {
+    name: 'export_powerapps_asset',
+    description: '既存Power Appsの指定メディア資産をエクスポート（読み取り専用。未接続時BLOCKED）。',
+    inputSchema: { type: 'object', properties: { assetId: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['assetId'], additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_screen_preview',
+    description: '既存Power Apps画面の読み取り専用構造プレビュー。実画面スクリーンショットではありません。',
+    inputSchema: {
+      type: 'object',
+      properties: { screenName: { type: 'string', minLength: 1, maxLength: 100 } },
+      required: ['screenName'],
       additionalProperties: false
     }
   },
@@ -944,6 +974,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: {
         request: { type: 'string', description: 'ユーザーからの短文指示（目的・対象・内容を含む、通常3〜100文字）' },
         target: { type: 'object', description: 'オプション：対象の明示指定（appName, environmentId等）' },
+        sourceHandoff: { type: 'object', description: 'CNAI引渡し情報。指定時は対象・HEAD・内容ハッシュの読取り検証のみを行い、保存・公開は実行しません。' },
         environmentId: { type: 'string', description: 'オプション：環境ID（省略時は正本Environmentを自動選択）' },
         requestId: { type: 'string', description: 'オプション：冪等キー用requestId（省略時は自動生成）' },
         publishApproval: { type: 'boolean', description: 'true=公開を含める、false/未指定=保存までで停止（公開時はAPPROVAL_REQUIRED）' },
@@ -1708,6 +1739,24 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     return fileResult;
   }
+  if (method === 'get_powerapps_screen_preview') {
+    const screenName = params?.screenName;
+    if (typeof screenName !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{0,99}$/.test(screenName) ||
+        Object.keys(params || {}).some(key => key !== 'screenName')) {
+      throw requestError('BLOCKED: invalid Power Apps screen name');
+    }
+    const resolved = await powerAppsGitStore._resolveScreenToRelativePath(screenName);
+    if (!resolved?.path) throw requestError('BLOCKED: screen source not resolved');
+    const source = await powerAppsGitStore.getSourceFile(resolved.path);
+    if (typeof source?.content !== 'string' || source.content.length > 1000000) {
+      throw requestError('BLOCKED: screen source unavailable or too large');
+    }
+    return {
+      status: 'ok', previewType: 'source_structure', isLiveScreenshot: false,
+      screenName, relativePath: resolved.path, sha: source.sha || null,
+      structure: screenStructurePreview(source.content, screenName), readOnly: true
+    };
+  }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
@@ -1718,13 +1767,53 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return powerAppsStore.getAppState();
   }
+  if (['list_powerapps_media_assets', 'get_powerapps_media_asset', 'export_powerapps_asset'].includes(method)) {
+    // Never substitute a GitHub file listing for live Power Apps media inventory.
+    // Runtime media adapter is deliberately absent pending verified read-only auth.
+    return createPowerAppsMediaTools({
+      appId: powerAppsStore.appId,
+      environmentId: powerAppsStore.environmentId
+    })(method, params);
+  }
+  // Draft integration point. Trusted adapters are intentionally NOT injected here;
+  // the common gate returns BLOCKED until SharePoint schema, directory identity,
+  // atomic reservation, immutable source, backup and postcondition are verified.
+  const powerAppsMutationGate = createPowerAppsMutationGate();
+  // Retain legacy dispatch guard below; do not route production writes through
+  // the draft gate until its trusted runtime dependencies have been validated.
+  // Fail closed: direct Power Apps mutation routes are not yet wired to the
+  // independently verified human identity, scoped ledger, atomic ETag reservation,
+  // immutable SHA re-read and single-use final approval recheck.
+  // Read-only inspection and source handoff remain available through their own routes.
+  if (method === 'update_powerapps_app') {
+    // Draft-only gate invocation: no trusted SharePoint store or mutation callback
+    // is injected. This path MUST remain BLOCKED until independent identity,
+    // ledger schema, ETag and source re-read are verified in the live environment.
+    const decision = await powerAppsMutationGate({ operation: 'update' });
+    if (decision.status !== 'VERIFIED') {
+      throw requestError('BLOCKED: direct Power Apps mutation approval gate is not configured');
+    }
+    // Even a future VERIFIED result must not fall through to the legacy writer:
+    // the verified gate must own the sole mutation call and postcondition.
+    throw requestError('BLOCKED: legacy Power Apps update route is disabled');
+  }
+  if (['save_powerapps_app', 'publish_powerapps_app'].includes(method)) {
+    throw requestError('BLOCKED: direct Power Apps mutation approval gate is not configured');
+  }
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
     await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertSourceControlCompatible?.('編集')));
-    return params.updateData
-      ? powerAppsStore.updateApp(params.updateData)
-      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message, params.branch));
+    if (params.deferSync === true && (!powerAppsStore.appId || !powerAppsStore.environmentId)) {
+      throw requestError('CNAI引渡しには設定済みappId・environmentIdが必要です');
+    }
+    if (params.updateData) return powerAppsStore.updateApp(params.updateData);
+    const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(
+      params.relativePath, params.content, params.message, params.branch, params.deferSync));
+    if (result.handoff) result.handoff.target = {
+      appId: powerAppsStore.appId, environmentId: powerAppsStore.environmentId
+    };
+    return result;
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
@@ -2216,6 +2305,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     return withUpstreamErrorStatus(handler.executePowerPlatformRequest({
       request: params.request,
+      sourceHandoff: params.sourceHandoff,
       targetName,
       targetId,
       environmentId,

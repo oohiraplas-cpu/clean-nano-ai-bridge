@@ -29,6 +29,8 @@ const validateGetPowerAppsAppParams = plain;
 const validateGetPowerAppsStateParams = plain;
 function validateUpdatePowerAppsAppParams(params) {
   if (!isPlainObject(params)) return plain(params);
+  if (params.deferSync !== undefined && typeof params.deferSync !== 'boolean') return 'deferSyncはbooleanである必要があります';
+  if (params.deferSync !== undefined && params.updateData !== undefined) return 'deferSyncはソース編集専用です';
   if (isPlainObject(params.updateData)) {
     const keys = Object.keys(params.updateData);
     if (!keys.length || keys.some((key) => !['description', 'commitMessage'].includes(key))) return 'updateDataで指定できるのはdescriptionおよびcommitMessageのみです';

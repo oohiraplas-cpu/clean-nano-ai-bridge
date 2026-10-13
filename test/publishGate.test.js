@@ -186,13 +186,12 @@ test('DEPLOYMENT_SHA未設定は拒否する', async (t) => {
   assert.equal(f.publishCalls.length, 0);
 });
 
-test('全条件一致時のみ公開処理へ到達する', async (t) => {
+test('状態条件一致だけでは独立承認ゲート未設定の公開を拒否する', async (t) => {
   const f = await fixture(t);
   const session = await f.observedSession();
   const res = await f.publish({ stateContext: session.stateContext, stateSessionId: session.stateSessionId });
-  assert.equal(res.error, false);
-  assert.equal(res.data.status, 'ok');
-  assert.equal(f.publishCalls.length, 1);
+  assert.equal(res.error, true);
+  assert.equal(f.publishCalls.length, 0, '承認未設定では公開APIに到達しない');
 });
 
 test('validate系3経路: commit/blobを分離して正しく通し、blob変更は拒否する', async (t) => {

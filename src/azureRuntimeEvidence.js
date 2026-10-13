@@ -10,11 +10,18 @@ function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = nul
   const map = settings.POWERAPPS_RUNTIME_SOURCE_MAP;
   let mapping = null;
   try { mapping = JSON.parse(map); } catch { /* no contents in report */ }
+  // Accept Unicode canonical Git paths while rejecting traversal and malformed ZIP entries.
+  const validSegments = value => typeof value === 'string'
+    && value.length > 0 && !value.includes('\0')
+    && value.split('/').every(part => part && part !== '.' && part !== '..' && !part.includes(':'));
   const sourceMapSchemaValid = !!mapping && typeof mapping === 'object' && !Array.isArray(mapping)
-    && Object.keys(mapping).length > 0 && Object.entries(mapping).every(([key, value]) =>
-      typeof key === 'string' && /^[\w.-]+\.pa\.yaml$/.test(key)
-      && typeof value === 'string' && /^Src[\\/][\w./\\-]+\.pa\.yaml$/.test(value)
-      && !value.split(/[\\/]/).some(part => part === '..'));
+    && Object.keys(mapping).length > 0 && Object.entries(mapping).every(([key, value]) => {
+      if (typeof key !== 'string' || key.includes('\\') || !validSegments(key)) return false;
+      if (!/[^/\\]+\.pa\.yaml$/u.test(key)) return false;
+      if (typeof value !== 'string' || !/^Src[\\/]/.test(value)) return false;
+      const entry = value.replace(/\\/g, '/');
+      return validSegments(entry) && /^Src\/(?:[^/]+\/)*[^/]+\.pa\.yaml$/u.test(entry);
+    });
   const runtimeProbeVerified = pacProbe?.trustedAdapterVerified === true
     && pacProbe?.status === 'ok'
     && pacProbe?.source === 'power-apps-saved-msapp'

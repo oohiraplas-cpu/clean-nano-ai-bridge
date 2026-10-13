@@ -3,6 +3,10 @@
  * Power Apps、SharePoint、Power Automate、Copilot Studio、GitHub、Azure を統一インターフェースで制御
  */
 
+function unconfiguredLifecycle(service, operation) {
+  return { success: false, status: 'blocked', reason: 'approved_lifecycle_not_configured', service, operation };
+}
+
 /**
  * Power Apps 実行アダプター
  */
@@ -30,116 +34,43 @@ class PowerAppsExecutionAdapter {
   }
 
   async createScreen(appId, screenName, definition) {
-    // 既存Bridge: PowerAppsGitStore.editSource() + saveApp()へ委譲
-    // GitHub へ screen definition 追加 → PowerAppsStore.updateApp() → saveApp()
-    try {
-      const sourceUpdate = {
-        type: 'screen',
-        name: screenName,
-        definition: definition || {}
-      };
-      const saved = await this.powerAppsGitStore.editSource(
-        `Sources/Screens/${screenName}.json`,
-        JSON.stringify(sourceUpdate, null, 2)
-      );
-      const appUpdate = await this.powerAppsStore.updateApp({ screen: sourceUpdate });
-      const app = await this.powerAppsStore.saveApp();
-      return {
-        success: true,
-        screenId: screenName,
-        source: saved,
-        appState: appUpdate,
-        saved: app
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'createScreen');
   }
 
   async addControl(appId, screenId, controlName, properties) {
-    // GitHub へ control definition 追加 → updateApp()
-    try {
-      const controlDef = { name: controlName, properties: properties || {} };
-      const sourceUpdate = await this.powerAppsGitStore.editSource(
-        `Sources/Screens/${screenId}/Controls/${controlName}.json`,
-        JSON.stringify(controlDef, null, 2)
-      );
-      const appUpdate = await this.powerAppsStore.updateApp({
-        control: { screenId, ...controlDef }
-      });
-      return { success: true, controlId: controlName, source: sourceUpdate, appState: appUpdate };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'addControl');
   }
 
   async addPowerFx(appId, screenId, controlId, formula) {
-    // Power Fx formula 追加
-    try {
-      const formulaDef = { controlId, formula };
-      const sourceUpdate = await this.powerAppsGitStore.editSource(
-        `Sources/Screens/${screenId}/${controlId}.fx`,
-        formula
-      );
-      const appUpdate = await this.powerAppsStore.updateApp({
-        formula: formulaDef
-      });
-      return { success: true, formula, source: sourceUpdate, appState: appUpdate };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'addPowerFx');
   }
 
   async addDataSource(appId, dataSourceName, connectorType, settings) {
-    // DataSource 追加
-    try {
-      const dsDef = { name: dataSourceName, type: connectorType, settings };
-      const sourceUpdate = await this.powerAppsGitStore.editSource(
-        `Sources/DataSources/${dataSourceName}.json`,
-        JSON.stringify(dsDef, null, 2)
-      );
-      const appUpdate = await this.powerAppsStore.updateApp({
-        dataSource: dsDef
-      });
-      return { success: true, dataSourceId: dataSourceName, source: sourceUpdate, appState: appUpdate };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'addDataSource');
   }
 
   async addFlow(appId, flowName, triggerType) {
-    // Flow 追加
-    try {
-      const flowDef = { name: flowName, trigger: triggerType };
-      const sourceUpdate = await this.powerAppsGitStore.editSource(
-        `Sources/Flows/${flowName}.json`,
-        JSON.stringify(flowDef, null, 2)
-      );
-      const appUpdate = await this.powerAppsStore.updateApp({
-        flow: flowDef
-      });
-      return { success: true, flowId: flowName, source: sourceUpdate, appState: appUpdate };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'addFlow');
   }
 
   async saveApp(appId, environmentId) {
-    // 既存: save操作を再利用
-    return { success: true };
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'saveApp');
   }
 
   async publishApp(appId, environmentId, approvalToken) {
-    // 既存: 承認チェック + publish操作
-    if (!approvalToken) {
-      throw new Error('公開には承認トークンが必要です');
-    }
-    return { success: true };
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'publishApp');
   }
 
   async validateChanges(appId, executionPlan) {
-    // 既存: Power Apps Checkerを再利用
-    return { valid: true, warnings: [], errors: [] };
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAppsExecutionAdapter', 'validateChanges');
   }
 
   async inspectStructure(appId, stateSessionId) {
@@ -198,100 +129,36 @@ class SharePointExecutionAdapter {
     }
   }
 
-  async addColumn(siteName, listName, columnName, columnType, settings) {
-    // 列追加 - SharePoint API へ委譲想定
-    try {
-      const columnDef = {
-        name: columnName,
-        type: columnType,
-        settings: settings || {}
-      };
-      // 実装: sharePointReader / API 層へ委譲
-      return {
-        success: true,
-        columnId: columnName,
-        column: columnDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async addColumn(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('SharePointExecutionAdapter', 'addColumn');
   }
 
-  async updateColumnSettings(siteName, listName, columnName, settings) {
-    // 列設定変更
-    try {
-      return {
-        success: true,
-        columnName,
-        settings
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async updateColumnSettings(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('SharePointExecutionAdapter', 'updateColumnSettings');
   }
 
   async createList(siteName, listName, schema) {
-    // リスト作成 - SharePoint API へ委譲想定
-    try {
-      const listDef = { name: listName, schema: schema || {} };
-      return {
-        success: true,
-        listId: listName,
-        list: listDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('SharePointExecutionAdapter', 'createList');
   }
 
   async registerData(siteName, listName, data) {
-    // 既存: SharePointListWriter.addItem()を再利用
-    try {
-      // 実装: sharePointListWriter/API へ委譲
-      return {
-        success: true,
-        itemId: `${listName}-${Date.now()}`,
-        data
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('SharePointExecutionAdapter', 'registerData');
   }
 
   async updateData(siteName, listName, itemId, data) {
-    // データ更新
-    try {
-      return {
-        success: true,
-        itemId,
-        data
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('SharePointExecutionAdapter', 'updateData');
   }
 
   async validateSchema(siteName, listName, expectedSchema) {
-    // スキーマ検証
-    try {
-      const actualList = await this.sharePointReader.getListSchema?.(siteName, listName);
-      const actual = actualList?.columns || [];
-      const expected = expectedSchema?.columns || [];
-
-      const mismatches = [];
-      // 簡易比較
-      if (actual.length !== expected.length) {
-        mismatches.push(`Column count mismatch: expected ${expected.length}, actual ${actual.length}`);
-      }
-
-      return {
-        success: true,
-        valid: mismatches.length === 0,
-        mismatches
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('SharePointExecutionAdapter', 'validateSchema');
   }
 }
 
@@ -305,141 +172,62 @@ class PowerAutomateExecutionAdapter {
   }
 
   async createFlow(flowName, triggerType, actions) {
-    // フロー作成
-    try {
-      const flowDef = {
-        name: flowName,
-        trigger: { type: triggerType },
-        actions: actions || []
-      };
-      // powerAutomateRunner / API へ委譲
-      return {
-        success: true,
-        flowId: flowName,
-        flow: flowDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'createFlow');
   }
 
   async addTrigger(flowId, triggerType, settings) {
-    // トリガー追加
-    try {
-      const trigger = { type: triggerType, settings: settings || {} };
-      return {
-        success: true,
-        flowId,
-        trigger
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'addTrigger');
   }
 
   async addAction(flowId, actionName, connectorType, settings) {
-    // アクション追加
-    try {
-      const action = {
-        name: actionName,
-        type: connectorType,
-        settings: settings || {}
-      };
-      return {
-        success: true,
-        flowId,
-        actionId: actionName,
-        action
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'addAction');
   }
 
   async addCondition(flowId, condition) {
-    // 条件分岐追加
-    try {
-      return {
-        success: true,
-        flowId,
-        condition
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'addCondition');
   }
 
   async addErrorHandling(flowId, scope) {
-    // エラーハンドリング追加
-    try {
-      return {
-        success: true,
-        flowId,
-        scope
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'addErrorHandling');
   }
 
   async runFlow(flowId, inputs) {
     // 既存: PowerAutomateRunner.runFlow()を再利用
-    return this.powerAutomateRunner?.runFlow?.(flowId, inputs) || { success: true, runId: '' };
+    if (typeof this.powerAutomateRunner?.runFlow !== 'function') return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'runFlow');
+    return this.powerAutomateRunner.runFlow(flowId, inputs);
   }
 
   async getRunHistory(flowId, limit = 10) {
-    // 実行履歴取得
-    try {
-      const runs = await this.powerAutomateRunner?.getRunHistory?.(flowId, limit) || [];
-      return { success: true, runs };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'getRunHistory');
   }
 
   async getRunResult(runId) {
-    // 実行結果取得
-    try {
-      const result = await this.powerAutomateRunner?.getRunResult?.(runId) || {
-        status: 'unknown',
-        outputs: {}
-      };
-      return { success: true, ...result };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    // No verified approval-bound API exists for this lifecycle operation.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'getRunResult');
   }
 
-  async enableFlow(flowId) {
-    // フロー有効化
-    try {
-      return { success: true, flowId };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async enableFlow(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'enableFlow');
   }
 
-  async disableFlow(flowId) {
-    // フロー無効化
-    try {
-      return { success: true, flowId };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async disableFlow(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'disableFlow');
   }
 
-  async validateFlow(flowId) {
-    // フロー検証
-    try {
-      return {
-        success: true,
-        flowId,
-        valid: true,
-        errors: []
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async validateFlow(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('PowerAutomateExecutionAdapter', 'validateFlow');
   }
 }
 
@@ -447,150 +235,25 @@ class PowerAutomateExecutionAdapter {
  * Copilot Studio 実行アダプター
  */
 class CopilotStudioExecutionAdapter {
-  constructor({ config }) {
-    this.config = config;
+  constructor({ config } = {}) { this.config = config; }
+
+  // No authenticated Microsoft API integration is verified for these operations.
+  // Never report a simulated mutation or publication as successful.
+  _unsupported(operation) {
+    return { success: false, status: 'BLOCKED', reason: 'copilot_studio_api_not_configured',
+      adapter: 'CopilotStudioExecutionAdapter', operation };
   }
 
-  async createAgent(agentName, description, instructions) {
-    // エージェント作成
-    try {
-      const agentDef = { name: agentName, description, instructions };
-      return {
-        success: true,
-        agentId: agentName,
-        agent: agentDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addTopic(agentId, topicName, triggers, content) {
-    // トピック追加
-    try {
-      const topicDef = { name: topicName, triggers, content };
-      return {
-        success: true,
-        agentId,
-        topicId: topicName,
-        topic: topicDef
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addKnowledge(agentId, knowledgeSource) {
-    // Knowledge追加
-    try {
-      return {
-        success: true,
-        agentId,
-        knowledge: knowledgeSource
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addTool(agentId, toolName, toolDefinition) {
-    // Tool追加
-    try {
-      return {
-        success: true,
-        agentId,
-        toolId: toolName,
-        tool: toolDefinition
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addAction(agentId, actionName, actionDefinition) {
-    // Action追加
-    try {
-      return {
-        success: true,
-        agentId,
-        actionId: actionName,
-        action: actionDefinition
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async addConnector(agentId, connectorName, credentials) {
-    // Connector追加
-    try {
-      return {
-        success: true,
-        agentId,
-        connectorId: connectorName
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async syncMcpSchema(agentId, mcpTools) {
-    // MCPスキーマ同期
-    try {
-      return {
-        success: true,
-        agentId,
-        tools: mcpTools
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async testAgent(agentId, input) {
-    // テスト実行
-    try {
-      return {
-        success: true,
-        agentId,
-        input,
-        response: 'Test response'
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async publishAgent(agentId, approvalToken) {
-    // 公開
-    if (!approvalToken) {
-      throw new Error('公開には承認トークンが必要です');
-    }
-    try {
-      return {
-        success: true,
-        agentId,
-        published: true
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  async validateAgent(agentId) {
-    // エージェント検証
-    try {
-      return {
-        success: true,
-        agentId,
-        valid: true,
-        conflicts: [],
-        warnings: []
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  }
+  async createAgent() { return this._unsupported('createAgent'); }
+  async addTopic() { return this._unsupported('addTopic'); }
+  async addKnowledge() { return this._unsupported('addKnowledge'); }
+  async addTool() { return this._unsupported('addTool'); }
+  async addAction() { return this._unsupported('addAction'); }
+  async addConnector() { return this._unsupported('addConnector'); }
+  async syncMcpSchema() { return this._unsupported('syncMcpSchema'); }
+  async testAgent() { return this._unsupported('testAgent'); }
+  async publishAgent() { return this._unsupported('publishAgent'); }
+  async validateAgent() { return this._unsupported('validateAgent'); }
 }
 
 /**
@@ -607,19 +270,10 @@ class GitHubExecutionAdapter {
     return 'main';
   }
 
-  async createBranch(branchName, baseBranch = 'main') {
-    // ブランチ作成
-    try {
-      // powerAppsGitStore/API へ委譲
-      return {
-        success: true,
-        branch: branchName,
-        baseBranch,
-        created: new Date().toISOString()
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async createBranch(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'createBranch');
   }
 
   async getLatestMain() {
@@ -635,99 +289,40 @@ class GitHubExecutionAdapter {
     }
   }
 
-  async editFile(branchName, filePath, content, message) {
-    // ファイル編集
-    try {
-      const edited = await this.powerAppsGitStore.editSource?.(filePath, content);
-      return {
-        success: true,
-        filePath,
-        sha: 'sha-placeholder',
-        branch: branchName,
-        source: edited
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async editFile(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'editFile');
   }
 
-  async commitChanges(branchName, message) {
-    // コミット
-    try {
-      return {
-        success: true,
-        branch: branchName,
-        commitSha: `commit-${Date.now()}`,
-        message
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async commitChanges(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'commitChanges');
   }
 
-  async pushBranch(branchName) {
-    // プッシュ
-    try {
-      return {
-        success: true,
-        branch: branchName,
-        pushed: new Date().toISOString()
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async pushBranch(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'pushBranch');
   }
 
-  async createPullRequest(branchName, title, description, baseBranch = 'main') {
-    // PR作成
-    try {
-      return {
-        success: true,
-        prNumber: Math.floor(Math.random() * 1000),
-        prUrl: `https://github.com/repo/pull/99`,
-        branch: branchName,
-        baseBranch,
-        title,
-        description
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async createPullRequest(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'createPullRequest');
   }
 
-  async checkCiStatus(prNumber) {
-    // CI状態確認
-    try {
-      return {
-        success: true,
-        prNumber,
-        status: 'success',
-        checks: [
-          { name: 'test', status: 'success' },
-          { name: 'lint', status: 'success' },
-          { name: 'openapi', status: 'success' }
-        ]
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async checkCiStatus(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'checkCiStatus');
   }
 
-  async mergePullRequest(prNumber, approvalToken) {
-    // マージ
-    if (!approvalToken) {
-      throw new Error('mainマージには承認トークンが必要です');
-    }
-    try {
-      return {
-        success: true,
-        prNumber,
-        merged: true,
-        mergedAt: new Date().toISOString()
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  async mergePullRequest(...args) {
+    // No verified API-backed, approval-scoped lifecycle implementation is wired.
+    // Fail closed: never report a simulated GitHub/SharePoint/Flow mutation or CI result.
+    return unconfiguredLifecycle('GitHubExecutionAdapter', 'mergePullRequest');
   }
 
   async detectSecrets(branchName) {
