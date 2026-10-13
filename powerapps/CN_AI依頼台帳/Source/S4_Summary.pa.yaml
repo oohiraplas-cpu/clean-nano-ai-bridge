@@ -12,8 +12,11 @@ Screens:
       Fill: =RGBA(10, 10, 10, 1)
       OnVisible: |-
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
-        If(IsBlank(gblEmpID), Set(gblEmpID, First(CN_社員台帳).EmployeeID));
-        ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+        Set(gblEmpID, Blank());
+        Set(gblIdentityVerified, false);
+        Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank()));
+        If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true));
+        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend)), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
     Children:
       - S4_Title:
           Control: Label@2.5.1
@@ -36,7 +39,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＜"
@@ -52,7 +55,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =50
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months)))
+            OnSelect: =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(LookUp(CN_社員台帳, EmployeeID = gblEmpID).EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend))
             PressedFill: =RGBA(0, 160, 80, 1)
             Size: =18
             Text: ="＞"
