@@ -106,7 +106,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Set(gblAttendanceComplete, false); Set(gblSalaryReady, false); Set(gblSalaryRecord, Blank()); Clear(colAttend); Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), IfError(ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend); Notify("勤怠の取得に失敗しました。", NotificationType.Error)); Notify("表示月を今月に変更しました。集計の完全性は未確認です。", NotificationType.Information), Notify("本人確認が完了していません。", NotificationType.Error))
+            OnSelect: =Set(gblAttendanceComplete, false); Set(gblSalaryReady, false); Set(gblSalaryRecord, Blank()); Clear(colAttend); Set(gblMonth, Date(Year(Today()), Month(Today()), 1)); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), IfError(ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend); Notify("勤怠の取得に失敗しました。", NotificationType.Error)), Notify("本人確認が完了していません。", NotificationType.Error))
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="表示を今月に戻す"
             Width: =Parent.Width - 32
