@@ -19,8 +19,8 @@ test('Draft edit requires fresh HEAD, blob hash and verified write',async()=>{
  const blob=crypto.createHash('sha1').update(Buffer.concat([Buffer.from('blob '+Buffer.byteLength(content)+'\0'),Buffer.from(content)])).digest('hex');
  let wrote=false;
  const request=async(path,opts)=>{
-  if(path.includes('/git/ref/'))return {object:{sha:plan.headSha}};
-  if(opts?.method==='PUT'){wrote=true;return {commit:{sha:'c'.repeat(40)},content:{sha:blob}};}
+  if(path.includes('/git/ref/'))return {object:{sha:wrote?'c'.repeat(40):plan.headSha}};
+  if(opts?.method==='PUT'){wrote=true;return {commit:{sha:'c'.repeat(40),parents:[{sha:plan.headSha}]},content:{sha:blob}};}
   return wrote?{type:'file',sha:blob}:{type:'file',sha:'d'.repeat(40)};
  };
  const adapter=githubDraftEvidenceAdapter({request,owner:'o',repo:'r',branch:'draft/test'});
