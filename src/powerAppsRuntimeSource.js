@@ -34,6 +34,15 @@ function pacWorkerEnvironment(config, parent = process.env) {
   env.USERPROFILE = config.pacProfileHome;
   env.AZURE_TOKEN_CREDENTIALS = 'ManagedIdentityCredential';
   if (clientId) env.AZURE_CLIENT_ID = clientId;
+  // App Service's local Managed Identity transport must reach the PAC child.
+  // These host-injected values are private: never return or log this env.
+  // Do not inherit legacy MSI, workload identity or service principal settings.
+  const identityKeys = ['IDENTITY_ENDPOINT', 'IDENTITY_HEADER'];
+  if (identityKeys.some(key => Object.prototype.hasOwnProperty.call(parent, key))) {
+    if (!identityKeys.every(key => typeof parent[key] === 'string' && parent[key].trim()))
+      throw sourceUnavailable('managed_identity_transport_incomplete');
+    for (const key of identityKeys) env[key] = parent[key];
+  }
   return env;
 }
 
