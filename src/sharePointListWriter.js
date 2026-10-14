@@ -120,7 +120,7 @@ class SharePointListWriter {
     this._assertAuthConfig();
     if (![siteId, listId, itemId].every(x => typeof x === 'string' && x.trim()))
       throw new Error('siteId/listId/itemId required');
-    if (typeof etag !== 'string' || !/^"[^\"\\r\\n]+"$/.test(etag))
+    if (typeof etag !== 'string' || !/^"[^"\r\n]+"$/.test(etag))
       throw new Error('strong_etag_required');
     this._validateDirectFields(fields);
     const token = await this._getAccessToken();
