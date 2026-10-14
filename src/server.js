@@ -11,6 +11,7 @@ const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
+const { editImageSource, validateImageParams } = require('./powerAppsImages');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
@@ -192,7 +193,8 @@ const MCP_METHODS = Object.freeze([
   'get_execution_queue',
   'get_execution_status',
   'get_checkpoint',
-  'get_azure_deployment_metadata', 'verify_github_ci_artifact'
+  'get_azure_deployment_metadata', 'verify_github_ci_artifact',
+  'get_powerapps_media_asset', 'update_powerapps_image'
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
@@ -1390,6 +1392,34 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: 'Azureデプロイの非機密メタデータを取得します。読み取り専用。未接続の場合はFail Closed。デプロイIDをGit SHAと見なしません。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
+  {
+    name: 'get_powerapps_media_asset',
+    description: 'Git正本の画像をBase64のまま取得・出力、または指定パスを一覧確認します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['get', 'export', 'list'] },
+      relativePath: { type: 'string' },
+      relativePaths: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } }
+    }, required: ['operation'], additionalProperties: false }
+  },
+  {
+    name: 'update_powerapps_image',
+    description: '既存画面に画像コントロールを追加・編集します。PNG/JPEG/GIF/WebP（1MiB以下）をdata URIで埋め込み、位置・サイズ・表示方法を編集します。Git更新は保存・公開完了を意味しません。変更後に状態再取得、既存save/publishツールで検証してください。',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['add', 'edit'] },
+      relativePath: { type: 'string', description: 'get_powerapps_sourceで取得した画面.pa.yamlのパス' },
+      screenName: { type: 'string' }, controlName: { type: 'string' },
+      base64Content: { type: 'string', maxLength: 1398204 },
+      contentType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
+      properties: { type: 'object', properties: {
+        X: { type: 'number', minimum: 0, maximum: 10000 }, Y: { type: 'number', minimum: 0, maximum: 10000 },
+        Width: { type: 'number', exclusiveMinimum: 0, maximum: 10000 }, Height: { type: 'number', exclusiveMinimum: 0, maximum: 10000 },
+        ImagePosition: { type: 'string', enum: ['Fit', 'Fill', 'Stretch', 'Center', 'Tile'] },
+        AccessibleLabel: { type: 'string', maxLength: 500 }
+      }, additionalProperties: false },
+      message: { type: 'string', maxLength: 500 }, branch: { type: 'string' },
+      stateContext: STATE_CONTEXT_SCHEMA, stateSessionId: { type: 'string', minLength: 8 }
+    }, required: ['operation', 'relativePath', 'screenName', 'controlName', 'branch', 'stateContext', 'stateSessionId'], additionalProperties: false }
+  },
 ]);
 
 async function tasksPayload(store) {
@@ -1472,6 +1502,18 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
 }
 
 async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
+  if (method === 'get_powerapps_media_asset') {
+    if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
+    if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
+    if (params.operation === 'list' && (!Array.isArray(params.relativePaths) || !params.relativePaths.length || params.relativePaths.length > 50 || params.relativePaths.some(path => typeof path !== 'string'))) throw requestError('relativePathsは1から50個のパスが必要です');
+    const result = await powerAppsGitStore.powerAppsMediaAsset(params);
+    if (result.status === 'blocked' || result.status === 'not_found') {
+      const error = requestError(result.error || '画像取得に失敗しました', result.status === 'not_found' ? 404 : 400);
+      error.payload = result;
+      throw error;
+    }
+    return result;
+  }
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
@@ -2656,7 +2698,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
-  app.use(express.json({ limit: '256kb' }));
+  // Image upload tool accepts up to 1MiB binary + Base64/JSON overhead on MCP only.
+  const imageJson = express.json({ limit: '2mb' });
+  const defaultJson = express.json({ limit: '256kb' });
+  app.use((req, res, next) => (req.path === '/mcp' ? imageJson : defaultJson)(req, res, next));
 
   app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
@@ -2818,6 +2863,26 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   }
 
   async function executeWithStateInternal(method, params, req) {
+    if (method === 'update_powerapps_image') {
+      validateImageParams(params);
+      const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+      const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      powerAppsGitStore.assertCanonicalBranch(params.branch, '画像編集');
+      const state = await powerAppsStore.getAppState();
+      if (state.appId !== record.context.appId || state.environmentId !== record.context.environment) throw contextError(['画像編集の対象アプリまたは環境が変化しました']);
+      const metadata = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (metadata.sha !== record.context.sha || metadata.branch !== record.context.branch) throw contextError(['画像編集前に正本commitまたはbranchが変化しました']);
+      const source = await powerAppsGitStore.getSourceFile(record.source.path);
+      if (source.sha !== record.source.sha || source.branch !== record.context.branch || source.writable !== true) throw contextError(['画像編集前に観測ソースが変化したか書込み不可です']);
+      const content = editImageSource(source.content, params);
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(record.source.path, content, params.message || `${params.operation} image: ${params.controlName}`, params.branch, record.source.sha));
+      const observed = await withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(record.source.path));
+      if (observed.branch !== record.context.branch || observed.content !== content) throw contextError(['画像編集後のGitソース照合に失敗しました']);
+      return { ...result, image: { screenName: params.screenName, controlName: params.controlName, operation: params.operation }, gitVerified: true, saved: false, published: false,
+        nextAction: 'get_powerapps_state → get_powerapps_source → save_powerapps_app → 状態再取得・照合 → publish_powerapps_app → 状態・ソース・画面の再確認' };
+    }
     // CRITICAL: Generate correlationId ONCE at request entry (not per-method)
     // This ID scopes all stateful operations within the request: resolve_app_target, get_powerapps_state, hydration, source binding
     // Never regenerate correlationId in child functions (hydratePowerAppsStateContext, bind, etc.)

@@ -81,6 +81,14 @@ Power Apps Studio / Test Engine は実行しません（常に `power_apps_test_
 
 `PowerAppsGitStore` はソースが見つからない場合に過去branch（フォールバック）を探しますが、**更新は正本branch（`POWERAPPS_GITHUB_BRANCH`）にあるファイルに対してのみ**行います。フォールバック先でしか見つからないソースへの `update_powerapps_app` は 409 で拒否し、GitHub への書き込みも Power Platform 同期も行いません。`get_powerapps_source` は `branch` / `canonicalBranch` / `isCanonicalBranch` を返します。`update_powerapps_app`・`save_powerapps_app`・`publish_powerapps_app` は任意の `branch`（`get_powerapps_source` が返した値）を受け取り、正本と異なれば拒否します。`branch` 未指定の呼び出しは従来どおりです（ただし更新時のフォールバック書き込み拒否は常に有効）。
 
+## Power Apps画像
+
+`get_powerapps_media_asset` でGit正本の画像をBase64取得・出力できます。
+`update_powerapps_image` は既存画面へ画像を追加し、画像の差し替え・位置・サイズ・表示方法を編集します。
+PNG/JPEG/GIF/WebP（1MiBまで）をdata URIで画面に埋め込み、登録済みの状態セッションを必須とします。
+変更後に最新状態を取得し、既存の保存・公開ツールで検証します。
+詳細と本番反映の条件は [画像ツールの手順](docs/powerapps-images.md) を参照してください。
+
 ## 開発
 
 ```bash
