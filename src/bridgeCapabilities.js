@@ -210,8 +210,8 @@ async function checkDependencies(options = {}) {
     if (powerAppsStore && powerAppsStore.getAppState) {
       const appState = await powerAppsStore.getAppState();
       results.dependencies.powerApps = {
-        status: appState?.id ? 'ok' : 'warning',
-        appId: appState?.id || 'unknown',
+        status: (appState?.appId || appState?.id) ? 'ok' : 'warning',
+        appId: appState?.appId || appState?.id || 'unknown',
         lastModified: appState?.lastModifiedTime
       };
     } else {
