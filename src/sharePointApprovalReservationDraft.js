@@ -31,6 +31,8 @@ async function reserveApprovalDraft({config,reader,writer,expected,executionId,n
  try{
    const before=await read();
    if(!before||before.planHash!==expected.planHash||before.executionId||
+      before.requestId!==expected.requestId||Number(before.stepIndex)!==expected.stepIndex||
+      before.tool!==expected.tool||before.revoked!==false||
       before.status!==config.approvedValue||before.approver!==expected.approver)
      return {status:'BLOCKED',reason:'approval_not_available'};
    const ledger=new ApprovalLedger({config,fetchRows:async()=>[Object.fromEntries(
