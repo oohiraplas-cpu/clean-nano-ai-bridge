@@ -31,4 +31,33 @@ function validatePublishedVersion(observed, expected) {
     return {status:'BLOCKED',reason:'published_artifact_not_verified'};
   return {status:'PASS'};
 }
-module.exports={validateRuntimeObservation,validateApprovalReservation,validatePublishResponse,validatePublishedVersion};
+// Explicit adapters are supplied by trusted server code, never by MCP callers.
+// Conditional write must be enforced by SharePoint using the current ETag.
+async function reserveSharePointApproval({readItem,patchIfMatch,expected,executionId}) {
+  if (typeof readItem!=='function'||typeof patchIfMatch!=='function'||
+      !expected?.planHash||!executionId) return {status:'BLOCKED',reason:'approval_adapter_missing'};
+  try {
+    const before=await readItem();
+    if (!before?.etag||before.status!=='approved'||before.revoked!==false||
+        before.planHash!==expected.planHash||before.executionId)
+      return {status:'BLOCKED',reason:'approval_not_available'};
+    const write=await patchIfMatch({etag:before.etag,fields:{executionId,status:'reserved'}});
+    if (write?.status!== 'ok') return {status:'BLOCKED',reason:'conditional_reservation_failed'};
+    const after=await readItem();
+    if (after?.executionId!==executionId||after.status!=='reserved'||
+        after.planHash!==expected.planHash||!after.etag||after.etag===before.etag)
+      return {status:'BLOCKED',reason:'reservation_readback_mismatch'};
+    return {status:'PASS',executionId,planHash:expected.planHash};
+  } catch {return {status:'BLOCKED',reason:'approval_api_unavailable'};}
+}
+// The reader must independently fetch the deployed artifact; a caller-supplied
+// publish response or a Dataverse appversion alone is insufficient.
+async function verifyIndependentPublishedArtifact({readPublishedArtifact,expected}) {
+  if(typeof readPublishedArtifact!=='function'||!expected?.artifactHash)
+    return {status:'BLOCKED',reason:'published_reader_missing'};
+  try {
+    const observed=await readPublishedArtifact({appId:expected.appId,environmentId:expected.environmentId});
+    return validatePublishedVersion(observed,expected);
+  } catch {return {status:'BLOCKED',reason:'published_artifact_unavailable'};}
+}
+module.exports={validateRuntimeObservation,validateApprovalReservation,validatePublishResponse,validatePublishedVersion,reserveSharePointApproval,verifyIndependentPublishedArtifact};
