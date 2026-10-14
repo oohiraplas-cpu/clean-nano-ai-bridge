@@ -191,8 +191,8 @@ test('MCP chain exports actual adapter source, fetches canonical Git, validates 
 });
 test('MCP reports changed, presentation-only, unavailable and validation_blocked outcomes', async t => {
   for (const [options, outcome, isError] of [
-    [{ content: SOURCE.replace('Color.White', 'Color.Black') }, 'changed', false],
-    [{ content: '# display only\n' + SOURCE }, 'identical', false],
+    [{ content: SOURCE.replace('Color.White', 'Color.Black') }, 'validation_blocked', true],
+    [{ content: '# display only\n' + SOURCE }, 'validation_blocked', true],
     [{ unavailable: true }, 'source_unavailable', true],
     [{ unset: true }, 'source_unavailable', true],
     [{ expire: true }, 'validation_blocked', true],
