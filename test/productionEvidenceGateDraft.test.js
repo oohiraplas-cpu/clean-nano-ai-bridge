@@ -45,3 +45,11 @@ test('published artifact reader failure is fail closed',async()=>{
   });
   assert.equal(result.status,'BLOCKED');
 });
+
+test('published artifact requires independently fetched SHA-256 proof',async()=>{
+ const hash='a'.repeat(64),expected={appId:'a',environmentId:'e',version:'2',artifactHash:hash};
+ const base={source:'independent_published_artifact',appId:'a',environmentId:'e',publishedVersion:'2',artifactHash:hash};
+ assert.equal((await g.verifyIndependentPublishedArtifact({readPublishedArtifact:async()=>base,expected})).status,'BLOCKED');
+ assert.equal((await g.verifyIndependentPublishedArtifact({readPublishedArtifact:async()=>({...base,independentFetchVerified:true}),expected})).status,'PASS');
+ assert.equal((await g.verifyIndependentPublishedArtifact({readPublishedArtifact:async()=>({...base,artifactHash:'not-a-hash',independentFetchVerified:true}),expected})).status,'BLOCKED');
+});
