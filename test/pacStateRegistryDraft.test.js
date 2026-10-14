@@ -40,3 +40,14 @@ test('missing session never starts the PAC worker',async()=>{
  await assert.rejects(()=>adapter.bindRuntimeObservation('S1.pa.yaml',{stateContext,assertStateContext(){},stateRegistry:registry,stateSessionId:'session',scope:'POWERAPPS_SOURCE_RESOLUTION'}),/登録|照合/);
  assert.equal(calls,0);
 });
+
+test('PAC evidence refuses source drift against registered Git content',async()=>{
+ const {readPacEvidenceWithRegisteredState}=require('../src/pacStateEvidence');
+ const registeredRecord={context:{...stateContext},source:{path:'S1.pa.yaml',content}};
+ const goodHash=crypto.createHash('sha256').update(content).digest('hex');
+ const args={registeredRecord,relativePath:'S1.pa.yaml',validateRegisteredState:()=>registeredRecord};
+ const adapter={getSourceEvidence:async()=>({status:'ok',trustedAdapterVerified:true,runtimeHash:'f'.repeat(64)})};
+ await assert.rejects(()=>readPacEvidenceWithRegisteredState({...args,adapter}),/pac_registered_source_mismatch/);
+ adapter.getSourceEvidence=async()=>({status:'ok',trustedAdapterVerified:true,runtimeHash:goodHash});
+ assert.equal((await readPacEvidenceWithRegisteredState({...args,adapter})).runtimeHash,goodHash);
+});
