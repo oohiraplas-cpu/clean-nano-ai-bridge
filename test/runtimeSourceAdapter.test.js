@@ -452,7 +452,7 @@ test('PowerAppsStore internal PAC worker provides registered read-only evidence'
     }
   });
   assert.ok(store._runtimeSource instanceof PowerAppsRuntimeSourceAdapter);
-  const record = { context: fixture.bound.stateContext, source: { path: FILE } };
+  const record = { context: fixture.bound.stateContext, source: { path: FILE, content: SOURCE } };
   const evidence = await readPacEvidenceWithRegisteredState({
     adapter: store._runtimeSource, registeredRecord: record, relativePath: FILE,
     validateRegisteredState: () => {
