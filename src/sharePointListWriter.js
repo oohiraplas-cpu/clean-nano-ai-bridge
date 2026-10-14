@@ -114,6 +114,28 @@ class SharePointListWriter {
     return { itemId, updatedFieldNames: Object.keys(fields) };
   }
 
+  // Explicitly conditional approval reservation; never fall back to unconditional PATCH.
+  // Caller supplies verified site/list/item IDs, column names and a fresh strong ETag.
+  async patchItemFieldsIfMatch(siteId, listId, itemId, fields, etag) {
+    this._assertAuthConfig();
+    if (![siteId, listId, itemId].every(x => typeof x === 'string' && x.trim()))
+      throw new Error('siteId/listId/itemId required');
+    if (typeof etag !== 'string' || !/^"[^\"\\r\\n]+"$/.test(etag))
+      throw new Error('strong_etag_required');
+    this._validateDirectFields(fields);
+    const token = await this._getAccessToken();
+    const url = `${this.graphBaseUrl}/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}/fields`;
+    const response = await this._fetch(url, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'If-Match': etag },
+      body: JSON.stringify(fields)
+    });
+    if (response.status === 409 || response.status === 412)
+      return { status: 'BLOCKED', reason: 'etag_conflict' };
+    if (!response.ok) throw new Error(`conditional_patch_failed_http_${response.status}`);
+    return { status: 'ok' }; // Caller MUST independently re-read and verify reservation.
+  }
+
   _validateDirectFields(fields) {
     if (!fields || typeof fields !== 'object' || Array.isArray(fields) || Object.keys(fields).length === 0) {
       throw new Error('fieldsは1件以上の列内部名と値を持つオブジェクトで指定してください');
