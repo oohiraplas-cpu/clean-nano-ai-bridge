@@ -47,7 +47,8 @@ async function reserveSharePointApproval({readItem,patchIfMatch,expected,executi
     if (after?.executionId!==executionId||after.status!=='reserved'||
         after.planHash!==expected.planHash||after.revoked!==false||!after.etag||after.etag===before.etag)
       return {status:'BLOCKED',reason:'reservation_readback_mismatch'};
-    return {status:'PASS',executionId,planHash:expected.planHash};
+    return {status:'PASS',executionId,planHash:expected.planHash,
+      reserved:true,singleUseVerified:true,persisted:true,etagVerified:true};
   } catch {return {status:'BLOCKED',reason:'approval_api_unavailable'};}
 }
 // The reader must independently fetch the deployed artifact; a caller-supplied

@@ -85,6 +85,14 @@ paths:
         フローを実行します。approvedByHumanがtrueでない場合はエラーになり、実行されません
         （更新・実行系の操作は人間の承認を必須とする方針のため）。
 
+        get_powerapps_media_asset は operation:get/export/list と relativePath または relativePaths で
+        Git正本の画像をBase64形式のまま読み取ります。
+        update_powerapps_image は operation:add/edit・relativePath・screenName・controlName・branch・
+        stateContext・stateSessionId を必要とします。追加時は base64Content・contentType が必須です。
+        PNG/JPEG/GIF/WebP（1MiB以下）をdata URIで画面に埋め込み、propertiesで位置・サイズ・表示を編集します。
+        変更後は最新状態とソースを取得し、既存save_powerapps_app・publish_powerapps_appで保存・公開します。
+        未検証の同期や公開を成功扱いにしません。
+
         Power Apps変更の検証・デプロイ・権限管理として、次の9メソッドも指定できます（paramsは
         inputSchemaのとおり厳密で、未定義のプロパティは400になります）。
         validate_powerapps_change（変更前検査: valid・errors・warnings・summary）、
@@ -174,7 +182,7 @@ components:
       properties:
         method:
           type: string
-          enum: [verify_github_ci_artifact, get_azure_deployment_metadata, health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, list_sharepoint_lists, create_sharepoint_list, create_sharepoint_list_item, update_sharepoint_list_item, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions, compare_powerapps_with_git]
+          enum: [get_powerapps_media_asset, update_powerapps_image, verify_github_ci_artifact, get_azure_deployment_metadata, health_check, get_tasks, get_next_task, create_task, update_task_status, get_task_result, get_powerapps_app, get_powerapps_state, get_powerapps_source, update_powerapps_app, save_powerapps_app, publish_powerapps_app, get_powerapps_operation_result, get_sharepoint_list, list_sharepoint_lists, create_sharepoint_list, create_sharepoint_list_item, update_sharepoint_list_item, get_sharepoint_columns, ensure_sharepoint_columns, run_power_automate_flow, create_employee_ledger_entry, update_employee_ledger_entry, validate_powerapps_change, run_powerapps_tests, verify_save_result, deploy_to_test, verify_deployment, get_deployment_logs, rollback_deployment, get_permissions, update_permissions, compare_powerapps_with_git]
           description: 3AI共通Bridgeが対応する標準メソッド
         params: { type: object }
     McpResponse:

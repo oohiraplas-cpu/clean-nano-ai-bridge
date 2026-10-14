@@ -64,3 +64,29 @@ test('approval cannot be reserved twice',async()=>{
  assert.equal((await reserveApprovalDraft({...args,executionId:'twice'})).status,'BLOCKED');
  assert.equal(h.calls.length,1);
 });
+
+// Exercise the producer/consumer contract, not a hand-written proof object.
+test('verified SharePoint reservation is accepted by execution and evidence gates',async()=>{
+ const {authorizeExecution,hashPlan}=require('../src/approvedExecutionGateDraft');
+ const {validateApprovalReservation}=require('../src/productionEvidenceGateDraft');
+ const plan={requestId:'req',operation:'powerapps_publish',targetId:'app',environmentId:'env',headSha:'a'.repeat(40),baseSha:'b'.repeat(40)};
+ const planHash=hashPlan(plan),h=harness();h.item.fields.col_planHash=planHash;
+ const approval={...plan,status:'approved',revoked:false,planHash};
+ let reservation;
+ const result=await authorizeExecution({plan,approval,readHeadSha:async()=>plan.headSha,
+  reserveApproval:async()=>reservation=await reserveApprovalDraft({config,reader:h.reader,writer:h.writer,expected:{...expected,planHash},executionId:'once'}),
+  recheckApproval:async()=>h.item.fields.col_revoked===false && h.item.fields.col_executionId==='once'});
+ assert.equal(result.status,'PASS');assert.equal(result.scope,'approved_single_use');
+ assert.equal(validateApprovalReservation(reservation,{planHash,executionId:'once'}).status,'PASS');
+ assert.equal(h.calls.length,1);
+});
+test('failed SharePoint reservation cannot pass the execution gate',async()=>{
+ const {authorizeExecution,hashPlan}=require('../src/approvedExecutionGateDraft');
+ const plan={requestId:'req',operation:'powerapps_publish',targetId:'app',environmentId:'env',headSha:'a'.repeat(40),baseSha:'b'.repeat(40)};
+ const planHash=hashPlan(plan),h=harness(412);h.item.fields.col_planHash=planHash;
+ let rechecked=false;
+ const result=await authorizeExecution({plan,approval:{...plan,status:'approved',revoked:false,planHash},readHeadSha:async()=>plan.headSha,
+  reserveApproval:()=>reserveApprovalDraft({config,reader:h.reader,writer:h.writer,expected:{...expected,planHash},executionId:'once'}),
+  recheckApproval:async()=>{rechecked=true;return true;}});
+ assert.equal(result.status,'BLOCKED');assert.equal(rechecked,false);
+});

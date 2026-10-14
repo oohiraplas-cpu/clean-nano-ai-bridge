@@ -415,9 +415,11 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =64
             OnSelect: |-
-              =If(
+              =ClearCollect(colLinkErrors, {emp: ""}); RemoveIf(colLinkErrors, emp = "");
+              If(
                   !varReportSaving,
                   Set(varReportSaving, true);
+                  Set(varNewReportId, "NP-" & Text(Now(), "yyyymmddhhmmss"));
                   IfError(
                       If(
                           !gblReportFromCalendar || !gblCalendarCountSafe || CountRows(Distinct(colReportWorkers, 社員レコードキー)) = 0,
@@ -426,12 +428,12 @@ Screens:
                           Notify("必須項目（社員名・現場・作業内容・元請担当者名）を入力してください", NotificationType.Error),
                           IsBlank(varBlankSignLen) || IsBlank(penSign.Image) || Len(JSON(penSign.Image, JSONFormat.IncludeBinaryData)) <= varBlankSignLen + 50,
                           Notify("元請電子サインを枠内に書いてください", NotificationType.Error),
-                          IfError(
-                              Patch(
+                          With(
+                              {rec: Patch(
                                   CN_電子日報台帳,
                                   Defaults(CN_電子日報台帳),
                                   {
-                                      日報ID: "NP-" & Text(Now(), "yyyymmddhhmmss"),
+                                      日報ID: varNewReportId,
                                       作業日: dpWorkDate.SelectedDate,
                                       社員名: User().FullName,
                                       現場名: Coalesce(Trim(txtSiteManual.Text), ddSite.Selected.現場名),
@@ -445,11 +447,22 @@ Screens:
                                       元請署名状態: {Value: "署名済"},
                                       元請電子サイン: penSign.Image
                                   }
-                              ),
-                              Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error),
-                              Notify("日報を保存しました（提出済）", NotificationType.Success);
+                              )},
+                              ForAll(
+                                  colReportWorkers As w,
+                                  IfError(
+                                      Patch(CN_勤怠明細台帳, LookUp(CN_勤怠明細台帳, ID = w.ID), {DailyReportKey: varNewReportId}),
+                                      Collect(colLinkErrors, {emp: w.社員レコードキー})
+                                  )
+                              );
+                              If(
+                                  IsEmpty(colLinkErrors),
+                                  Notify("日報を保存しました（提出済）", NotificationType.Success),
+                                  Notify("日報は保存しましたが、勤怠の紐付けに失敗した作業員があります：" & Concat(colLinkErrors, emp, " / "), NotificationType.Warning)
+                              );
                               Reset(txtContent); Reset(penSign)
-                          )
+                          ),
+                          Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error)
                       ),
                       Notify("保存処理を完了できませんでした：" & FirstError.Message, NotificationType.Error)
                   );

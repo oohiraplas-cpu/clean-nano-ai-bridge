@@ -161,6 +161,7 @@ function isReadOnlyTool(toolName) {
     'get_powerapps_app',
     'get_powerapps_state',
     'get_powerapps_source',
+    'get_powerapps_media_asset',
     'get_powerapps_operation_result',
     'get_sharepoint_list',
     'get_sharepoint_columns',
