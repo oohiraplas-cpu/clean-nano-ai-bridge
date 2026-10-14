@@ -119,8 +119,13 @@ class PowerAppsRuntimeSourceAdapter {
     });
     if (checked.status !== 'PASS') throw validationBlocked([checked.reason]);
     assertStateContext();
-    const bound = stateRegistry.bindSourceObservation(stateContext.correlationId,
+    const registered = await stateRegistry.lookup(stateContext.correlationId, stateSessionId, scope);
+    if (!registered || registered.status === 'BLOCKED')
+      throw validationBlocked(['registered state session not found']);
+    const bound = await stateRegistry.bindSourceObservation(stateContext.correlationId,
       stateSessionId, scope, checked.sourceObservation, relativePath);
+    if (!bound || bound.status === 'BLOCKED' || bound.stateContextComplete !== true)
+      throw validationBlocked(['state source binding not verified']);
     return { ...bound, runtimeSourceVerified: true, runtimeHash: checked.runtimeHash };
   }
 
