@@ -22,9 +22,9 @@ async function reserveApprovalDraft({config,reader,writer,expected,executionId,n
  const {siteId,listId,itemId,fieldMap:m}=config;
  const read=async()=>{
    const raw=await reader._graphFetch(`/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}?$expand=fields`);
-   if(!raw||String(raw.id)!==String(itemId)||!raw.fields||!raw.eTag)return null;
+   if(!raw||String(raw.id)!==String(itemId)||!raw.fields||!(raw.eTag||raw['@odata.etag']))return null;
    const f=raw.fields;
-   return {etag:raw.eTag,requestId:f[m.requestId],stepIndex:f[m.stepIndex],
+   return {etag:raw.eTag||raw['@odata.etag'],requestId:f[m.requestId],stepIndex:f[m.stepIndex],
      tool:f[m.tool],status:f[m.status],approver:f[m.approver],approvedAt:f[m.approvedAt],
      revoked:f[m.revoked],planHash:f[m.planHash],executionId:f[m.executionId]};
  };
