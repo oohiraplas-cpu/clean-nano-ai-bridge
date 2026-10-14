@@ -90,3 +90,12 @@ test('failed SharePoint reservation cannot pass the execution gate',async()=>{
   recheckApproval:async()=>{rechecked=true;return true;}});
  assert.equal(result.status,'BLOCKED');assert.equal(rechecked,false);
 });
+
+test('approval scope mismatch or revocation blocks before conditional write',async()=>{
+ for(const [field,value] of [['col_requestId','wrong'],['col_stepIndex',2],['col_tool','other'],['col_revoked',true]]) {
+  const h=harness();h.item.fields[field]=value;
+  const result=await reserveApprovalDraft({config,reader:h.reader,writer:h.writer,expected,executionId:'once'});
+  assert.equal(result.status,'BLOCKED',field);
+  assert.equal(h.calls.length,0,field);
+ }
+});
