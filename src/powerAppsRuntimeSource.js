@@ -112,6 +112,10 @@ class PowerAppsRuntimeSourceAdapter {
       throw validationBlocked(['registered state session required']);
     if (typeof assertStateContext !== 'function')
       throw validationBlocked(['trusted State Manager validation required']);
+    // Reject missing/expired sessions before invoking the PAC worker.
+    const initialSession = await stateRegistry.lookup(stateContext?.correlationId, stateSessionId, scope);
+    if (!initialSession || initialSession.status === 'BLOCKED')
+      throw validationBlocked(['registered state session not found']);
     const source = await this.getSourceFile(relativePath, { stateContext, assertStateContext });
     const { validateRuntimeObservation } = require('./productionEvidenceGateDraft');
     const checked = validateRuntimeObservation(source, {
