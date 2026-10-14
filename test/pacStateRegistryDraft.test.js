@@ -32,3 +32,11 @@ test('incomplete binding never reports verified PAC source',async()=>{
  const registry={lookup(){return {status:'ok'}},bindSourceObservation(){return {stateContextComplete:false}}};
  await assert.rejects(()=>adapter.bindRuntimeObservation('S1.pa.yaml',{stateContext,assertStateContext(){},stateRegistry:registry,stateSessionId:'session',scope:'POWERAPPS_SOURCE_RESOLUTION'}),/照合|登録/);
 });
+
+test('missing session never starts the PAC worker',async()=>{
+ let calls=0;
+ const adapter=new PowerAppsRuntimeSourceAdapter(config,async()=>{calls++;return worker();});
+ const registry={lookup(){return null},bindSourceObservation(){throw Error('must not bind')}};
+ await assert.rejects(()=>adapter.bindRuntimeObservation('S1.pa.yaml',{stateContext,assertStateContext(){},stateRegistry:registry,stateSessionId:'session',scope:'POWERAPPS_SOURCE_RESOLUTION'}),/登録|照合/);
+ assert.equal(calls,0);
+});
