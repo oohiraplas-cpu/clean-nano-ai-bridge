@@ -99,3 +99,12 @@ test('approval scope mismatch or revocation blocks before conditional write',asy
   assert.equal(h.calls.length,0,field);
  }
 });
+
+test('Graph @odata.etag is accepted for conditional reservation',async()=>{
+ const h=harness();
+ const read=h.reader._graphFetch;
+ h.reader._graphFetch=async()=>{const item=await read();item['@odata.etag']=item.eTag;delete item.eTag;return item;};
+ const result=await reserveApprovalDraft({config,reader:h.reader,writer:h.writer,expected,executionId:'once'});
+ assert.equal(result.status,'PASS');assert.equal(h.calls.length,1);
+ assert.equal(h.calls[0].etag,'"v1"');
+});
