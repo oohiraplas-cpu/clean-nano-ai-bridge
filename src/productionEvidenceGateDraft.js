@@ -58,6 +58,10 @@ async function verifyIndependentPublishedArtifact({readPublishedArtifact,expecte
     return {status:'BLOCKED',reason:'published_reader_missing'};
   try {
     const observed=await readPublishedArtifact({appId:expected.appId,environmentId:expected.environmentId});
+    if (!observed || observed.independentFetchVerified !== true ||
+        typeof observed.artifactHash !== 'string' || !/^[a-f0-9]{64}$/i.test(observed.artifactHash) ||
+        typeof expected.artifactHash !== 'string' || !/^[a-f0-9]{64}$/i.test(expected.artifactHash))
+      return {status:'BLOCKED',reason:'independent_artifact_evidence_missing'};
     return validatePublishedVersion(observed,expected);
   } catch {return {status:'BLOCKED',reason:'published_artifact_unavailable'};}
 }
