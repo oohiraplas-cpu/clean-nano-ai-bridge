@@ -45,7 +45,7 @@ async function reserveSharePointApproval({readItem,patchIfMatch,expected,executi
     if (write?.status!== 'ok') return {status:'BLOCKED',reason:'conditional_reservation_failed'};
     const after=await readItem();
     if (after?.executionId!==executionId||after.status!=='reserved'||
-        after.planHash!==expected.planHash||!after.etag||after.etag===before.etag)
+        after.planHash!==expected.planHash||after.revoked!==false||!after.etag||after.etag===before.etag)
       return {status:'BLOCKED',reason:'reservation_readback_mismatch'};
     return {status:'PASS',executionId,planHash:expected.planHash};
   } catch {return {status:'BLOCKED',reason:'approval_api_unavailable'};}

@@ -16,6 +16,7 @@ async function reserveApprovalDraft({config,reader,writer,expected,executionId,n
  if(!configured(config)||typeof reader?._graphFetch!=='function'||
     typeof writer?.patchItemFieldsIfMatch!=='function'||!expected?.requestId||
     !Number.isInteger(expected.stepIndex)||!expected.tool||!expected.planHash||
+    typeof expected.approver!=='string'||!expected.approver.trim()||
     typeof executionId!=='string'||!executionId.trim())
    return {status:'BLOCKED',reason:'approval_adapter_missing'};
  const {siteId,listId,itemId,fieldMap:m}=config;
@@ -30,7 +31,7 @@ async function reserveApprovalDraft({config,reader,writer,expected,executionId,n
  try{
    const before=await read();
    if(!before||before.planHash!==expected.planHash||before.executionId||
-      before.status!==config.approvedValue)
+      before.status!==config.approvedValue||before.approver!==expected.approver)
      return {status:'BLOCKED',reason:'approval_not_available'};
    const ledger=new ApprovalLedger({config,fetchRows:async()=>[Object.fromEntries(
       ['requestId','stepIndex','tool','status','approver','approvedAt','revoked'].map(k=>
