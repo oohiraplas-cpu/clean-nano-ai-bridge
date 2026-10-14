@@ -356,6 +356,11 @@ class PowerAppsGitStore {
             writable: branch === this.canonicalBranch &&
               this.sourceControl?.bridgeMirrorState !== 'hold',
             sourceState: branch === this.canonicalBranch ? 'github_canonical' : 'hold',
+            ...(/\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(filePath) ? {
+              base64Content: (data.content || '').replace(/\s/g, ''),
+              size: data.size ?? null,
+              encoding: data.encoding
+            } : {}),
             content: Buffer.from(data.content || '', 'base64').toString('utf8')
           };
         } catch (error) {
@@ -399,10 +404,13 @@ class PowerAppsGitStore {
     }
   }
 
-  async updateSourceFile(relativePath, content, message, expectedBranch) {
+  async updateSourceFile(relativePath, content, message, expectedBranch, expectedSha) {
     if (typeof content !== 'string') throw new Error('contentは文字列である必要があります');
     this.assertCanonicalBranch(expectedBranch, '更新');
     const current = await this.getSourceFile(relativePath);
+    if (expectedSha !== undefined && current.sha !== expectedSha) {
+      throw this._branchConflict('観測後に対象ファイルが変化したため更新を拒否しました');
+    }
     // フォールバック先（過去branch等）でソースが見つかった場合は、そのbranchへ書き込まない。
     if (current.branch !== this.canonicalBranch) {
       throw this._branchConflict(
@@ -492,8 +500,8 @@ class PowerAppsGitStore {
     return { status: 'ok', action: 'PullChangesFromGit', solutionUniqueName, result };
   }
 
-  async applySourceFileChange(relativePath, content, message, expectedBranch) {
-    const update = await this.updateSourceFile(relativePath, content, message, expectedBranch);
+  async applySourceFileChange(relativePath, content, message, expectedBranch, expectedSha) {
+    const update = await this.updateSourceFile(relativePath, content, message, expectedBranch, expectedSha);
     try {
       const refresh = await this.refreshFromGit();
       const pull = await this.pullFromGit();
@@ -525,7 +533,7 @@ class PowerAppsGitStore {
    * 注意:
    * - GitHub正本に存在する画像だけが対象
    * - 元画像の上書きは禁止
-   * - mainブランチへの直接登録は禁止
+   * - 正本branchだけに登録し、元画像を上書きしない
    */
   async powerAppsMediaAsset({
     operation,
@@ -591,7 +599,7 @@ class PowerAppsGitStore {
 
       try {
         const file =
-          await this.getSourceFile(normalizedPath);
+          await this.getSourceFile(this.githubRoot && !normalizedPath.startsWith(this.githubRoot + '/') ? this._sourcePath(normalizedPath) : normalizedPath);
 
         if (!file) {
           return {
@@ -599,6 +607,11 @@ class PowerAppsGitStore {
             error: 'MEDIA_ASSET_NOT_FOUND',
             relativePath: normalizedPath
           };
+        }
+
+        if (file.encoding !== 'base64' || !file.base64Content) {
+          return { status: 'blocked', error: 'BINARY_CONTENT_UNAVAILABLE', relativePath: normalizedPath,
+            reason: 'GitHub Contents APIからBase64画像データを取得できませんでした' };
         }
 
         return {
@@ -613,7 +626,6 @@ class PowerAppsGitStore {
               : null,
           encoding: file.encoding || 'base64',
           content:
-            file.content ||
             file.base64Content ||
             null,
           downloadUrl:
@@ -797,16 +809,7 @@ class PowerAppsGitStore {
         };
       }
 
-      if (
-        expectedBranch.trim().toLowerCase() === 'main'
-      ) {
-        return {
-          status: 'blocked',
-          error: 'MAIN_BRANCH_WRITE_PROHIBITED',
-          reason:
-            'Create and use a feature branch'
-        };
-      }
+      this.assertCanonicalBranch(expectedBranch, '画像登録');
 
       if (
         typeof message !== 'string' ||
@@ -847,7 +850,7 @@ class PowerAppsGitStore {
       }
 
       const estimatedBytes =
-        Math.floor(cleanBase64.length * 0.75);
+        Buffer.from(cleanBase64, 'base64').length;
 
       const maximumBytes = 10 * 1024 * 1024;
 
@@ -891,13 +894,13 @@ class PowerAppsGitStore {
         };
       }
 
-      const updateResult =
-        await this.updateSourceFile(
-          normalizedPath,
-          cleanBase64,
-          message.trim(),
-          expectedBranch.trim()
-        );
+      // Contents API expects binary bytes encoded once, not a UTF-8 Base64 string.
+      const filePath = this._sourcePath(normalizedPath);
+      const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+      const updateResult = await this._githubRequest(
+        `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/contents/${encodedPath}`,
+        { method: 'PUT', body: JSON.stringify({ message: message.trim(), content: cleanBase64, branch: this.canonicalBranch }) }
+      );
 
       return {
         status: 'ok',

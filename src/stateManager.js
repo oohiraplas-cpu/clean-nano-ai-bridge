@@ -14,9 +14,10 @@ const { STATE_CONTEXT_SCHEMA, REQUIRED_STATE_FIELDS } = require('./stateContext'
 
 /**
  * Tools that require State Manager validation before execution (Fail-Closed writes)
- * According to Bridge MCP Inventory v1.1.0, these 16 tools modify state:
+ * Tools that modify state or require an observed state before execution:
  */
 const FAIL_CLOSED_TOOLS = [
+  'update_powerapps_image',
   'update_powerapps_app',           // Updates Power Apps source/app
   'save_powerapps_app',              // Saves Power Apps to Power Platform
   'publish_powerapps_app',           // Publishes Power Apps
