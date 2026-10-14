@@ -39,7 +39,7 @@ async function reserveApprovalDraft({config,reader,writer,expected,executionId,n
    if(!approved.approved)return {status:'BLOCKED',reason:approved.reason};
    // Re-read inside reserveSharePointApproval; only an ETag-guarded write can win.
    const result=await reserveSharePointApproval({
-     readItem:async()=>{const item=await read();return item&&{...item,
+     readItem:async()=>{const item=await read();if(!item||item.requestId!==expected.requestId||Number(item.stepIndex)!==expected.stepIndex||item.tool!==expected.tool||item.approver!==before.approver||item.approvedAt!==before.approvedAt)return null;return {...item,
        status:item.status===config.approvedValue?'approved':item.status===config.reservedValue?'reserved':'unknown',
        revoked:item.revoked===false?false:true};},
      patchIfMatch:({etag,fields})=>writer.patchItemFieldsIfMatch(siteId,listId,itemId,{
