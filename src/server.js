@@ -2874,6 +2874,12 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (method === 'compare_powerapps_with_git') {
         if (error.payload?.status === 'state_context_invalid') {
           error.payload = { ...error.payload, comparisonStatus: 'validation_blocked' };
+        } else if (['pac_registered_source_mismatch', 'registered_state_changed', 'registered_state_evidence_required'].includes(error.message)) {
+          // Trusted PAC/registry provenance failures are validation failures, not transport outages.
+          const safe = new Error('Power Apps runtime source validation blocked');
+          safe.status = 409;
+          safe.payload = { status: 'validation_blocked', comparisonStatus: 'validation_blocked' };
+          throw safe;
         } else if (!error.payload?.comparisonStatus) {
           // Do not expose provider diagnostics or connection information.
           const safe = new Error('Power Apps/Git source could not be read');
