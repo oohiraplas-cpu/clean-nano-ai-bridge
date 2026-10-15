@@ -69,6 +69,22 @@ test('binary media export stays Base64 and import creates new canonical files wi
   await assert.rejects(store.powerAppsMediaAsset({ operation: 'import', relativePath: 'Assets/new.png', base64Content: PNG, contentType: 'image/png', expectedBranch: 'old', message: 'wrong branch', approvedByHuman: true }), /branch/);
 });
 
+test('media list rejects directory candidates without treating them as corrupt image files', async () => {
+  let reads = 0;
+  const store = new PowerAppsGitStore({
+    githubToken: 'token', githubOwner: 'owner', githubRepo: 'repo',
+    githubBranch: 'main', githubRoot: 'app/Source',
+    fetchImpl: async () => { reads++; throw new Error('directory must not be fetched'); }
+  });
+  const result = await store.powerAppsMediaAsset({
+    operation: 'list', relativePaths: ['Assets']
+  });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.assets[0].status, 'blocked');
+  assert.equal(result.assets[0].error, 'UNSUPPORTED_MEDIA_TYPE');
+  assert.equal(reads, 0);
+});
+
 test('MCP image editing requires a registered source session, rejects drift, and verifies Git without claiming publication', async t => {
   let content = SOURCE, commit = 'a'.repeat(40), writes = 0;
   const config = getConfig({});
