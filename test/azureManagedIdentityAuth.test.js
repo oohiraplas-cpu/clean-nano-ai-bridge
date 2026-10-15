@@ -16,3 +16,17 @@ test('managed identity rejects remote endpoint and missing credentials',async()=
  await assert.rejects(createArmManagedIdentityTokenProvider({env:{IDENTITY_ENDPOINT:'https://evil.example/token',IDENTITY_HEADER:'secret'},fetchImpl:fn})());
  await assert.rejects(createArmManagedIdentityTokenProvider({env:{},fetchImpl:fn})());
 });
+
+test('managed identity rejects HTTP failure and missing access token without returning credentials',async()=>{
+ const env={IDENTITY_ENDPOINT:'http://127.0.0.1:8081/msi/token',IDENTITY_HEADER:'private-header'};
+ for(const fetchImpl of [async()=>({ok:false,status:403}),async()=>({ok:true,json:async()=>({})})]){
+  const get=createArmManagedIdentityTokenProvider({env,fetchImpl});
+  await assert.rejects(get(),err=>!String(err.message).includes('private-header'));
+ }
+});
+test('managed identity rejects non-loopback endpoints before making any request',async()=>{
+ let called=false;
+ const get=createArmManagedIdentityTokenProvider({env:{IDENTITY_ENDPOINT:'http://169.254.169.254/metadata/identity/oauth2/token',IDENTITY_HEADER:'private'},fetchImpl:async()=>{called=true;return {ok:true};}});
+ await assert.rejects(get(),/managed_identity_endpoint_untrusted/);
+ assert.equal(called,false);
+});
