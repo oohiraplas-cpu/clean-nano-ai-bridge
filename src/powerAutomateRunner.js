@@ -17,6 +17,17 @@ class PowerAutomateRunner {
     }));
   }
 
+  /**
+   * 設定の有無だけを確認する。トリガーURLは実行・表示しない（実行は人間承認必須のため）。
+   */
+  async healthCheck() {
+    const enabled = this.listRegisteredFlows().filter((flow) => flow.enabled);
+    if (!enabled.length) {
+      return { ok: false, status: 'not_configured', missingConfiguration: ['POWER_AUTOMATE_FLOWS'] };
+    }
+    return { ok: true, status: 'ok', flowCount: enabled.length };
+  }
+
   async runFlow(flowKey, payload) {
     const url = this.flows[flowKey];
     if (!url) {

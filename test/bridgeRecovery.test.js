@@ -80,3 +80,12 @@ test('unknown failures and rate limits are not immediately replayed', async () =
     assert.equal(calls, 1, String(status));
   }
 });
+
+test('optional unconfigured flows remain explicitly skipped, never recovered', async () => {
+  const options = connected();
+  options.powerAutomateRunner.healthCheck = async () => ({ status: 'not_configured' });
+  const result = await checkDependencies(options);
+  assert.equal(result.status, 'ok');
+  assert.equal(result.data.recovery.checks[2].status, 'SKIPPED');
+  assert.equal(result.data.recovery.recoveryStatus, 'BLOCKED');
+});

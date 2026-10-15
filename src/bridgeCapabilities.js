@@ -223,8 +223,8 @@ async function checkDependencies(options = {}) {
     if (powerAppsStore && powerAppsStore.getAppState) {
       const appState = await inspect('powerApps', () => powerAppsStore.getAppState());
       results.dependencies.powerApps = {
-        status: appState?.id ? 'ok' : 'warning',
-        appId: appState?.id || 'unknown',
+        status: (appState?.appId || appState?.id) ? 'ok' : 'warning',
+        appId: appState?.appId || appState?.id || 'unknown',
         lastModified: appState?.lastModifiedTime
       };
     } else {
@@ -240,7 +240,12 @@ async function checkDependencies(options = {}) {
   try {
     if (sharePointReader && sharePointReader.healthCheck) {
       const spHealth = await inspect('sharePoint', () => sharePointReader.healthCheck());
-      results.dependencies.sharePoint = { status: spHealth?.ok ? 'ok' : 'error' };
+      if (spHealth?.status === 'not_configured') {
+        results.dependencies.sharePoint = { status: 'not_configured', missingConfiguration: spHealth.missingConfiguration };
+        warnings.push('SharePoint Reader未構成');
+      } else {
+        results.dependencies.sharePoint = { status: spHealth?.ok ? 'ok' : 'error' };
+      }
     } else {
       results.dependencies.sharePoint = { status: 'not_configured' };
       warnings.push('SharePoint Reader未構成');
@@ -254,7 +259,12 @@ async function checkDependencies(options = {}) {
   try {
     if (powerAutomateRunner && powerAutomateRunner.healthCheck) {
       const flowHealth = await inspect('powerAutomate', () => powerAutomateRunner.healthCheck());
-      results.dependencies.powerAutomate = { status: flowHealth?.ok ? 'ok' : 'error' };
+      if (flowHealth?.status === 'not_configured') {
+        // フロー未登録は「Power Automateを使わない運用」として任意扱い。警告にはしない（状態は隠さず返す）。
+        results.dependencies.powerAutomate = { status: 'not_configured', optional: true, missingConfiguration: flowHealth.missingConfiguration };
+      } else {
+        results.dependencies.powerAutomate = { status: flowHealth?.ok ? 'ok' : 'error' };
+      }
     } else {
       results.dependencies.powerAutomate = { status: 'not_configured' };
       warnings.push('Power Automate Runner未構成');
@@ -281,7 +291,7 @@ async function checkDependencies(options = {}) {
   // Overall status determination
   results.recovery = recovery.buildBridgeRecoveryReport(results.dependencies, attempts);
   for (const check of results.recovery.checks) {
-    if (check.status !== 'PASS') unconfirmed.push(check.name);
+    if (check.status === 'BLOCKED') unconfirmed.push(check.name);
   }
   if (unconfirmed.length && !errors.length && !warnings.length)
     warnings.push('Dependency health not verified');

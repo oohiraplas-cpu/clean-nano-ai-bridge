@@ -65,7 +65,9 @@ class SelfRecoveryService {
   buildBridgeRecoveryReport(dependencies = {}, attempts = {}) {
     const checks = ['powerApps', 'sharePoint', 'powerAutomate', 'git'].map(name => ({
       name,
-      status: dependencies[name]?.status === 'ok' ? 'PASS' : 'BLOCKED',
+      status: dependencies[name]?.status === 'ok' ? 'PASS' :
+        name === 'powerAutomate' && dependencies[name]?.optional === true &&
+          dependencies[name]?.status === 'not_configured' ? 'SKIPPED' : 'BLOCKED',
       attempts: attempts[name] || 0,
       nextAction: dependencies[name]?.status === 'ok' ? null :
         dependencies[name]?.status === 'not_configured' ? 'verify_existing_configuration' :
@@ -76,7 +78,7 @@ class SelfRecoveryService {
       'sharepoint_approval_etag', 'app_checker', 'backup_restore', 'published_artifact'];
     return {
       mode: 'read_only',
-      connectivityStatus: checks.every(check => check.status === 'PASS') ? 'PASS' : 'BLOCKED',
+      connectivityStatus: checks.every(check => check.status !== 'BLOCKED') ? 'PASS' : 'BLOCKED',
       recoveryStatus: 'BLOCKED',
       productionReady: false,
       checks,
