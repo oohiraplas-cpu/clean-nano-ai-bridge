@@ -1,0 +1,11 @@
+'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {assessParallelReleaseGate}=require('../src/parallelReleaseGate');
+const sha='a'.repeat(40);
+const ready={expectedSha:sha,ciConclusion:'success',ciHeadSha:sha,armResourceIdMatched:true,managedIdentityAuthenticated:true,effectiveRbacReadVerified:true,kuduReadAuthenticated:true,kuduDeploymentHistoryVerified:true,runtimeSha:sha,runtimeArtifactIndependentlyAttested:true,backupArtifactIndependentlyVerified:true,rollbackProcedureIndependentlyVerified:true,parallelTargetIsolatedFromProduction:true,humanFinalApprovalVerified:true};
+test('missing evidence blocks release by default',()=>{const r=assessParallelReleaseGate();assert.equal(r.status,'blocked');assert.equal(r.mayPublishAutomatically,false);assert.ok(r.blockers.includes('rollback'));});
+test('CI success alone does not prove Azure runtime',()=>{const r=assessParallelReleaseGate({ciConclusion:'success',ciHeadSha:sha,expectedSha:sha});assert.equal(r.checks.ci,true);assert.equal(r.checks.runtime,false);assert.equal(r.status,'blocked');});
+test('SHA mismatch blocks release even with all other checks',()=>{const r=assessParallelReleaseGate({...ready,runtimeSha:'b'.repeat(40)});assert.equal(r.status,'blocked');assert.ok(r.blockers.includes('runtime'));});
+test('missing independent backup or human approval blocks release',()=>{for(const key of ['backupArtifactIndependentlyVerified','rollbackProcedureIndependentlyVerified','humanFinalApprovalVerified'])assert.equal(assessParallelReleaseGate({...ready,[key]:false}).status,'blocked');});
+test('complete independent evidence only marks readiness, never executes publish',()=>{const r=assessParallelReleaseGate(ready);assert.equal(r.status,'ready_for_separate_execution');assert.equal(r.mayPublishAutomatically,false);});
