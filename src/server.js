@@ -435,9 +435,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
             additionalProperties: false
           }
         },
-        approvedByHuman: { type: 'boolean' }
+        approvedByHuman: { type: 'boolean' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが返したstateSessionId（状態コンテキストと併用）' }
       },
-      required: ['columns','approvedByHuman'],
+      required: ['columns','approvedByHuman','stateContext'],
       additionalProperties: false
     }
   },
