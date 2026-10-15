@@ -1397,8 +1397,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'get_azure_kudu_evidence',
-    description: 'Azure/Kudu GET専用履歴の観測。実稼働SHAの独立証跡がなければBLOCKED。',
-    inputSchema: { type: 'object', properties: { expectedSha: { type: 'string', pattern: '^[a-f0-9]{40}
+    description: 'Azure/Kudu read-only metadata. Runtime SHA remains unverified.',
+    inputSchema: { type: 'object', properties: { expectedSha: { type: 'string' } }, required: ['expectedSha'], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_powerapps_media_asset',
     description: 'Git正本の画像をBase64のまま取得・出力、または指定パスを一覧確認します。読み取り専用。',
     inputSchema: { type: 'object', properties: {
       operation: { type: 'string', enum: ['get', 'export', 'list'] },
