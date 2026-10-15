@@ -247,8 +247,8 @@ async function checkDependencies(options = {}) {
     if (powerAutomateRunner && powerAutomateRunner.healthCheck) {
       const flowHealth = await powerAutomateRunner.healthCheck?.();
       if (flowHealth?.status === 'not_configured') {
-        results.dependencies.powerAutomate = { status: 'not_configured', missingConfiguration: flowHealth.missingConfiguration };
-        warnings.push('Power Automate Runner未構成');
+        // フロー未登録は「Power Automateを使わない運用」として任意扱い。警告にはしない（状態は隠さず返す）。
+        results.dependencies.powerAutomate = { status: 'not_configured', optional: true, missingConfiguration: flowHealth.missingConfiguration };
       } else {
         results.dependencies.powerAutomate = { status: flowHealth?.ok ? 'ok' : 'error' };
       }
