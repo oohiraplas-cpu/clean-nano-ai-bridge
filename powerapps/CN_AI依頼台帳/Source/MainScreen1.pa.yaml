@@ -2546,34 +2546,6 @@ Screens:
                         Text: ="車両情報（準備中）"
                         Width: =768
                         Y: =1201
-                  - Button1:
-                      Control: Classic/Button@2.2.0
-                      Properties:
-                        BorderColor: =RGBA(0, 0, 0, 0)
-                        BorderStyle: =BorderStyle.None
-                        Color: =RGBA(255, 255, 255, 1)
-                        DisabledBorderColor: =RGBA(0, 0, 0, 0)
-                        DisabledColor: =RGBA(161, 159, 157, 1)
-                        DisabledFill: =RGBA(242, 242, 241, 0)
-                        Fill: =RGBA(0, 120, 212, 1)
-                        Font: =Font.'Segoe UI'
-                        Height: =55
-                        HoverBorderColor: =RGBA(0, 0, 0, 0)
-                        HoverColor: =RGBA(255, 255, 255, 1)
-                        HoverFill: =RGBA(16, 110, 190, 1)
-                        OnSelect: |
-                          =Launch("https://m365.cloud.microsoft/chat/agent/T_b565aa01-7e35-af35-4af3-4d83f253a0a5.0b39abdd-9a82-4c6b-b229-066c4c151077.gpt.8c9a73e0-a096-462a-b441-7d6fcecfcaa3")
-                        PressedBorderColor: =RGBA(0, 69, 120, 1)
-                        PressedColor: =RGBA(255, 255, 255, 1)
-                        PressedFill: =RGBA(16, 110, 190, 1)
-                        RadiusBottomLeft: =0
-                        RadiusBottomRight: =0
-                        RadiusTopLeft: =0
-                        RadiusTopRight: =0
-                        Text: ="CNAIに相談"
-                        Width: =222
-                        X: =200
-                        Y: =1257
                   - CN_MobileBrand:
                       Control: Label@2.5.1
                       Properties:
@@ -2805,4 +2777,23 @@ Screens:
             Text: ="車両（準備中）"
             Width: =Parent.Width / 6
             X: =640
+            Y: =Parent.Height - 70
+      - CNAIに相談:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(0, 0, 0, 0)
+            BorderThickness: =0
+            Fill: =RGBA(0, 0, 0, 0)
+            Height: =70
+            HoverBorderColor: =RGBA(0, 0, 0, 0)
+            HoverFill: =RGBA(255, 255, 255, 0.15)
+            OnSelect: =Launch("https://m365.cloud.microsoft/chat/agent/T_b565aa01-7e35-af35-4af3-4d83f253a0a5.0b39abdd-9a82-4c6b-b229-066c4c151077.gpt.8c9a73e0-a096-462a-b441-7d6fcecfcaa3")
+            PaddingLeft: =2
+            PaddingRight: =2
+            PressedBorderColor: =RGBA(0, 0, 0, 0)
+            PressedFill: =RGBA(255, 255, 255, 0.3)
+            Size: =10
+            Text: ="CNAIに相談"
+            Width: =Parent.Width / 6
+            X: =274
             Y: =Parent.Height - 70
