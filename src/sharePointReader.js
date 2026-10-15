@@ -60,6 +60,23 @@ class SharePointReader {
     return response.json();
   }
 
+  /**
+   * 読み取り専用の健全性確認。設定の有無（名前のみ）を確認し、Graphで既定サイトを1件取得する。
+   * 秘密値・トークンは返さない。
+   */
+  async healthCheck() {
+    const missingConfiguration = [];
+    if (!this.tenantId) missingConfiguration.push('SHAREPOINT_TENANT_ID');
+    if (!this.clientId) missingConfiguration.push('SHAREPOINT_CLIENT_ID');
+    if (!this.clientSecret) missingConfiguration.push('SHAREPOINT_CLIENT_SECRET');
+    if (!this.defaultSiteId) missingConfiguration.push('SHAREPOINT_SITE_ID');
+    if (missingConfiguration.length) {
+      return { ok: false, status: 'not_configured', missingConfiguration };
+    }
+    const site = await this._graphFetch(`/sites/${this.defaultSiteId}?$select=id`);
+    return { ok: Boolean(site?.id), status: site?.id ? 'ok' : 'error' };
+  }
+
   async _resolveListId(siteId, listName) {
     const filter = `displayName eq '${listName.replace(/'/g, "''")}'`;
     const data = await this._graphFetch(`/sites/${siteId}/lists?$select=id,displayName&$filter=${encodeURIComponent(filter)}`);

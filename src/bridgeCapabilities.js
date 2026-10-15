@@ -227,7 +227,12 @@ async function checkDependencies(options = {}) {
   try {
     if (sharePointReader && sharePointReader.healthCheck) {
       const spHealth = await sharePointReader.healthCheck?.();
-      results.dependencies.sharePoint = { status: spHealth?.ok ? 'ok' : 'error' };
+      if (spHealth?.status === 'not_configured') {
+        results.dependencies.sharePoint = { status: 'not_configured', missingConfiguration: spHealth.missingConfiguration };
+        warnings.push('SharePoint Reader未構成');
+      } else {
+        results.dependencies.sharePoint = { status: spHealth?.ok ? 'ok' : 'error' };
+      }
     } else {
       results.dependencies.sharePoint = { status: 'not_configured' };
       warnings.push('SharePoint Reader未構成');
@@ -241,7 +246,12 @@ async function checkDependencies(options = {}) {
   try {
     if (powerAutomateRunner && powerAutomateRunner.healthCheck) {
       const flowHealth = await powerAutomateRunner.healthCheck?.();
-      results.dependencies.powerAutomate = { status: flowHealth?.ok ? 'ok' : 'error' };
+      if (flowHealth?.status === 'not_configured') {
+        results.dependencies.powerAutomate = { status: 'not_configured', missingConfiguration: flowHealth.missingConfiguration };
+        warnings.push('Power Automate Runner未構成');
+      } else {
+        results.dependencies.powerAutomate = { status: flowHealth?.ok ? 'ok' : 'error' };
+      }
     } else {
       results.dependencies.powerAutomate = { status: 'not_configured' };
       warnings.push('Power Automate Runner未構成');
