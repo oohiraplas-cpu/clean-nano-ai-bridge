@@ -17,3 +17,8 @@ test('Kudu provider fails closed and masks upstream errors',async()=>{
   await assert.rejects(createKuduTokenProvider({getAccessToken:fn})(),err=>err.message==='kudu_aad_auth_unverified');
  }
 });
+
+test('Kudu provider rejects whitespace-only token and masks rejection details',async()=>{
+ const get=createKuduTokenProvider({getAccessToken:async()=> '   '});
+ await assert.rejects(get(),err=>err.message==='kudu_aad_auth_unverified');
+});
