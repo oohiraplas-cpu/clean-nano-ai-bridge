@@ -1530,7 +1530,8 @@ test('Executive policy is available through authenticated MCP capabilities witho
 test('MCP public Power Apps write tools expose complete required stateContext schema', () => {
   const writeTools = ['update_powerapps_app', 'save_powerapps_app', 'publish_powerapps_app'];
   const requiredFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'];
-  const allFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId', 'repository', 'gitRoot'];
+  // A1: contextVersion / operationId / idempotencyKey are optional (additive) V2 fields
+  const allFields = ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId', 'repository', 'gitRoot', 'contextVersion', 'operationId', 'idempotencyKey'];
 
   for (const name of writeTools) {
     const tool = MCP_PUBLIC_TOOLS.find((entry) => entry.name === name);

@@ -20,7 +20,11 @@ const STATE_CONTEXT_SCHEMA = Object.freeze({
     sha: { type: 'string', pattern: '^[a-f0-9]{40}$', description: '対象ファイルのGit blob SHA' },
     correlationId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが生成したUUID' },
     repository: { type: 'string', minLength: 1, description: 'GitHub repository (owner/repo)' },
-    gitRoot: { type: 'string', minLength: 1, description: 'Git root path for Power Apps source' }
+    gitRoot: { type: 'string', minLength: 1, description: 'Git root path for Power Apps source' },
+    // State Context V2 optional fields (A1: additive only, not required, not yet populated by the server)
+    contextVersion: { type: 'string', minLength: 1, description: '任意: コンテキスト契約のバージョン（例: 2.0.0）' },
+    operationId: { type: 'string', minLength: 8, description: '任意: 操作単位のID（冪等性の追跡用）' },
+    idempotencyKey: { type: 'string', minLength: 1, maxLength: 128, description: '任意: クライアント指定または導出の冪等キー' }
   },
   required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'],
   additionalProperties: false
