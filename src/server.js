@@ -2181,23 +2181,39 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
           if (!sourceFile || !sourceFile.content) {
             contract.missing.push('Source file not found for State Registry binding');
             contract.status = 'BLOCKED';
-          } else if (sourceFile.sha !== contract.stateContext.sha) {
-            contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
-            contract.status = 'BLOCKED';
           } else {
-            const bound = stateRegistry.bind(
-              contract.stateContext.correlationId,
-              contract.stateContext.correlationId,
-              scope,
-              {
-                ...sourceFile,
-                branch: contract.stateContext.branch,
-                canonicalBranch: contract.stateContext.canonicalBranch,
-                sha: contract.stateContext.sha
-              },
-              sourceFile.path
-            );
-            contract.stateSessionId = bound.stateSessionId;
+            // StateContext.sha identifies a branch commit, whereas sourceFile.sha
+            // identifies a Git blob. Never compare or overwrite one with the other.
+            // An independently issued, registered session is required (fail closed).
+            const sessionId = params.stateSessionId;
+            if (!sessionId) {
+              contract.missing.push('State Registry binding requires a registered stateSessionId from get_powerapps_state');
+              contract.status = 'BLOCKED';
+            } else {
+              const registered = stateRegistry.lookup(contract.stateContext.correlationId, sessionId, scope);
+              if (registered.context.sha !== contract.stateContext.sha ||
+                  registered.context.branch !== contract.stateContext.branch ||
+                  registered.context.appId !== contract.stateContext.appId ||
+                  registered.context.environment !== contract.stateContext.environment) {
+                contract.missing.push('Registered StateContext does not match execution contract');
+                contract.status = 'BLOCKED';
+              } else {
+                const observedSha = blobSha(sourceFile.content);
+                if (sourceFile.sha !== observedSha) {
+                  contract.missing.push('Observed source blob SHA does not match content');
+                  contract.status = 'BLOCKED';
+                } else {
+                  const bound = stateRegistry.bindSourceObservation(
+                    contract.stateContext.correlationId,
+                    sessionId,
+                    scope,
+                    { ...sourceFile, sha: observedSha },
+                    sourceFile.path
+                  );
+                  contract.stateSessionId = bound.stateSessionId;
+                }
+              }
+            }
           }
         } catch (err) {
           contract.missing.push(`State Registry binding failed: ${err.message}`);
