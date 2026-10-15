@@ -31,3 +31,28 @@ test('PowerAutomateRunner.healthCheck: フロー0件は not_configured、設定�
   assert.deepEqual(await runner.healthCheck(), { ok: true, status: 'ok', flowCount: 1 });
   assert.equal(called, false);
 });
+
+test('checkDependencies: Power Automate未登録は任意扱いで警告にしない（SharePoint未構成は警告のまま）', async () => {
+  const { checkDependencies } = require('../src/bridgeCapabilities');
+  const base = {
+    powerAppsStore: { getAppState: async () => ({ appId: 'a' }) },
+    powerAppsGitStore: { healthCheck: async () => ({ ok: true, branch: 'main' }) }
+  };
+  const ok = await checkDependencies({
+    ...base,
+    sharePointReader: { healthCheck: async () => ({ ok: true, status: 'ok' }) },
+    powerAutomateRunner: new PowerAutomateRunner({})
+  });
+  assert.equal(ok.status, 'ok');
+  assert.deepEqual(ok.warnings, []);
+  assert.equal(ok.data.dependencies.powerAutomate.status, 'not_configured');
+  assert.equal(ok.data.dependencies.powerAutomate.optional, true);
+
+  const ng = await checkDependencies({
+    ...base,
+    sharePointReader: new SharePointReader({}),
+    powerAutomateRunner: new PowerAutomateRunner({})
+  });
+  assert.equal(ng.status, 'warning');
+  assert.deepEqual(ng.warnings, ['SharePoint Reader未構成']);
+});
