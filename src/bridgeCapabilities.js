@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const yaml = require('js-yaml');
 const { compareSources } = require('./sourceComparison');
 const { sourceUnavailable, validationBlocked } = require('./powerAppsRuntimeSource');
+const { SelfRecoveryService } = require('./selfRecoveryService');
 
 /**
  * 共通レスポンス構造を構築
@@ -190,6 +191,18 @@ function requiresApprovalTool(toolName) {
  * Power Apps, SharePoint, Power Automate, Git, Azure の状態をチェック
  */
 async function checkDependencies(options = {}) {
+  const recovery = new SelfRecoveryService({ autoRecoveryEnabled: false });
+  const attempts = {};
+  const inspect = async (name, read) => {
+    try {
+      const result = await recovery.inspectDependency(read);
+      attempts[name] = result.attempts;
+      return result.value;
+    } catch (error) {
+      attempts[name] = error.attempts;
+      throw error;
+    }
+  };
   const {
     powerAppsStore,
     sharePointReader,
@@ -208,7 +221,7 @@ async function checkDependencies(options = {}) {
   // Power Apps health
   try {
     if (powerAppsStore && powerAppsStore.getAppState) {
-      const appState = await powerAppsStore.getAppState();
+      const appState = await inspect('powerApps', () => powerAppsStore.getAppState());
       results.dependencies.powerApps = {
         status: appState?.id ? 'ok' : 'warning',
         appId: appState?.id || 'unknown',
@@ -226,7 +239,7 @@ async function checkDependencies(options = {}) {
   // SharePoint health
   try {
     if (sharePointReader && sharePointReader.healthCheck) {
-      const spHealth = await sharePointReader.healthCheck?.();
+      const spHealth = await inspect('sharePoint', () => sharePointReader.healthCheck());
       results.dependencies.sharePoint = { status: spHealth?.ok ? 'ok' : 'error' };
     } else {
       results.dependencies.sharePoint = { status: 'not_configured' };
@@ -240,7 +253,7 @@ async function checkDependencies(options = {}) {
   // Power Automate health
   try {
     if (powerAutomateRunner && powerAutomateRunner.healthCheck) {
-      const flowHealth = await powerAutomateRunner.healthCheck?.();
+      const flowHealth = await inspect('powerAutomate', () => powerAutomateRunner.healthCheck());
       results.dependencies.powerAutomate = { status: flowHealth?.ok ? 'ok' : 'error' };
     } else {
       results.dependencies.powerAutomate = { status: 'not_configured' };
@@ -254,7 +267,7 @@ async function checkDependencies(options = {}) {
   // Git health
   try {
     if (powerAppsGitStore && powerAppsGitStore.healthCheck) {
-      const gitHealth = await powerAppsGitStore.healthCheck?.();
+      const gitHealth = await inspect('git', () => powerAppsGitStore.healthCheck());
       results.dependencies.git = { status: gitHealth?.ok ? 'ok' : 'error', branch: gitHealth?.branch };
     } else {
       results.dependencies.git = { status: 'not_configured' };
@@ -266,6 +279,12 @@ async function checkDependencies(options = {}) {
   }
 
   // Overall status determination
+  results.recovery = recovery.buildBridgeRecoveryReport(results.dependencies, attempts);
+  for (const check of results.recovery.checks) {
+    if (check.status !== 'PASS') unconfirmed.push(check.name);
+  }
+  if (unconfirmed.length && !errors.length && !warnings.length)
+    warnings.push('Dependency health not verified');
   const overallStatus = errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'ok';
   const allHealthy = errors.length === 0 && warnings.length === 0;
 
