@@ -51,3 +51,27 @@ test('PAC evidence refuses source drift against registered Git content',async()=
  adapter.getSourceEvidence=async()=>({status:'ok',trustedAdapterVerified:true,runtimeHash:goodHash});
  assert.equal((await readPacEvidenceWithRegisteredState({...args,adapter})).runtimeHash,goodHash);
 });
+
+const {StateContextRegistry,blobSha}=require('../src/stateContext');
+
+test('registered session preserves commit SHA while binding observed blob SHA',()=>{
+ const registry=new StateContextRegistry();
+ const commit='a'.repeat(40);
+ const issued=registry.begin({appId:'app',environmentId:'env',branch:'main',canonicalBranch:'main',sha:commit},'POWERAPPS_SOURCE_RESOLUTION');
+ assert.notEqual(issued.stateSessionId,issued.correlationId);
+ const observation={path:'Src/S1.pa.yaml',content,sha:blobSha(content)};
+ assert.notEqual(observation.sha,commit);
+ const bound=registry.bindSourceObservation(issued.correlationId,issued.stateSessionId,'POWERAPPS_SOURCE_RESOLUTION',observation,observation.path);
+ assert.equal(bound.stateContext.sha,commit);
+ assert.equal(bound.sourceObservationComplete,true);
+ assert.equal(registry.lookup(issued.correlationId,issued.stateSessionId,'POWERAPPS_SOURCE_RESOLUTION').source.sha,observation.sha);
+});
+
+test('StateRegistry rejects wrong session and tampered source without binding',()=>{
+ const registry=new StateContextRegistry();
+ const issued=registry.begin({appId:'app',environmentId:'env',branch:'main',canonicalBranch:'main',sha:'a'.repeat(40)},'POWERAPPS_SOURCE_RESOLUTION');
+ const observation={path:'Src/S1.pa.yaml',content,sha:blobSha(content)};
+ assert.throws(()=>registry.bindSourceObservation(issued.correlationId,issued.correlationId,'POWERAPPS_SOURCE_RESOLUTION',observation,observation.path),/session mismatch/);
+ assert.throws(()=>registry.bindSourceObservation(issued.correlationId,issued.stateSessionId,'POWERAPPS_SOURCE_RESOLUTION',{...observation,content:'tampered'},observation.path),/blob SHA/);
+ assert.equal(registry.response(registry.lookup(issued.correlationId,issued.stateSessionId,'POWERAPPS_SOURCE_RESOLUTION')).sourceObservationComplete,false);
+});
