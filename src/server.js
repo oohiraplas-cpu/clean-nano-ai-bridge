@@ -21,6 +21,8 @@ const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
 const { createAzureMetadataReader } = require('./azureMetadataReader');
+const { createAzureKuduEvidenceReader } = require('./azureKuduEvidenceReader');
+const { createArmManagedIdentityTokenProvider } = require('./azureManagedIdentityAuth');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
@@ -194,7 +196,7 @@ const MCP_METHODS = Object.freeze([
   'get_execution_queue',
   'get_execution_status',
   'get_checkpoint',
-  'get_azure_deployment_metadata', 'verify_github_ci_artifact',
+  'get_azure_deployment_metadata', 'get_azure_kudu_evidence', 'verify_github_ci_artifact',
   'get_powerapps_media_asset', 'update_powerapps_image'
 ]);
 
@@ -1394,6 +1396,1994 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'get_azure_kudu_evidence',
+    description: 'Azure/Kudu GET専用履歴の観測。実稼働SHAの独立証跡がなければBLOCKED。',
+    inputSchema: { type: 'object', properties: { expectedSha: { type: 'string', pattern: '^[a-f0-9]{40}
+    description: 'Git正本の画像をBase64のまま取得・出力、または指定パスを一覧確認します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['get', 'export', 'list'] },
+      relativePath: { type: 'string' },
+      relativePaths: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } }
+    }, required: ['operation'], additionalProperties: false }
+  },
+  {
+    name: 'update_powerapps_image',
+    description: '既存画面に画像コントロールを追加・編集します。PNG/JPEG/GIF/WebP（1MiB以下）をdata URIで埋め込み、位置・サイズ・表示方法を編集します。Git更新は保存・公開完了を意味しません。変更後に状態再取得、既存save/publishツールで検証してください。',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['add', 'edit'] },
+      relativePath: { type: 'string', description: 'get_powerapps_sourceで取得した画面.pa.yamlのパス' },
+      screenName: { type: 'string' }, controlName: { type: 'string' },
+      base64Content: { type: 'string', maxLength: 1398204 },
+      contentType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
+      properties: { type: 'object', properties: {
+        X: { type: 'number', minimum: 0, maximum: 10000 }, Y: { type: 'number', minimum: 0, maximum: 10000 },
+        Width: { type: 'number', exclusiveMinimum: 0, maximum: 10000 }, Height: { type: 'number', exclusiveMinimum: 0, maximum: 10000 },
+        ImagePosition: { type: 'string', enum: ['Fit', 'Fill', 'Stretch', 'Center', 'Tile'] },
+        AccessibleLabel: { type: 'string', maxLength: 500 }
+      }, additionalProperties: false },
+      message: { type: 'string', maxLength: 500 }, branch: { type: 'string' },
+      stateContext: STATE_CONTEXT_SCHEMA, stateSessionId: { type: 'string', minLength: 8 }
+    }, required: ['operation', 'relativePath', 'screenName', 'controlName', 'branch', 'stateContext', 'stateSessionId'], additionalProperties: false }
+  },
+]);
+
+async function tasksPayload(store) {
+  const tasks = await store.list();
+  return { status: tasks.length ? 'ok' : 'タスクなし', count: tasks.length, tasks };
+}
+
+async function nextPayload(store) {
+  const task = await store.next();
+  return task ? { status: 'ok', task } : { status: 'タスクなし', task: null };
+}
+
+async function createTaskPayload(store, params) {
+  const task = await store.upsert({
+    id: crypto.randomUUID(),
+    title: params.title,
+    description: params.description,
+    priority: params.priority || 'normal',
+    status: '未着手'
+  });
+  return { task_id: task.id, task };
+}
+
+async function updateTaskStatusPayload(store, params) {
+  const patch = { status: params.status };
+  if (params.result !== undefined) patch.result = params.result;
+  return store.update(params.task_id, patch);
+}
+
+async function getTaskResultPayload(store, taskId) {
+  const tasks = await store.list();
+  return tasks.find((task) => task.id === taskId) || null;
+}
+
+function requestError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+// powerAppsGitStore (GitHub Contents API経由)の呼び出しは、設定不足やGitHub側のエラーを
+// プレーンなErrorとして投げる。error.statusが未設定のまま/mcpのtools/callハンドラに届くと
+// 中央エラーハンドラの汎用500応答に丸められ、実際の原因（設定不足、404など）が失われるうえ、
+// 一部のMCPリレー/プロキシは200以外のHTTPステータスを「オリジン異常」とみなして
+// 502に置き換えてしまうことがある。ここでerror.statusを必ず設定し、
+// tools/callが常にHTTP 200 + isError:trueで詳細メッセージを返せるようにする。
+async function withUpstreamErrorStatus(promise, status = 502) {
+  try {
+    return await promise;
+  } catch (error) {
+    if (!error.status) error.status = status;
+    throw error;
+  }
+}
+
+// CN_社員台帳のsiteId/employeeLedgerListIdをSharePointListWriterに束縛し、未設定時は
+// SharePointReader/SharePointTaskStoreと同じ文言でエラーにする（呼び出し元にconfigを
+// 露出させない）。
+function createEmployeeLedgerEntries(writer, sharepointConfig) {
+  function assertConfigured() {
+    const missingEnvNames = [];
+    if (!sharepointConfig.siteId) missingEnvNames.push('SHAREPOINT_SITE_ID');
+    if (!sharepointConfig.employeeLedgerListId) missingEnvNames.push('SHAREPOINT_EMPLOYEE_LEDGER_LIST_ID');
+    if (missingEnvNames.length) {
+      throw new Error(`SharePoint設定が不足しています: ${missingEnvNames.join(', ')}`);
+    }
+  }
+  return {
+    // assertConfigured()の同期throwがwithUpstreamErrorStatus()の外で発生しない
+    // よう（=error.statusが設定されないまま素通りしないよう）async関数にしている。
+    async createEntry(record) {
+      assertConfigured();
+      return writer.createItem(sharepointConfig.siteId, sharepointConfig.employeeLedgerListId, record);
+    },
+    async updateEntry(itemId, record) {
+      assertConfigured();
+      return writer.updateItem(sharepointConfig.siteId, sharepointConfig.employeeLedgerListId, itemId, record);
+    }
+  };
+}
+
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, scope) {
+  if (method === 'get_powerapps_media_asset') {
+    if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
+    if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
+    if (params.operation === 'list' && (!Array.isArray(params.relativePaths) || !params.relativePaths.length || params.relativePaths.length > 50 || params.relativePaths.some(path => typeof path !== 'string'))) throw requestError('relativePathsは1から50個のパスが必要です');
+    const result = await powerAppsGitStore.powerAppsMediaAsset(params);
+    if (result.status === 'blocked' || result.status === 'not_found') {
+      const error = requestError(result.error || '画像取得に失敗しました', result.status === 'not_found' ? 404 : 400);
+      error.payload = result;
+      throw error;
+    }
+    return result;
+  }
+  if (!MCP_METHODS.includes(method)) {
+    throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
+  }
+
+  if (method === 'health_check') return { status: 'ok' };
+  if (method === 'verify_github_ci_artifact') {
+    if (!config.mcpApiKey) return { status: 'blocked', reason: 'mcp_authentication_required', mayEditDraft: false, mayMerge: false, mayDeploy: false };
+    return bridgeServices.ciArtifact.verify(params);
+  }
+  if (method === 'get_azure_deployment_metadata') {
+    if (params && Object.keys(params).length) throw requestError('parameters_not_allowed');
+    const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_metadata_reader_unavailable' };
+    const result = await reader();
+    if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
+      return { status: 'blocked', reason: 'azure_metadata_unverified' };
+    return { status: 'observed_not_verified', resourceIdMatched: true,
+      // Only the trusted adapter's already assessed diagnostic is forwarded.
+      // Missing or malformed diagnostic must remain blocked.
+      // Untrusted adapter results are observational only. Never accept a
+      // self-declared confirmed status as independent Azure proof.
+      diagnostic: require('./azureDiagnostic').assessAzureDiagnostic(),
+      deploymentEntries: result.deploymentEntries.map(entry => ({
+        deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
+        active: entry.active === true,
+        status: Number.isInteger(entry.status) ? entry.status : null,
+        receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
+      })).slice(0, 30), deploymentShaMatched: false, effectiveRbacVerified: false, pacRuntimeVerified: false };
+  }
+  if (method === 'get_azure_kudu_evidence') {
+    if (!params || Object.keys(params).length !== 1 || !/^[a-f0-9]{40}$/i.test(params.expectedSha || '')) throw requestError('expected_sha_required');
+    const reader = bridgeServices?.azureKudu?.inspect;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_kudu_reader_unavailable' };
+    const evidence = await reader(params.expectedSha);
+    return { status: 'blocked', reason: typeof evidence?.reason === 'string' ? evidence.reason : 'runtime_artifact_unverified', armVerified: evidence?.armVerified === true, kuduVerified: evidence?.kuduVerified === true, deploymentHistoryShaMatched: evidence?.historyMatched === true, runtimeShaVerified: false };
+  }
+  if (method === 'get_tasks') return tasksPayload(store);
+  if (method === 'get_next_task') return nextPayload(store);
+  if (method === 'create_task') {
+    const paramError = validateCreateTaskParams(params);
+    if (paramError) throw requestError(paramError);
+    return createTaskPayload(store, params);
+  }
+  if (method === 'update_task_status') {
+    const paramError = validateUpdateTaskStatusParams(params);
+    if (paramError) throw requestError(paramError);
+    const task = await updateTaskStatusPayload(store, params);
+    if (!task) throw requestError('タスクが見つかりません', 404);
+    return { task };
+  }
+  if (method === 'get_task_result') {
+    const paramError = validateGetTaskResultParams(params);
+    if (paramError) throw requestError(paramError);
+    const task = await getTaskResultPayload(store, params.task_id);
+    if (!task) throw requestError('タスクが見つかりません', 404);
+    return { task_id: task.id, status: task.status, result: task.result ?? null };
+  }
+  if (method === 'get_powerapps_source') {
+    const paramError = validateGetPowerAppsSourceParams(params);
+    if (paramError) throw requestError(paramError);
+
+    // targetNames 指定時: 複数ファイルを個別展開→SourceObservation検証→bindSourceObservation
+    if (params.targetNames && params.targetNames.length > 0) {
+      const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(params.targetNames);
+
+      if (errors.length > 0 && results.length === 0) {
+        // すべて失敗した場合、最初のエラーを返す
+        const err = errors[0];
+        const statusMap = {
+          'AUTH_CONFIGURATION': 503,
+          'FILE_NOT_FOUND': 404,
+          'AMBIGUOUS_PATH': 400,
+          'BRANCH_MISMATCH': 409,
+          'GITHUB_API_ERROR': 502
+        };
+        const error = new Error(err.reason);
+        error.status = statusMap[err.error] || 400;
+        error.payload = {
+          status: err.error,
+          targetNames: params.targetNames,
+          failedCount: errors.length
+        };
+        throw error;
+      }
+
+      // Phase 6: 各resultについてSourceObservation検証→bindSourceObservation
+      // Fail-Closed: stateSessionId必須（Phase 6 Architecture）
+      const sourceObservations = [];
+      const bindErrors = [];
+
+      if (!params.stateSessionId && results.length > 0) {
+        // Fail-Closed: stateSessionId missing
+        const error = new Error('Phase 6: stateSessionId required for targetNames SourceObservation binding');
+        error.status = 400;
+        error.payload = {
+          status: 'state_context_invalid',
+          reason: 'stateSessionId required for targetNames binding',
+          targetNames: params.targetNames
+        };
+        throw error;
+      }
+
+      if (params.stateSessionId && results.length > 0) {
+        for (const result of results) {
+          try {
+            // Phase 6: Retrieve source first, then validate SourceObservation fields
+            if (!result.path || typeof result.path !== 'string') {
+              bindErrors.push({
+                screenName: result.name,
+                reason: 'Missing path in resolved result'
+              });
+              continue;
+            }
+
+            // FileContent取得（content検証用）
+            const fileData = await powerAppsGitStore.getSourceFile(result.path);
+            if (!fileData.content || typeof fileData.content !== 'string') {
+              bindErrors.push({
+                screenName: result.name,
+                reason: 'Failed to retrieve file content'
+              });
+              continue;
+            }
+
+            // SourceObservation検証: sha/path/content が必須（source取得後に検証）
+            // ROOT CAUSE FIX: Use fileData.sha (retrieved actual SHA) instead of result.sha (resolution-time SHA)
+            // to ensure SHA matches actual fetched content, preventing data-integrity loss
+            const actualSha = fileData.sha || blobSha(fileData.content);
+            if (!actualSha || !/^[a-f0-9]{40}$/.test(actualSha)) {
+              bindErrors.push({
+                screenName: result.name,
+                reason: `Failed to compute/retrieve valid blob SHA for content`
+              });
+              continue;
+            }
+
+            // Verify that resolved SHA matches actual retrieved content (fail-closed)
+            if (result.sha && result.sha !== actualSha) {
+              bindErrors.push({
+                screenName: result.name,
+                reason: `SHA mismatch: resolved=${result.sha.substring(0, 8)}..., actual=${actualSha.substring(0, 8)}...`
+              });
+              continue;
+            }
+
+            // SourceObservation: {sha, path, content} - use actualSha from retrieved file
+            const source = {
+              sha: actualSha,
+              path: result.path,
+              content: fileData.content
+            };
+
+            // StateRegistry.bindSourceObservation()で原子的bind
+            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+            const bindResult = stateRegistry.bindSourceObservation(
+              params.correlationId,
+              params.stateSessionId,
+              scope,
+              source,
+              result.path
+            );
+
+            sourceObservations.push({
+              screenName: result.name,
+              relativePath: result.path,
+              fileSha: result.sha,
+              stateSessionId: bindResult.stateSessionId,
+              sourceObservationComplete: bindResult.sourceObservationComplete
+            });
+          } catch (e) {
+            bindErrors.push({
+              screenName: result.name,
+              reason: `bindSourceObservation failed: ${e.message}`
+            });
+          }
+        }
+      }
+
+      return {
+        status: 'ok',
+        method: 'get_powerapps_source',
+        result: {
+          sourceObservations,
+          bindErrors,
+          totalRequested: params.targetNames.length,
+          successCount: sourceObservations.length,
+          errorCount: bindErrors.length
+        }
+      };
+    }
+
+    // relativePath または screenName 指定時: 単一ファイル取得
+    let resolvedPath = params.relativePath;
+    if (!resolvedPath && params.screenName) {
+      const resolved = await powerAppsGitStore._resolveScreenToRelativePath(params.screenName);
+      if (resolved.error) {
+        const statusMap = {
+          'AUTH_CONFIGURATION': 503,
+          'FILE_NOT_FOUND': 404,
+          'AMBIGUOUS_PATH': 400,
+          'BRANCH_MISMATCH': 409
+        };
+        const error = new Error(resolved.reason);
+        error.status = statusMap[resolved.error] || 400;
+        error.payload = {
+          status: resolved.error,
+          screenName: params.screenName
+        };
+        throw error;
+      }
+      resolvedPath = resolved.path;
+    }
+
+    const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
+
+    // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
+    if (params.stateSessionId && params.correlationId) {
+      const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+      try {
+        // Compute blob SHA for content validation
+        const blobShaFunc = require('./stateContext').blobSha;
+        const fileSha = blobShaFunc(fileResult.content);
+
+        const source = {
+          sha: fileSha,
+          path: resolvedPath,
+          content: fileResult.content
+        };
+
+        stateRegistry.bindSourceObservation(
+          params.correlationId,
+          params.stateSessionId,
+          scope,
+          source,
+          resolvedPath
+        );
+      } catch (e) {
+        console.warn('Failed to save source to StateContext:', e.message);
+      }
+    }
+
+    return fileResult;
+  }
+  if (method === 'get_powerapps_app') {
+    const paramError = validateGetPowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(powerAppsStore.getAppInfo());
+  }
+  if (method === 'get_powerapps_state') {
+    const paramError = validateGetPowerAppsStateParams(params);
+    if (paramError) throw requestError(paramError);
+    return powerAppsStore.getAppState();
+  }
+  if (method === 'update_powerapps_app') {
+    const paramError = validateUpdatePowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertSourceControlCompatible?.('編集')));
+    return params.updateData
+      ? powerAppsStore.updateApp(params.updateData)
+      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message, params.branch));
+  }
+  if (method === 'save_powerapps_app') {
+    const paramError = validateSavePowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    // get_powerapps_sourceが返したbranchが渡された場合、正本branchと一致しなければ保存を拒否する。
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '保存')));
+    const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
+    const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
+    const saved = await powerAppsStore.saveApp();
+    return { ...saved, sync: { refresh, pull } };
+  }
+  if (method === 'publish_powerapps_app') {
+    const paramError = validatePublishPowerAppsAppParams(params);
+    if (paramError) throw requestError(paramError);
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
+    return withUpstreamErrorStatus(powerAppsStore.publishApp());
+  }
+  if (method === 'get_powerapps_operation_result') {
+    const paramError = validateGetPowerAppsOperationResultParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(powerAppsStore.getOperationResult(params.operationId));
+  }
+  if (method === 'get_sharepoint_list') {
+    const paramError = validateGetSharePointListParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.listItems(params));
+  }
+  if (method === 'list_sharepoint_lists') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    const unknown = Object.keys(params).filter((key) => !['siteId', 'searchTerm', 'top'].includes(key));
+    if (unknown.length) throw requestError(`未対応のプロパティです: ${unknown.join(', ')}`);
+    if (params.siteId !== undefined && (typeof params.siteId !== 'string' || !params.siteId.trim())) throw requestError('siteIdは空でない文字列である必要があります');
+    if (params.searchTerm !== undefined && (typeof params.searchTerm !== 'string' || params.searchTerm.length > 200)) throw requestError('searchTermは200文字以内の文字列である必要があります');
+    if (params.top !== undefined && (!Number.isInteger(params.top) || params.top < 1 || params.top > 200)) throw requestError('topは1から200の整数である必要があります');
+    return withUpstreamErrorStatus(sharePointReader.listLists(params));
+  }
+  if (method === 'create_sharepoint_list') {
+    if (params.approvedByHuman !== true) throw requestError('SharePointへの書き込みにはapprovedByHuman:trueが必須です');
+    if (typeof params.siteId !== 'string' || !params.siteId.trim()) throw requestError('siteIdは必須です');
+    if (typeof params.displayName !== 'string' || !params.displayName.trim() || params.displayName.length > 255) throw requestError('displayNameは1〜255文字で指定してください');
+    const existing = await sharePointReader.listLists({ siteId: params.siteId, searchTerm: params.displayName, top: 200 });
+    if (existing.lists.some((item) => item.displayName.toLocaleLowerCase() === params.displayName.trim().toLocaleLowerCase())) {
+      throw requestError('同名リストが既に存在します。重複作成を中止しました。');
+    }
+    return withUpstreamErrorStatus(sharePointWriter.createList(params.siteId, params.displayName, 'genericList'));
+  }
+  if (method === 'create_sharepoint_list_item' || method === 'update_sharepoint_list_item') {
+    if (params.approvedByHuman !== true) throw requestError('SharePointへの書き込みにはapprovedByHuman:trueが必須です');
+    for (const key of ['siteId','listId', ...(method === 'update_sharepoint_list_item' ? ['itemId'] : [])]) {
+      if (typeof params[key] !== 'string' || !params[key].trim()) throw requestError(`${key}は必須です`);
+    }
+    if (!params.fields || typeof params.fields !== 'object' || Array.isArray(params.fields) || Object.keys(params.fields).length === 0) throw requestError('fieldsは1件以上の列内部名と値を持つオブジェクトで指定してください');
+    if (JSON.stringify(params.fields).length > 50000) throw requestError('fieldsのJSONは50000文字以内にしてください');
+    return withUpstreamErrorStatus(method === 'create_sharepoint_list_item'
+      ? sharePointWriter.createItemFields(params.siteId, params.listId, params.fields)
+      : sharePointWriter.updateItemFields(params.siteId, params.listId, params.itemId, params.fields));
+  }
+  if (method === 'get_sharepoint_columns') {
+    const paramError = validateGetSharePointColumnsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.listColumns(params));
+  }
+  if (method === 'ensure_sharepoint_columns') {
+    const paramError = validateEnsureSharePointColumnsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.ensureColumns(params));
+  }
+  if (method === 'run_power_automate_flow') {
+    // approvedByHuman:trueはvalidateRunPowerAutomateFlowParamsで必須チェック済み。
+    // Bridge全体の方針（更新・実行系は人間承認必須）に合わせ、ここでも他の
+    // パラメータ検証と同様400として扱う（フラグが無い＝入力不備という位置づけ）。
+    const paramError = validateRunPowerAutomateFlowParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(powerAutomateRunner.runFlow(params.flowKey, params.payload));
+  }
+  if (method === 'create_employee_ledger_entry') {
+    // approvedByHuman:trueはvalidateCreateEmployeeLedgerEntryParamsで必須チェック済み。
+    // run_power_automate_flowと同じ方針（AI単独承認禁止）。
+    const paramError = validateCreateEmployeeLedgerEntryParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(employeeLedgerEntries.createEntry(params.record));
+  }
+  if (method === 'update_employee_ledger_entry') {
+    const paramError = validateUpdateEmployeeLedgerEntryParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(employeeLedgerEntries.updateEntry(params.itemId, params.record));
+  }
+  if (method === 'validate_powerapps_change') {
+    const paramError = validateValidatePowerAppsChangeParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.validatePowerAppsChange(params));
+  }
+  if (method === 'run_powerapps_tests') {
+    const paramError = validateRunPowerAppsTestsParams(params);
+    if (paramError) throw requestError(paramError);
+    return runStaticTests(params);
+  }
+  if (method === 'verify_save_result') {
+    const paramError = validateVerifySaveResultParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.verifySaveResult(params));
+  }
+  if (method === 'deploy_to_test') {
+    const paramError = validateDeployToTestParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.deployToTest(params));
+  }
+  if (method === 'verify_deployment') {
+    const paramError = validateVerifyDeploymentParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.verifyDeployment(params));
+  }
+  if (method === 'get_deployment_logs') {
+    const paramError = validateGetDeploymentLogsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.getDeploymentLogs(params));
+  }
+  if (method === 'rollback_deployment') {
+    const paramError = validateRollbackDeploymentParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.rollbackDeployment(params));
+  }
+  if (method === 'get_permissions') {
+    const paramError = validateGetPermissionsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.permissions.getPermissions(params));
+  }
+  if (method === 'update_permissions') {
+    // approvedByHuman:trueはvalidateUpdatePermissionsParamsで必須チェック済み（AI単独承認禁止）。
+    const paramError = validateUpdatePermissionsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.permissions.updatePermissions(params));
+  }
+  if (method === 'lock_user_info') {
+    const paramError = validateLockUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return bridgeServices.userProtection.lockUserInfo(params.user, params.passkey);
+  }
+  if (method === 'validate_passkey') {
+    const paramError = validateValidatePasskeyParams(params);
+    if (paramError) throw requestError(paramError);
+    const isValid = bridgeServices.userProtection.validatePasskey(params.passkey, params.user);
+    return { valid: isValid };
+  }
+  if (method === 'get_user_lock_status') {
+    const paramError = validateGetUserLockStatusParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      isLocked: bridgeServices.userProtection.isUserLocked(params.user),
+      lockedAt: params.user.lockedAt || null
+    };
+  }
+  if (method === 'can_view_user_info') {
+    const paramError = validateCanViewUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      canView: bridgeServices.userProtection.canViewUserInfo(params.targetUser, params.currentUserEmail)
+    };
+  }
+  if (method === 'can_edit_user_info') {
+    const paramError = validateCanEditUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    const result = bridgeServices.userProtection.canEditUserInfo(params.targetUser, params.currentUserEmail, params.passkey);
+    return result;
+  }
+  if (method === 'can_delete_user_info') {
+    const paramError = validateCanDeleteUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      canDelete: bridgeServices.userProtection.canDeleteUserInfo(params.targetUser, params.currentUserEmail)
+    };
+  }
+  if (method === 'generate_ui_control_state') {
+    const paramError = validateGenerateUIControlStateParams(params);
+    if (paramError) throw requestError(paramError);
+    return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
+  }
+  if (method === 'get_bridge_capabilities') {
+    return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18' });
+  }
+  if (method === 'check_dependencies') {
+    return checkDependencies({
+      powerAppsStore,
+      sharePointReader,
+      powerAutomateRunner,
+      powerAppsGitStore
+    });
+  }
+  // Note: compare_powerapps_with_git and validate_powerapps_source require State Manager validation.
+  // These are handled in executeWithStateInternal() when stateContext is provided.
+  // If they reach here (no stateContext), they fail with missing State Context.
+  if (method === 'compare_powerapps_with_git') {
+    throw contextError(['stateContext: required for compare_powerapps_with_git'], 400);
+  }
+  if (method === 'validate_powerapps_source') {
+    throw contextError(['stateContext: required for validate_powerapps_source'], 400);
+  }
+  if (method === 'get_sharepoint_list_schema') {
+    return getSharePointListSchema({
+      sharePointReader,
+      siteId: params.siteId,
+      listId: params.listId
+    });
+  }
+  if (method === 'list_registered_power_automate_flows') {
+    return listRegisteredPowerAutomateFlows({
+      powerAutomateRunner
+    });
+  }
+  if (method === 'get_power_automate_run_result') {
+    return getPowerAutomateRunResult({
+      powerAutomateRunner,
+      runId: params.runId
+    });
+  }
+  if (method === 'discover_powerapps_structure') {
+    return discoverPowerAppsStructure({
+      appId: params.appId,
+      environmentId: params.environmentId,
+      getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+      githubRequest: (path) => powerAppsGitStore.githubRequest(path),
+      owner: powerAppsGitStore.githubOwner,
+      repo: powerAppsGitStore.githubRepo,
+      branch: powerAppsGitStore.canonicalBranch
+    });
+  }
+  if (method === 'inspect_powerapps_structure') {
+    // StateContextなし: params.appIdで実アプリ情報解析（Power Apps API経由）
+    // StateContextあり: executeWithStateInternal が処理
+    // stateSessionIdのみ: State Registryからappid、sourceを取得
+    if (!params.appId && params.correlationId === undefined && params.stateSessionId === undefined) {
+      throw bridgeError('appIdまたはstateContext/stateSessionIdが必要です（resolve_app_targetまたはprepare_powerapps_executionで対象を解決してください）', 400);
+    }
+
+    // stateSessionIdのみで実行（StateContext完全なし）
+    if (params.stateSessionId !== undefined && params.stateContext === undefined && params.correlationId === undefined) {
+      // Use formal Registry lookup API
+      const record = stateRegistry.lookupBySessionId(params.stateSessionId, scope, params.appId);
+      const result = await inspectPowerAppsStructure({
+        powerAppsStore,
+        sourceContent: record.source.content,
+        sourceOrigin: 'github_canonical',
+        stateContext: record.context
+      });
+      return {
+        ...result,
+        correlationId: record.context.correlationId,
+        stateContext: { ...record.context },
+        stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha
+      };
+    }
+
+    return inspectPowerAppsStructure({
+      powerAppsStore,
+      appId: params.appId
+    });
+  }
+  if (method === 'get_executive_policy') return withUpstreamErrorStatus(Promise.resolve().then(() => getExecutivePolicy(params)), 400);
+  if (method === 'get_executive_brief') return withUpstreamErrorStatus(getExecutiveBrief({ ...params, sharePointReader }), 400);
+  if (method === 'resolve_app_target') {
+    // App ID + Environment ID による動的解決（固定値・単一アプリ前提を使わない）
+    if (params.appId !== undefined || params.environmentId !== undefined) {
+      return resolveAppTargetById({
+        appId: params.appId,
+        environmentId: params.environmentId,
+        getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+        canonicalBranch: powerAppsGitStore.canonicalBranch
+      });
+    }
+    if (typeof params.query !== 'string' || !params.query.trim()) {
+      throw requestError('queryまたはappId/environmentIdが必要です');
+    }
+    return getResolver(powerAppsStore, powerAppsGitStore).resolve(params.query);
+  }
+  if (method === 'list_power_apps') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const list = await r.listApps();
+    return createCommonResponse({ status: list.verified ? 'ok' : 'error', verified: list.verified, data: { source: list.source, apps: list.apps }, warnings: list.warnings, summary: `アプリ${list.apps.length}件（取得元: ${list.source}）` });
+  }
+  if (method === 'list_environments') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const envs = await r.listEnvironments();
+    return createCommonResponse({ status: envs.verified ? 'ok' : 'partial', verified: envs.verified, data: envs, warnings: envs.warnings, summary: `Environment${envs.environments.length}件（取得元: ${envs.source}）` });
+  }
+  if (method === 'list_git_branches') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const br = await r.listBranches();
+    return createCommonResponse({ status: br.verified ? 'ok' : 'error', verified: br.verified, data: br, warnings: br.warnings, summary: `Branch${br.branches.length}件（正本: ${br.canonicalBranch}）` });
+  }
+  if (method === 'get_application_rules') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    return createCommonResponse({ status: 'ok', verified: false, data: r.getRules(params.appName), warnings: r.rulesWarning ? [r.rulesWarning] : [], summary: `${params.appName} のルール（設定ファイル記載分のみ）` });
+  }
+  if (method === 'export_knowledge_snapshot') {
+    return getResolver(powerAppsStore, powerAppsGitStore).exportKnowledgeSnapshot();
+  }
+  if (method === 'check_payment_status') {
+    if (!sharePointReader) throw notConfiguredError('SharePoint設定', ['SHAREPOINT_TENANT_ID', 'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET', 'SHAREPOINT_SITE_ID']);
+    const paymentMonitor = new PaymentMonitorService({ sharePointReader });
+    const report = await paymentMonitor.generatePaymentReport(params);
+    if (report.errors.length > 0) {
+      return createCommonResponse({
+        status: 'error',
+        verified: false,
+        data: report.analysis,
+        errors: report.errors,
+        summary: '未入金監視エラー'
+      });
+    }
+    const { overdue, pending, paid, cancelled, summary } = report.analysis;
+    return createCommonResponse({
+      status: overdue.length > 0 ? 'warning' : 'ok',
+      verified: true,
+      data: {
+        overdue: overdue.map(p => ({
+          estimateId: p.estimateId,
+          invoiceId: p.invoiceId,
+          daysOverdue: p.daysOverdue,
+          amount: p.amount,
+          dueDate: p.dueDate,
+          statusLabel: p.statusLabel
+        })),
+        pending: pending.map(p => ({
+          estimateId: p.estimateId,
+          invoiceId: p.invoiceId,
+          daysUntilDue: p.daysUntilDue,
+          amount: p.amount,
+          dueDate: p.dueDate,
+          statusLabel: p.statusLabel
+        })),
+        paid: paid.length,
+        cancelled: cancelled.length,
+        summary
+      },
+      warnings: overdue.length > 0 ? [`期限超過: ${overdue.length}件、合計${summary.overdueAmount.toLocaleString('ja-JP')}円`] : [],
+      summary: `期限超過${overdue.length}件、期限内未入金${pending.length}件、入金済み${paid.length}件`
+    });
+  }
+  if (method === 'discover_sharepoint_ai4_resources') {
+    if (!config.sharePoint?.tenantId || !config.sharePoint?.clientId || !config.sharePoint?.clientSecret) {
+      throw notConfiguredError('SharePoint設定', ['SHAREPOINT_TENANT_ID', 'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET']);
+    }
+    const discovery = new SharePointSiteDiscovery(config.sharePoint);
+    try {
+      const results = await discovery.findAI4Resources();
+      const recommendations = discovery.getRecommendedLists(results);
+      if (results.error) {
+        return createCommonResponse({
+          status: 'error',
+          verified: false,
+          data: results,
+          errors: [results.error],
+          summary: 'AI4 サイト自動探索エラー'
+        });
+      }
+      return createCommonResponse({
+        status: results.sites.length === 0 ? 'warning' : 'ok',
+        verified: true,
+        data: {
+          sites: results.sites,
+          found: recommendations.found,
+          recommendations: recommendations.recommendations
+        },
+        warnings: results.sites.length === 0 ? ['AI4 サイトが見つかりませんでした'] : [],
+        summary: `AI4 サイト${results.sites.filter(s => s.normalizedName.includes('ai4') || s.normalizedName.includes('ai依頼') || s.normalizedName.includes('cleannano')).length}件、支払管理${recommendations.found.paymentLists}件、請求管理${recommendations.found.invoiceLists}件、案件管理${recommendations.found.projectLists}件`
+      });
+    } catch (error) {
+      return createCommonResponse({
+        status: 'error',
+        verified: false,
+        data: null,
+        errors: [error.message],
+        summary: '自動探索処理エラー'
+      });
+    }
+  }
+  if (method === 'prepare_powerapps_execution') {
+    const paramError = validatePrepareExecutionPackageParams(params);
+    if (paramError) throw requestError(paramError);
+
+    if (!stateRegistry) {
+      throw requestError('State Registry is not configured (stateRegistry not initialized)', 503);
+    }
+
+    let contract;
+    try {
+      const resolver = getResolver(powerAppsStore, powerAppsGitStore);
+      contract = await prepareExecutionPackage({
+        appName: params.appName,
+        appId: params.appId,
+        environmentId: params.environmentId,
+        stateSessionId: params.stateSessionId,
+        stateContext: params.stateContext,
+        objective: params.objective,
+        isolatedCommit: params.isolatedCommit,
+        resolvers: {
+          appTargetResolver: resolver,
+          powerAppsGitStore,
+          sharePointReader,
+          powerAutomateRunner,
+          stateRegistry
+        }
+      });
+
+      // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
+      // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
+      if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
+        try {
+          const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
+          if (!sourceFile || !sourceFile.content) {
+            contract.missing.push('Source file not found for State Registry binding');
+            contract.status = 'BLOCKED';
+          } else {
+            // StateContext.sha identifies a branch commit, whereas sourceFile.sha
+            // identifies a Git blob. Never compare or overwrite one with the other.
+            // An independently issued, registered session is required (fail closed).
+            const sessionId = params.stateSessionId;
+            if (!sessionId) {
+              contract.missing.push('State Registry binding requires a registered stateSessionId from get_powerapps_state');
+              contract.status = 'BLOCKED';
+            } else {
+              const registered = stateRegistry.lookup(contract.stateContext.correlationId, sessionId, scope);
+              if (registered.context.sha !== contract.stateContext.sha ||
+                  registered.context.branch !== contract.stateContext.branch ||
+                  registered.context.appId !== contract.stateContext.appId ||
+                  registered.context.environment !== contract.stateContext.environment) {
+                contract.missing.push('Registered StateContext does not match execution contract');
+                contract.status = 'BLOCKED';
+              } else {
+                const observedSha = blobSha(sourceFile.content);
+                if (sourceFile.sha !== observedSha) {
+                  contract.missing.push('Observed source blob SHA does not match content');
+                  contract.status = 'BLOCKED';
+                } else {
+                  const bound = stateRegistry.bindSourceObservation(
+                    contract.stateContext.correlationId,
+                    sessionId,
+                    scope,
+                    { ...sourceFile, sha: observedSha },
+                    sourceFile.path
+                  );
+                  contract.stateSessionId = bound.stateSessionId;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          contract.missing.push(`State Registry binding failed: ${err.message}`);
+          contract.status = 'BLOCKED';
+        }
+      }
+    } catch (err) {
+      // Catch ANY error in prepare_powerapps_execution and return BLOCKED contract
+      if (err.message && err.message.includes('appId') || err.message.includes('timeout')) {
+        throw requestError(err.message, err.status || 502);
+      }
+      // Return gracefully with BLOCKED status instead of failing response
+      contract = {
+        status: 'BLOCKED',
+        requestId: crypto.randomUUID(),
+        generatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        target: { appName: params.appName, appId: params.appId, environmentId: params.environmentId },
+        canonicalBranch: 'main',
+        baseSha: null,
+        feature: { id: '', name: '', description: '', roiRank: 999, category: 'unknown', impact: [] },
+        dependencies: [],
+        changes: [],
+        acceptanceCriteria: [],
+        validation: { tests: [], staticChecks: [] },
+        rollback: { strategy: 'none', estimatedRecoveryTime: 'unknown' },
+        additionalCost: { sharePointColumns: false, powerAutomateRuns: false, premiumConnectors: false, estimatedMonthlyCost: 'unknown' },
+        missing: [err.message || 'prepare_powerapps_execution internal error'],
+        warnings: []
+      };
+    }
+
+    // Ensure contract is valid JSON-serializable before return
+    if (!contract || typeof contract !== 'object') {
+      throw requestError('prepare_powerapps_execution returned invalid contract', 500);
+    }
+
+    return contract;
+  }
+  if (method === 'execute_powerplatform_request') {
+    const paramError = validateExecutePowerPlatformRequestParams(params);
+    if (paramError) throw requestError(paramError);
+
+    // Normalize input: extract targetName, targetId, environmentId from multiple sources
+    const targetName = params.targetName ?? params.target?.name ?? params.target?.targetName;
+    const targetId = params.targetId ?? params.target?.appId ?? params.target?.agentId ?? params.target?.flowId ?? params.target?.listId ?? params.target?.id;
+    const environmentId = params.environmentId ?? params.target?.environmentId;
+
+    const handler = new PowerPlatformRequestHandler({
+      powerAppsStore,
+      powerAppsGitStore,
+      sharePointReader,
+      powerAutomateRunner,
+      stateRegistry,
+      deploymentService: bridgeServices.deployment,
+      permissionsService: bridgeServices.permissions,
+      config
+    });
+
+    return withUpstreamErrorStatus(handler.executePowerPlatformRequest({
+      request: params.request,
+      targetName,
+      targetId,
+      environmentId,
+      requestId: params.requestId,
+      publishApproval: params.publishApproval || false,
+      approvalToken: params.approvalToken
+    }));
+  }
+
+  // Phase 7: DONE Engine assessment
+  if (method === 'assess_done') {
+    const engine = new DoneEngine();
+    const assessment = engine.assess({
+      inputState: params.inputState,
+      runtimeState: params.runtimeState,
+      operationLog: params.operationLog,
+      runtimeResponse: params.runtimeResponse,
+      authContext: params.authContext,
+      screenEvidence: params.screenEvidence,
+      evidence: params.evidence,
+      auditLog: params.auditLog,
+      errorLog: params.errorLog
+    });
+
+    return {
+      status: assessment.done ? 'DONE' : assessment.verdict,
+      verdict: assessment.verdict,
+      done: assessment.done,
+      completionPercent: assessment.completionPercent,
+      passed: assessment.passed,
+      failed: assessment.failed,
+      next: assessment.next,
+      passCount: assessment.passCount,
+      failCount: assessment.failCount,
+      assessmentId: assessment.assessmentId,
+      timestamp: assessment.timestamp,
+      results: assessment.results
+    };
+  }
+
+  // Phase 8: Prohibited Operations Engine
+  if (method === 'check_prohibited_operations') {
+    const engine = new ProhibitedOperationsEngine();
+    const check = engine.check({
+      operation: params.operation,
+      approvalToken: params.approvalToken,
+      environment: params.environment,
+      targetBranch: params.targetBranch,
+      targetName: params.targetName,
+      paramKeys: params.paramKeys,
+      targetScope: params.targetScope,
+      currentScope: params.currentScope,
+      sourceEnv: params.sourceEnv,
+      targetEnv: params.targetEnv
+    });
+
+    return {
+      status: check.allowed ? 'ALLOWED' : 'BLOCKED',
+      allowed: check.allowed,
+      verdict: check.verdict,
+      blocked: check.blocked,
+      violations: check.violations,
+      checksPerformed: check.checksPerformed,
+      checksBlocked: check.checksBlocked,
+      evidence: check.evidence,
+      reasons: check.reasons,
+      requiresApprovalCategories: check.requiresApprovalCategories,
+      remediationPath: check.remediationPath,
+      timestamp: check.timestamp,
+      assessmentId: check.assessmentId
+    };
+  }
+
+  // Phase 11: Reuse Engine - pattern suggestion
+  if (method === 'suggest_reuse_pattern') {
+    const engine = new ReuseEngine();
+    const suggestion = engine.suggestPattern({
+      operation: params.operation,
+      targetId: params.targetId,
+      environment: params.environment,
+      steps: params.steps
+    });
+
+    return {
+      status: 'OK',
+      matchType: suggestion.matchType,
+      confidence: suggestion.confidence,
+      recommendation: suggestion.recommendation,
+      pattern: suggestion.pattern,
+      patterns: suggestion.patterns,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Phase 11: Reuse Engine - playbook retrieval
+  if (method === 'get_playbook') {
+    const engine = new ReuseEngine();
+    const playbook = engine.getPlaybook(params.operation, params.environment);
+
+    if (!playbook) {
+      return {
+        status: 'NOT_FOUND',
+        message: `No playbook found for operation: ${params.operation} in environment: ${params.environment}`,
+        operation: params.operation,
+        environment: params.environment,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      status: 'OK',
+      playbookId: playbook.playbookId,
+      operation: playbook.operation,
+      environment: playbook.environment,
+      successHistory: playbook.successHistory,
+      failureHistory: playbook.failureHistory,
+      successRate: playbook.successRate,
+      template: playbook.template,
+      riskFactors: playbook.riskFactors,
+      checkpoints: playbook.checkpoints,
+      estimatedDuration: playbook.estimatedDuration,
+      prerequisitesByFrequency: playbook.prerequisitesByFrequency,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Phase 12: Runtime Evidence Engine
+  if (method === 'capture_app_startup') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureAppStartup({
+      appId: params.appId,
+      appName: params.appName,
+      startupTime: params.startupTime,
+      screenLoadTime: params.screenLoadTime,
+      connectionInitStatus: params.connectionInitStatus,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'App startup event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_user_interaction') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureUserInteraction({
+      userId: params.userId,
+      interactionType: params.interactionType,
+      elementId: params.elementId,
+      elementLabel: params.elementLabel,
+      timestamp: params.timestamp,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'User interaction event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_data_binding') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureDataBinding({
+      bindingId: params.bindingId,
+      uiElement: params.uiElement,
+      expectedValue: params.expectedValue,
+      actualValue: params.actualValue,
+      isBound: params.isBound,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Data binding validation captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_formula_execution') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureFormulaExecution({
+      formulaId: params.formulaId,
+      formulaText: params.formulaText,
+      inputData: params.inputData,
+      outputResult: params.outputResult,
+      executionTime: params.executionTime,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Formula execution captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_connection') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureConnection({
+      connectionId: params.connectionId,
+      connectionName: params.connectionName,
+      status: params.status,
+      latency: params.latency,
+      dataExchangedBytes: params.dataExchangedBytes,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Connection event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_error_event') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureErrorEvent({
+      errorCode: params.errorCode,
+      errorMessage: params.errorMessage,
+      stackTrace: params.stackTrace,
+      handled: params.handled,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Error event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_state_transition') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureStateTransition({
+      componentId: params.componentId,
+      previousState: params.previousState,
+      newState: params.newState,
+      transitionTime: params.transitionTime,
+      trigger: params.trigger,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'State transition captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_performance') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.capturePerformance({
+      operationName: params.operationName,
+      startTime: params.startTime,
+      endTime: params.endTime,
+      resourcesUsed: params.resourcesUsed,
+      warnings: params.warnings,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Performance data captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_behavior_verification') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureBehaviorVerification({
+      scenario: params.scenario,
+      expectedBehavior: params.expectedBehavior,
+      observedBehavior: params.observedBehavior,
+      matches: params.matches,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Behavior verification captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_integration') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureIntegration({
+      sourceSystem: params.sourceSystem,
+      targetSystem: params.targetSystem,
+      dataTransferred: params.dataTransferred,
+      status: params.status,
+      duration: params.duration,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Integration event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'generate_runtime_report') {
+    const engine = new RuntimeEvidenceEngine();
+    const report = engine.generateRuntimeReport();
+    return {
+      status: 'OK',
+      message: 'Runtime report generated',
+      reportId: report.reportId,
+      generatedAt: report.generatedAt,
+      timeline: report.timeline,
+      categories: report.categories,
+      integrityVerified: report.integrityVerified,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  if (method === 'get_agent_registry') {
+    return getAgentRegistry({ publicTools: MCP_PUBLIC_TOOLS });
+  }
+  if (method === 'create_execution_request') {
+    return executionQueue.createRequest(params);
+  }
+  if (method === 'get_execution_queue') {
+    return { queue: executionQueue.getQueue() };
+  }
+  if (method === 'get_execution_status') {
+    if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    return executionQueue.getStatus(params.requestId);
+  }
+  if (method === 'get_checkpoint') {
+    if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    return executionQueue.getCheckpoint(params.requestId);
+  }
+
+  if (method === 'export_evidence') {
+    const engine = new RuntimeEvidenceEngine();
+    const exported = engine.exportEvidence();
+    return {
+      status: 'OK',
+      message: 'Evidence export completed',
+      exportTimestamp: exported.exportTimestamp,
+      totalRecords: exported.totalRecords,
+      runtimeReport: exported.runtimeReport,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
+}
+
+// 新ツール（検証・デプロイ・権限・ユーザー保護）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
+function createAzureKuduDefaultReader() {
+  const resourceId = process.env.AZURE_BRIDGE_RESOURCE_ID;
+  if (!resourceId) return null;
+  try {
+    const getArmToken = createArmManagedIdentityTokenProvider({ fetchImpl: fetch });
+    const getKuduToken = async () => { throw new Error('kudu_auth_unconfigured'); };
+    const request = async ({ method, url, headers, redirect }) => {
+      if (method !== 'GET') throw new Error('read_only');
+      const response = await fetch(url, { method, headers, redirect, signal: AbortSignal.timeout(12000) });
+      return { status: response.status, data: response.ok ? await response.json() : null };
+    };
+    return createAzureKuduEvidenceReader({ resourceId, request, getArmToken, getKuduToken });
+  } catch { return null; }
+}
+
+function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injected = {}) {
+  const deployment = injected.deployment || new DeploymentService(config.deployment || {});
+  const permissions = injected.permissions || new PermissionsService({ powerAppsStore, config: config.permissions || {} });
+  const userProtection = injected.userProtection || new UserProtectionService({ adminEmail: config.adminEmail });
+
+  async function validatePowerAppsChange(params) {
+    const canonicalBranch = powerAppsGitStore.canonicalBranch;
+    let currentContent = params.currentContent;
+    let currentExists = params.currentExists;
+    let sourceBranch = null;
+    const extraWarnings = [];
+    const pathLooksUnsafe = /\.\.|\\/.test(params.relativePath);
+    if (currentContent === undefined && currentExists === undefined && !pathLooksUnsafe) {
+      try {
+        const current = await powerAppsGitStore.getSourceFile(params.relativePath);
+        currentContent = current.content;
+        currentExists = true;
+        sourceBranch = current.branch;
+      } catch (error) {
+        if (/\(404\)/.test(String(error.message))) currentExists = false;
+        else if (/設定が不足/.test(String(error.message))) extraWarnings.push('GitHub設定が不足しているため、現在内容の取得と差分検査を実行していません（未検証）');
+        else throw error;
+      }
+    }
+    const result = validateChange({ ...params, currentContent, currentExists }, { canonicalBranch });
+    if (sourceBranch && sourceBranch !== canonicalBranch) {
+      result.errors.push(`対象ソースは正本branch以外(${sourceBranch})で見つかりました。正本branch(${canonicalBranch})へは存在しないため更新できません`);
+      result.valid = false;
+      result.summary.sourceBranch = sourceBranch;
+      result.summary.errorCount = result.errors.length;
+    }
+    result.warnings.push(...extraWarnings);
+    result.summary.warningCount = result.warnings.length;
+    return result;
+  }
+
+  function verifySave(params) {
+    return verifySaveResult(params, {
+      canonicalBranch: powerAppsGitStore.canonicalBranch,
+      getSourceFile: (relativePath) => powerAppsGitStore.getSourceFile(relativePath),
+      getAppState: () => powerAppsStore.getAppState()
+    });
+  }
+
+  // Constructing the reader performs no Azure request. Azure CLI metadata is read
+  // only when the authenticated read-only MCP method is called. Tests/operators may inject a reader.
+  const azureMetadata = injected.azureMetadata &&
+    typeof injected.azureMetadata.readDeploymentMetadata === 'function'
+    ? injected.azureMetadata : createAzureMetadataReader();
+  return {
+    deployment,
+    ciArtifact: createGitHubCiArtifactService(config.deployment || {}),
+    permissions,
+    userProtection,
+    azureMetadata,
+    azureKudu: injected.azureKudu && typeof injected.azureKudu.inspect === 'function' ? injected.azureKudu : createAzureKuduDefaultReader(),
+    validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
+    verifySaveResult: injected.verifySaveResult || verifySave
+  };
+}
+
+function jsonRpcResult(id, result) {
+  return { jsonrpc: '2.0', id, result };
+}
+
+function jsonRpcError(id, code, message, data) {
+  const error = { code, message };
+  if (data !== undefined) error.data = data;
+  return { jsonrpc: '2.0', id: id ?? null, error };
+}
+
+function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner, injectedEmployeeLedgerWriter, injectedBridgeServices = {}) {
+  const store = injectedStore || createDefaultStore(config);
+  const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
+  const powerAppsGitStore = injectedPowerAppsGitStore || new PowerAppsGitStore(config.powerApps);
+  const sharePointReader = injectedSharePointReader || new SharePointReader(config.sharepoint);
+  const sharePointWriter = new SharePointListWriter(config.sharepoint);
+  const powerAutomateRunner = injectedPowerAutomateRunner || new PowerAutomateRunner(config.powerAutomate);
+  const employeeLedgerWriter = injectedEmployeeLedgerWriter
+    || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
+  const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
+  const bridgeServices = createBridgeServices(config, powerAppsStore, powerAppsGitStore, injectedBridgeServices);
+  const stateRegistry = new StateContextRegistry(config.stateContextRegistry);
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(cors({ origin: config.corsOrigins }));
+  // Image upload tool accepts up to 1MiB binary + Base64/JSON overhead on MCP only.
+  const imageJson = express.json({ limit: '2mb' });
+  const defaultJson = express.json({ limit: '256kb' });
+  app.use((req, res, next) => (req.path === '/mcp' ? imageJson : defaultJson)(req, res, next));
+
+  app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+
+  app.get('/api/tasks', async (req, res, next) => {
+    try { return res.status(200).json(await tasksPayload(store)); } catch (error) { return next(error); }
+  });
+
+  app.get('/api/next', async (req, res, next) => {
+    try { return res.status(200).json(await nextPayload(store)); } catch (error) { return next(error); }
+  });
+
+  const webhookAuth = apiKeyMiddleware(() => config.webhookApiKey);
+  for (const path of ['/webhooks/claude-code', '/webhooks/copilot']) {
+    app.post(path, webhookAuth, async (req, res, next) => {
+      const errorMessage = validateTaskInput(req.body, { requireTitle: true });
+      if (errorMessage) return res.status(400).json({ error: errorMessage });
+      try {
+        const task = await store.upsert({ ...req.body, source: path.slice('/webhooks/'.length) });
+        return res.status(202).json({ accepted: true, task });
+      } catch (error) { return next(error); }
+    });
+  }
+
+  app.post('/api/tasks/:id/status', async (req, res, next) => {
+    const body = { ...req.body, id: req.params.id };
+    const errorMessage = validateStatusInput(body);
+    if (errorMessage) return res.status(400).json({ error: errorMessage });
+    try {
+      const task = await store.update(req.params.id, req.body);
+      return task ? res.status(200).json({ task }) : res.status(404).json({ error: 'タスクが見つかりません' });
+    } catch (error) { return next(error); }
+  });
+
+  const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+
+  // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
+  // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
+  app.get('/mcp/tools/list', mcpAuth, (req, res) => {
+    res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
+  });
+  app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  // Read-only Draft CI evidence endpoint. Draft writes are deliberately NOT routed.
+  app.post('/api/draft/ci-evidence', mcpAuth, async (req, res) => {
+    if (!config.mcpApiKey) return res.status(503).json({ status: 'BLOCKED', reason: 'mcp_auth_not_configured' });
+    const plan = req.body?.plan;
+    if (!plan || plan.operation !== 'ci_verify' ||
+        plan.targetId !== 'oohiraplas-cpu/clean-nano-ai-bridge' ||
+        plan.environmentId !== 'draft/approved-execution-engine-20261014') {
+      return res.status(403).json({ status: 'BLOCKED', reason: 'draft_ci_scope_required' });
+    }
+    try {
+      const run = createAuthenticatedDraftRunner({
+        store: powerAppsGitStore,
+        owner: 'oohiraplas-cpu',
+        repo: 'clean-nano-ai-bridge',
+        branch: 'draft/approved-execution-engine-20261014'
+      });
+      const result = await run({ plan });
+      return res.status(result.status === 'PASS' ? 200 : 503).json(result);
+    } catch {
+      return res.status(503).json({ status: 'BLOCKED', reason: 'authenticated_github_unavailable' });
+    }
+  });
+
+  app.post('/mcp', mcpAuth, (req, res, next) => {
+    handleMcpRequest(req, res, next).catch(next);
+  });
+
+  /**
+   * Hydrate a complete StateContext with all required fields.
+   * Fail-Closed: NEVER issues stateSessionId if ANY required field is missing/invalid.
+   * Required fields: appId, environmentId, repository, gitRoot, branch, canonicalBranch, sha, correlationId
+   *
+   * @param {string} scope - Authentication scope hash
+   * @param {string} correlationId - Request-scoped correlation ID (generated once at request entry, never regenerated)
+   */
+  // AuthorityContext: 8-field state required for executable sessions
+  // This is the ONLY context that warrants a stateSessionId.
+  // Never issue stateSessionId if ANY of these are missing or invalid.
+  // NOTE: Internal representation uses 'baseSha' for commit HEAD SHA to distinguish from file blob SHAs.
+  // External StateContext schema (STATE_CONTEXT_SCHEMA) still uses 'sha' for backward compatibility during migration.
+  const AUTHORITY_CONTEXT_FIELDS = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId'];
+
+  // SourceObservation: file-level metadata bound to an AuthorityContext
+  // These fields are validated AFTER SourceObservation is populated with actual data.
+  // fileSha is the blob SHA of the retrieved file (different from baseSha which is commit HEAD SHA)
+  const SOURCE_OBSERVATION_FIELDS = ['relativePath', 'fileSha', 'content'];
+
+  async function hydrateAuthorityContext(scope, correlationId) {
+    if (!correlationId || typeof correlationId !== 'string') {
+      const error = new Error('AuthorityContext hydration requires external correlationId');
+      error.status = 400;
+      error.payload = {
+        status: 'state_context_invalid',
+        missingFields: ['correlationId'],
+        reason: 'correlationId must be generated once at request entry and injected into hydration'
+      };
+      throw error;
+    }
+
+    const appState = await powerAppsStore.getAppState();
+
+    // CRITICAL: Fail-Closed - Git metadata is REQUIRED; do NOT continue if unavailable
+    let gitState = null;
+    try {
+      gitState = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+    } catch (error) {
+      // Git metadata failure = CANNOT issue stateSessionId
+      const fieldError = new Error('AuthorityContext hydration failed: Git metadata unavailable');
+      fieldError.status = 400;
+      fieldError.payload = {
+        status: 'state_context_invalid',
+        missingFields: ['branch', 'canonicalBranch', 'baseSha'],
+        reason: `Cannot issue stateSessionId without Git metadata. Root cause: ${error.message}`
+      };
+      throw fieldError;
+    }
+
+    // Strict validation: all fields must be present (no optional/partial contexts at this layer)
+    // Internal: baseSha (commit HEAD SHA from git/refs/heads/{branch})
+    // External: sha (for backward compatibility with STATE_CONTEXT_SCHEMA during migration)
+    // Note: begin() expects 'environment' (not 'environmentId'), but our context includes both
+    const context = {
+      appId: appState.appId,
+      environmentId: appState.environmentId,  // For extended AuthorityContext validation
+      environment: appState.environmentId,  // For STATE_CONTEXT_SCHEMA compatibility (begin() uses this)
+      repository: config.powerApps.githubRepo,
+      gitRoot: config.powerApps.githubRoot,
+      branch: gitState.branch,
+      canonicalBranch: gitState.canonicalBranch,
+      baseSha: gitState.sha,  // INTERNAL: Commit HEAD SHA (authority for all files in this commit)
+      sha: gitState.sha,  // EXTERNAL: Backward compatible with STATE_CONTEXT_SCHEMA
+      correlationId: correlationId  // NEVER regenerate; use injected value
+    };
+
+    // Validate all required fields are present and in correct format BEFORE issuing session
+    // Extended AuthorityContext requires 8 fields: appId, environmentId, repository, gitRoot, branch, canonicalBranch, baseSha, correlationId
+    const missing = [];
+    if (!context.appId) missing.push('appId');
+    if (!context.environmentId) missing.push('environmentId');
+    if (!context.repository) missing.push('repository');
+    if (!context.gitRoot) missing.push('gitRoot');
+    if (!context.branch) missing.push('branch');
+    if (!context.canonicalBranch) missing.push('canonicalBranch');
+    if (!context.baseSha || !/^[a-f0-9]{40}$/.test(context.baseSha)) missing.push('baseSha');
+    if (!context.correlationId) missing.push('correlationId');
+
+    if (missing.length > 0) {
+      const error = new Error('AuthorityContext hydration failed: missing or invalid required fields');
+      error.status = 400;
+      error.payload = {
+        status: 'state_context_invalid',
+        missingFields: missing,
+        reason: `Cannot issue stateSessionId without: ${missing.join(', ')}`
+      };
+      throw error;
+    }
+
+    return stateRegistry.begin(context, scope);
+  }
+
+  // Legacy alias for backward compatibility during transition
+  const hydratePowerAppsStateContext = hydrateAuthorityContext;
+
+  async function executeWithState(method, params, req) {
+    try { return await executeWithStateInternal(method, params, req); }
+    catch (error) {
+      if (method === 'compare_powerapps_with_git') {
+        if (error.payload?.status === 'state_context_invalid') {
+          error.payload = { ...error.payload, comparisonStatus: 'validation_blocked' };
+        } else if (['pac_registered_source_mismatch', 'registered_state_changed', 'registered_state_evidence_required'].includes(error.message)) {
+          // Trusted PAC/registry provenance failures are validation failures, not transport outages.
+          const safe = new Error('Power Apps runtime source validation blocked');
+          safe.status = 409;
+          safe.payload = { status: 'validation_blocked', comparisonStatus: 'validation_blocked' };
+          throw safe;
+        } else if (!error.payload?.comparisonStatus) {
+          // Do not expose provider diagnostics or connection information.
+          const safe = new Error('Power Apps/Git source could not be read');
+          safe.status = 503;
+          safe.payload = { status: 'source_unavailable', comparisonStatus: 'source_unavailable' };
+          throw safe;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async function executeWithStateInternal(method, params, req) {
+    if (method === 'update_powerapps_image') {
+      validateImageParams(params);
+      const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+      const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      powerAppsGitStore.assertCanonicalBranch(params.branch, '画像編集');
+      const state = await powerAppsStore.getAppState();
+      if (state.appId !== record.context.appId || state.environmentId !== record.context.environment) throw contextError(['画像編集の対象アプリまたは環境が変化しました']);
+      const metadata = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (metadata.sha !== record.context.sha || metadata.branch !== record.context.branch) throw contextError(['画像編集前に正本commitまたはbranchが変化しました']);
+      const source = await powerAppsGitStore.getSourceFile(record.source.path);
+      if (source.sha !== record.source.sha || source.branch !== record.context.branch || source.writable !== true) throw contextError(['画像編集前に観測ソースが変化したか書込み不可です']);
+      // Fail closed before any Git write: validate image bytes, digest and dimensions.
+      // Existing property-only edits do not introduce image bytes.
+      if (params.base64Content !== undefined) {
+        const { validateImageMediaDraft } = require('./imageMediaValidationDraft');
+        const imageCheck = validateImageMediaDraft({
+          base64Content: params.base64Content,
+          contentType: params.contentType
+        });
+        if (imageCheck.status !== 'PASS') {
+          const error = requestError('画像の事前検証に失敗しました');
+          error.payload = { status: 'BLOCKED', reason: imageCheck.reason };
+          throw error;
+        }
+      }
+      const content = editImageSource(source.content, params);
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(record.source.path, content, params.message || `${params.operation} image: ${params.controlName}`, params.branch, record.source.sha));
+      const observed = await withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(record.source.path));
+      if (observed.branch !== record.context.branch || observed.content !== content) throw contextError(['画像編集後のGitソース照合に失敗しました']);
+      return { ...result, image: { screenName: params.screenName, controlName: params.controlName, operation: params.operation }, gitVerified: true, saved: false, published: false,
+        nextAction: 'get_powerapps_state → get_powerapps_source → save_powerapps_app → 状態再取得・照合 → publish_powerapps_app → 状態・ソース・画面の再確認' };
+    }
+    // CRITICAL: Generate correlationId ONCE at request entry (not per-method)
+    // This ID scopes all stateful operations within the request: resolve_app_target, get_powerapps_state, hydration, source binding
+    // Never regenerate correlationId in child functions (hydratePowerAppsStateContext, bind, etc.)
+    const requestCorrelationId = crypto.randomUUID();
+
+    // Scope to authenticated transport + MCP session when present. The explicit,
+    // random stateSessionId also scopes stateless Copilot/legacy requests.
+    const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+    const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
+
+    if (method === 'get_powerapps_state') {
+      const state = await execute(params);
+      // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
+      // Inject request-scoped correlationId (never regenerate)
+      try {
+        const session = await hydrateAuthorityContext(scope, requestCorrelationId);
+
+        // Verify authorityContextComplete is true (all 8 fields present and valid)
+        if (!session.authorityContextComplete) {
+          const missingFields = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId']
+            .filter(f => !session.authorityContext?.[f]);
+          throw new Error(`AuthorityContext incomplete: missing ${missingFields.join(', ')}`);
+        }
+
+        const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
+
+        return {
+          ...state,
+          ...session,
+          deploymentSha,
+          requestId: requestCorrelationId
+        };
+      } catch (error) {
+        // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
+        // Even in non-enforcement mode, returning incomplete context must not be misleading
+        if (config.enforceStateManager === true) throw error;
+        const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
+        // Legacy tests and non-enforcement mode: return state without full context
+        return {
+          ...state,
+          deploymentSha,
+          requestId: requestCorrelationId,
+          stateContextUnavailable: error.message || 'Observed Power Apps state is unavailable; restart with get_powerapps_state'
+        };
+      }
+    }
+
+    if (method === 'get_powerapps_source') {
+      // CRITICAL: Separate AuthorityContext (commit-level) from SourceObservation (file-level)
+      // AuthorityContext must be obtained/validated first, then use it to retrieve and validate SourceObservation
+
+      let session;
+      // Step 1: Only lookup existing session if caller provides both parameters
+      if (params.correlationId !== undefined && params.stateSessionId !== undefined) {
+        // If caller provides correlationId + stateSessionId, they MUST match a registered session
+        // Mismatched pairs are FAIL-CLOSED: throw immediately, never fall through to fresh hydration
+        // This prevents cross-session or stale session attacks
+        session = stateRegistry.response(stateRegistry.lookup(params.correlationId, params.stateSessionId, scope));
+      }
+
+      // Step 2: Retrieve source WHILE AuthorityContext is being established/validated
+      // This allows execute() to work with whatever context is available, maintaining backward compatibility
+      const source = await execute(params);
+
+      // Step 3: Establish AuthorityContext if not already present
+      if (!session) {
+        try {
+          // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
+          // Inject request-scoped correlationId (never regenerate)
+          session = await hydrateAuthorityContext(scope, requestCorrelationId);
+        } catch (hydrationError) {
+          // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
+          if (config.enforceStateManager === true) throw hydrationError;
+          // Non-enforcement legacy mode: return source without executable context
+          return {
+            ...source,
+            requestId: requestCorrelationId,
+            stateContextUnavailable: hydrationError.payload?.missingFields
+              ? `Observed Power Apps state is incomplete; missing: ${hydrationError.payload.missingFields.join(', ')}. Start with get_powerapps_state`
+              : 'Observed Power Apps state is unavailable; start with get_powerapps_state'
+          };
+        }
+      }
+
+      // Step 4: Validate that retrieved session is complete (has all required Authority fields)
+      if (!session.correlationId || !session.stateSessionId) {
+        const error = new Error('AuthorityContext session incomplete after hydration');
+        error.status = 400;
+        error.payload = {
+          status: 'state_context_invalid',
+          reason: 'Session returned from registry does not contain required fields'
+        };
+        throw error;
+      }
+
+      // Step 5: Validate SourceObservation fields are populated
+      // For single-file operations (non-targetNames), all these must be present from execute()
+      if (!params.targetNames && source && typeof source === 'object') {
+        // source.sha = file blob SHA
+        // source.path = relative path
+        // source.content = file contents
+        if (!source.sha || !/^[a-f0-9]{40}$/.test(source.sha)) {
+          // File SHA missing or invalid - cannot establish SourceObservation
+          if (config.enforceStateManager === true) {
+            const error = new Error('SourceObservation validation failed: invalid or missing fileSha');
+            error.status = 400;
+            error.payload = {
+              status: 'source_observation_invalid',
+              missingFields: ['fileSha'],
+              reason: `Retrieved source does not have valid file SHA`
+            };
+            throw error;
+          }
+        }
+      }
+
+      // Step 6: Preserve pre-enforcement standalone reads, but never grant unbound context
+      // Pre-enforcement readers may accept upstream diagnostic SHAs, but cannot
+      // establish registered executable State Context without full hydration.
+      if (config.enforceStateManager !== true && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
+        return { ...source, requestId: requestCorrelationId };
+      }
+
+      // Step 7: Bind SourceObservation to AuthorityContext session
+      // Phase 6: Use bindSourceObservation for file-level validation only
+      let bound = stateRegistry.response(stateRegistry.lookup(session.correlationId, session.stateSessionId, scope));
+
+      if (!params.targetNames && source && source.sha && source.path && source.content) {
+        try {
+          // Single-file binding: use bindSourceObservation
+          const sourceObs = {
+            sha: source.sha,
+            path: source.path,
+            content: source.content
+          };
+          bound = stateRegistry.bindSourceObservation(
+            session.correlationId,
+            session.stateSessionId,
+            scope,
+            sourceObs,
+            source.path
+          );
+        } catch (e) {
+          console.warn('bindSourceObservation failed in compare_powerapps_with_git:', e.message);
+          // Continue with current state if binding fails (backward compatibility)
+        }
+      }
+
+      const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
+
+      return {
+        ...source,
+        ...bound,
+        deploymentSha,
+        requestId: requestCorrelationId
+      };
+    }
+    if (method === 'publish_powerapps_app') {
+      // Canonical-branch refusal keeps its existing precedence (branch_mismatch) before session checks.
+      await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
+      // Contract PUBLISH_CONTRACT_VERSION: publish requires a source-bound, unexpired stateSession.
+      // Old callers without stateSessionId receive an explicit refusal (no fallback).
+      if (typeof params.stateSessionId !== 'string' || !params.stateSessionId) {
+        throw publishGateError(['stateSessionId: 公開には必須です（契約 ' + PUBLISH_CONTRACT_VERSION + '）'], 428, 'state_session_required');
+      }
+      if (!params.stateContext || typeof params.stateContext !== 'object' || Array.isArray(params.stateContext)) {
+        throw publishGateError(['stateContext: 公開には必須です'], 428, 'state_session_required');
+      }
+      // Fail-Closed: validate() rejects expired sessions, unknown sessions, unobserved sources,
+      // branch != canonical, and any commit/blob/path mismatch with the registered state.
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const failures = [];
+      const currentState = await powerAppsStore.getAppState();
+      if (currentState.appId !== record.context.appId) failures.push('appId: 公開直前に対象アプリが変化しました');
+      if (currentState.environmentId !== record.context.environment) failures.push('environmentId: 公開直前に環境が変化しました');
+      const canonical = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (canonical.sha !== record.context.sha) failures.push('sha: 正本commitが状態取得後に変化しました');
+      if (canonical.canonicalBranch !== record.context.canonicalBranch) failures.push('canonicalBranch: 正本branchが変化しました');
+      const liveFile = await powerAppsGitStore.getSourceFile(record.source.path);
+      if (liveFile.sha !== record.source.sha) failures.push('sha: 観測ソースのblob SHAが変化しました');
+      if (liveFile.branch !== record.context.branch) failures.push('branch: 観測ソースのbranchが変化しました');
+      if (!config.deploymentSha) failures.push('deploymentSha: DEPLOYMENT_SHA が未設定です');
+      else if (config.deploymentSha !== record.context.sha) failures.push('deploymentSha: 稼働中SHAが正本commitと一致しません');
+      if (failures.length) throw publishGateError(failures, 409, 'publish_gate_refused');
+      // Recheck TTL and session after upstream calls; slow requests may expire.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return execute(params);
+    }
+    if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
+        method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
+        (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined))) {
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      // Detect changed Git state and changed app/environment, not just a client
+      // tuple matching an old registry entry. Do not guess paths or branches.
+      const currentState = await powerAppsStore.getAppState();
+      const failures = [];
+      if (currentState.appId !== record.context.appId) failures.push('appId: observed app changed');
+      if (currentState.environmentId !== record.context.environment) failures.push('environment: observed environment changed');
+      const source = await powerAppsGitStore.getSourceFile(record.source.path);
+      for (const field of ['branch', 'canonicalBranch']) if (source[field] !== record.context[field]) failures.push(`${field}: observed source changed`);
+      // Blob SHA (file) must match the observed file; commit SHA (branch HEAD) is re-read separately.
+      if (source.sha !== record.source.sha) failures.push('sha: observed source blob changed');
+      const observedCommit = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (observedCommit.sha !== record.context.sha) failures.push('sha: observed commit changed');
+      if (source.path !== record.source.path || source.content !== record.source.content) failures.push('sourceContent/path: observed source changed');
+      // Recheck TTL and session after upstream calls; slow requests may expire.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      if (failures.length) throw contextError(failures);
+      let result;
+      if (method === 'inspect_powerapps_structure') {
+        if (params.appId !== undefined && params.appId !== record.context.appId) {
+          throw contextError([
+            `appId mismatch: received ${params.appId}, expected ${record.context.appId}`,
+            `requestId/session: correlationId=${record.context.correlationId}, stateSessionId=${record.stateSessionId}`
+          ]);
+        }
+        result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
+          sourceOrigin: 'github_canonical', stateContext: record.context });
+      } else if (method === 'validate_powerapps_source') {
+        result = await validatePowerAppsSource({ sourceContent: params.sourceContent ?? record.source.content,
+          relativePath: record.source.path, expectedBranch: params.expectedBranch ?? record.context.branch, powerAppsGitStore });
+        result.validationStatus = result.data.valid && result.verified ? 'VALID' : 'INVALID';
+      } else if (method === 'validate_powerapps_change') {
+        // Change validation is fail-closed: the registered source identity is checked
+        // before static diff validation, so branch/path/SHA cannot be stale or guessed.
+        const paramError = validateValidatePowerAppsChangeParams(params);
+        if (paramError) throw requestError(paramError);
+        if (params.branch !== record.context.branch) throw contextError(['branch: request does not match registered context']);
+        result = await bridgeServices.validatePowerAppsChange({
+          ...params,
+          branch: record.context.branch,
+          relativePath: record.source.path,
+          currentContent: params.currentContent ?? record.source.content
+        });
+        result.validationStatus = result.valid === true ? 'VALID' : 'INVALID';
+      } else {
+        result = await comparePowerAppsWithGit({ powerAppsStore, powerAppsGitStore,
+          targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
+          stateContext: record.context,
+          assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
+        // PAC evidence is optional and read-only; never trust request-supplied adapter or flags.
+        // No registered internal adapter means no PAC evidence (Fail Closed).
+        const internalPacAdapter = powerAppsStore._runtimeSource;
+        if (internalPacAdapter instanceof PowerAppsRuntimeSourceAdapter
+            && internalPacAdapter.getSourceFile === PowerAppsRuntimeSourceAdapter.prototype.getSourceFile) {
+          const pacEvidence = await readPacEvidenceWithRegisteredState({
+            adapter: internalPacAdapter, registeredRecord: record,
+            validateRegisteredState: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method),
+            relativePath: record.source.path
+          });
+          result.pacEvidence = { status: pacEvidence.status, source: pacEvidence.source,
+            runtimeHash: pacEvidence.runtimeHash, appId: pacEvidence.appId,
+            environment: pacEvidence.environment };
+        }
+        // Export may take time: reject provider or Git drift during the read.
+        const afterState = await powerAppsStore.getAppState();
+        const afterSource = await powerAppsGitStore.getSourceFile(record.source.path);
+        const afterFailures = [];
+        if (afterState.appId !== record.context.appId) afterFailures.push('appId: observed app changed during export');
+        if (afterState.environmentId !== record.context.environment) afterFailures.push('environment: observed environment changed during export');
+        for (const field of ['branch', 'canonicalBranch', 'sha']) if (afterSource[field] !== record.context[field]) afterFailures.push(`${field}: observed source changed during export`);
+        if (afterSource.path !== record.source.path || afterSource.content !== record.source.content) afterFailures.push('sourceContent/path: observed source changed during export');
+        if (afterFailures.length) throw contextError(afterFailures);
+      }
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return { ...result, correlationId: record.context.correlationId,
+        stateContext: { ...record.context }, stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha, comparisonSources: method === 'compare_powerapps_with_git' ? result.data.comparisonSources : undefined };
+    }
+    return execute(params);
+  }
+
+  async function handleMcpRequest(req, res, next) {
+    const body = req.body || {};
+
+    // ChatGPT Apps use MCP Streamable HTTP with JSON-RPC 2.0.
+    // Keep the existing legacy { method, params } contract below for current clients.
+    if (body.jsonrpc === '2.0') {
+      const id = body.id;
+      const params = body.params || {};
+
+      if (body.method === 'notifications/initialized') return res.status(202).end();
+      if (body.method === 'ping') return res.status(200).json(jsonRpcResult(id, {}));
+      if (body.method === 'initialize') {
+        return res.status(200).json(jsonRpcResult(id, {
+          protocolVersion: params.protocolVersion || '2025-06-18',
+          capabilities: { tools: { listChanged: true } },
+          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.1.0' }
+        }));
+      }
+      if (body.method === 'tools/list') {
+        return res.status(200).json(jsonRpcResult(id, { tools: MCP_PUBLIC_TOOLS }));
+      }
+      // Standard MCP tool methods (health_check, get_tasks, etc.) via tools/call
+      // Map legacy method names to tools/call format for JSON-RPC 2.0 compatibility
+      const standardMethods = new Set(MCP_METHODS);
+      if (standardMethods.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
+        // Convert standard method call to tools/call format
+        return res.status(200).json(await (async () => {
+          try {
+            const result = await executeWithState(body.method, params || {}, req);
+            return jsonRpcResult(id, result);
+          } catch (error) {
+            return jsonRpcError(id, -32603, error.message, error.payload);
+          }
+        })());
+      }
+
+      if (body.method === 'tools/call') {
+        const name = params.name;
+        const toolParams = params.arguments || {};
+        if (typeof name !== 'string') {
+          return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
+        }
+        try {
+          // Phase 6: State Manager Enforcement (Fail-Closed)
+          // Before executing write operations, validate that required state context is provided
+          // Controlled by BRIDGE_STATE_MANAGER_ENFORCE env var (set in production)
+          const enforceStateManager = config.enforceStateManager === true;
+          let stateContext = extractStateContext(toolParams);
+
+          if (enforceStateManager) {
+            const stateValidation = validateStateContext(name, toolParams, stateContext);
+            if (!stateValidation.isValid) {
+              const error = createStateValidationError(stateValidation, name, toolParams);
+              return res.status(200).json(jsonRpcResult(id, {
+                content: [{ type: 'text', text: error.message }],
+                structuredContent: { error: error.message, ...error.details, ...(name === 'compare_powerapps_with_git' ? { comparisonStatus: 'validation_blocked' } : {}) },
+                isError: true
+              }));
+            }
+          }
+
+          const result = await executeWithState(name, toolParams, req);
+
+          // Enrich response with state metadata for audit trail (Phase 9: Evidence Capture)
+          // Only add metadata when State Manager enforcement is enabled
+          const enrichedResult = enforceStateManager ? enrichResponseWithState(result, stateContext) : result;
+
+          return res.status(200).json(jsonRpcResult(id, {
+            content: [{ type: 'text', text: JSON.stringify(enrichedResult) }],
+            structuredContent: enrichedResult,
+            isError: enrichedResult.comparisonStatus === 'source_unavailable' || enrichedResult.comparisonStatus === 'validation_blocked'
+          }));
+        } catch (error) {
+          if (!error.status) return next(error);
+          return res.status(200).json(jsonRpcResult(id, {
+            content: [{ type: 'text', text: error.message }],
+            structuredContent: { error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) },
+            isError: true
+          }));
+        }
+      }
+      return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${body.method || ''}`));
+    }
+
+    const errorMessage = validateMcpInput(body);
+    if (errorMessage) return res.status(400).json({ error: errorMessage });
+    const { method } = body;
+    const params = body.params || {};
+    try {
+      // Phase 6: State Manager Enforcement (Fail-Closed)
+      // Legacy handler: also validate state context before write operations
+      const enforceStateManager = config.enforceStateManager === true;
+      let stateContext = extractStateContext(params);
+
+      if (enforceStateManager) {
+        const stateValidation = validateStateContext(method, params, stateContext);
+        if (!stateValidation.isValid) {
+          const error = createStateValidationError(stateValidation, method, params);
+          return res.status(error.status).json({ error: error.message, ...error.details });
+        }
+      }
+
+      const result = await executeWithState(method, params, req);
+
+      // Enrich response with state metadata for audit trail
+      // Only add metadata when State Manager enforcement is enabled
+      const enrichedResult = enforceStateManager ? enrichResponseWithState(result, stateContext) : result;
+
+      return res.status(200).json({ accepted: true, method, result: enrichedResult });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) });
+      return next(error);
+    }
+  }
+
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    console.error('request_failed', { method: req.method, path: req.path, message: error.message });
+    return res.status(500).json({ error: '内部エラーが発生しました' });
+  });
+  return app;
+}
+
+if (require.main === module) {
+  try {
+    const config = getConfig();
+    createApp(config).listen(config.port, config.host, () => {
+      console.log(`Bridge API listening on ${config.host}:${config.port}`);
+    });
+  } catch (error) {
+    console.error('Bridge API startup failed:', error.message);
+    console.error(error.stack);
+    process.exit(1);
+  }
+}
+
+module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS };
+ } }, required: ['expectedSha'], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
     name: 'get_powerapps_media_asset',
     description: 'Git正本の画像をBase64のまま取得・出力、または指定パスを一覧確認します。読み取り専用。',
     inputSchema: { type: 'object', properties: {
@@ -1543,6 +3533,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         status: Number.isInteger(entry.status) ? entry.status : null,
         receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
       })).slice(0, 30), deploymentShaMatched: false, effectiveRbacVerified: false, pacRuntimeVerified: false };
+  }
+  if (method === 'get_azure_kudu_evidence') {
+    if (!params || Object.keys(params).length !== 1 || !/^[a-f0-9]{40}$/i.test(params.expectedSha || '')) throw requestError('expected_sha_required');
+    const reader = bridgeServices?.azureKudu?.inspect;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_kudu_reader_unavailable' };
+    const evidence = await reader(params.expectedSha);
+    return { status: 'blocked', reason: typeof evidence?.reason === 'string' ? evidence.reason : 'runtime_artifact_unverified', armVerified: evidence?.armVerified === true, kuduVerified: evidence?.kuduVerified === true, deploymentHistoryShaMatched: evidence?.historyMatched === true, runtimeShaVerified: false };
   }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
@@ -2685,6 +4682,7 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     permissions,
     userProtection,
     azureMetadata,
+    azureKudu: injected.azureKudu && typeof injected.azureKudu.inspect === 'function' ? injected.azureKudu : createAzureKuduDefaultReader(),
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
     verifySaveResult: injected.verifySaveResult || verifySave
   };
