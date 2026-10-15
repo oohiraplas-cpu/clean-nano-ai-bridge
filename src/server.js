@@ -2921,6 +2921,20 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (metadata.sha !== record.context.sha || metadata.branch !== record.context.branch) throw contextError(['画像編集前に正本commitまたはbranchが変化しました']);
       const source = await powerAppsGitStore.getSourceFile(record.source.path);
       if (source.sha !== record.source.sha || source.branch !== record.context.branch || source.writable !== true) throw contextError(['画像編集前に観測ソースが変化したか書込み不可です']);
+      // Fail closed before any Git write: validate image bytes, digest and dimensions.
+      // Existing property-only edits do not introduce image bytes.
+      if (params.base64Content !== undefined) {
+        const { validateImageMediaDraft } = require('./imageMediaValidationDraft');
+        const imageCheck = validateImageMediaDraft({
+          base64Content: params.base64Content,
+          contentType: params.contentType
+        });
+        if (imageCheck.status !== 'PASS') {
+          const error = requestError('画像の事前検証に失敗しました');
+          error.payload = { status: 'BLOCKED', reason: imageCheck.reason };
+          throw error;
+        }
+      }
       const content = editImageSource(source.content, params);
       stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(record.source.path, content, params.message || `${params.operation} image: ${params.controlName}`, params.branch, record.source.sha));
