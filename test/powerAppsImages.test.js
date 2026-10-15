@@ -104,6 +104,15 @@ test('MCP image editing requires a registered source session, rejects drift, and
   assert.equal((await call('update_powerapps_image', bound)).isError, true);
   assert.equal(writes, 0);
   commit = 'a'.repeat(40);
+  // Image bytes are checked before applySourceFileChange. The legacy parser
+  // accepts a JPEG signature; the draft gate must refuse it without a decoder.
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
+  const unsafe = { ...bound, base64Content: jpeg, contentType: 'image/jpeg' };
+  assert.equal((await call('update_powerapps_image', unsafe)).isError, true);
+  assert.equal(writes, 0);
+  const mismatched = { ...bound, contentType: 'image/jpeg' };
+  assert.equal((await call('update_powerapps_image', mismatched)).isError, true);
+  assert.equal(writes, 0);
   const result = await call('update_powerapps_image', bound);
   assert.equal(result.isError, false, JSON.stringify(result));
   assert.equal(result.structuredContent.gitVerified, true);
