@@ -18,8 +18,8 @@ Screens:
                 Control: GroupContainer@1.5.0
                 Variant: ManualLayout
                 Properties:
-                  Height: =1324
-                  LayoutMinHeight: =1324
+                  Height: =1520
+                  LayoutMinHeight: =1520
                   FillPortions: =0
                   Width: =Parent.Width
                   LayoutMinWidth: =0
@@ -249,10 +249,32 @@ Screens:
                         Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        Items: =[0, 30, 45, 60, 90]
+                        Items: =[0, 30, 45, 60, 90, 120]
                         Items.Value: =Value
-                        Default: =60
+                        Default: =120
                         Y: =992
+                  - S3_JobCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(255,255,255,1)
+                        Height: =36
+                        Size: =18
+                        Text: ="職種"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =1068
+                  - S3_Job:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =64
+                        Size: =18
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Default: ="解体工"
+                        Y: =1108
                   - S3_NoteCap:
                       Control: Label@2.5.1
                       Properties:
@@ -262,7 +284,7 @@ Screens:
                         Text: ="作業内容・メモ"
                         Width: =Parent.Width - 32
                         X: =16
-                        Y: =1068
+                        Y: =1184
                   - S3_Note:
                       Control: Classic/TextInput@2.3.2
                       Properties:
@@ -274,7 +296,7 @@ Screens:
                         Width: =Parent.Width - 32
                         X: =16
                         Default: =""
-                        Y: =1108
+                        Y: =1224
                         Mode: =TextMode.MultiLine
                   - S3_Save:
                       Control: Classic/Button@2.2.0
@@ -287,7 +309,7 @@ Screens:
                         Width: =Parent.Width - 32
                         X: =16
                         DisplayMode: =If(gblSaving || !gblIdentityVerified || IsBlank(gblEmpID) || IsBlank(User().EntraObjectId) || !(Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), DisplayMode.Disabled, DisplayMode.Edit)
-                        Text: ="全員を登録 → 日報へ"
+                        Text: ="出勤情報を登録する"
                         OnSelect: |-
                           =If(!gblSaving && gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))),
                           With({siteName: Coalesce(Trim(S3_SiteManual.Text), S3_Site.Selected.Title), company: Trim(S3_Prime.Text), s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
@@ -310,7 +332,7 @@ Screens:
                           BreakMinutes: S3_Break.Selected.Value, WorkStatus: {Value: S3_Status.Selected.Value}, WorkType: {Value: gblCalType},
                           SiteID: If(IsBlank(Trim(S3_SiteManual.Text)), LookUp(CN_現場台帳, Title = S3_Site.Selected.Title).SiteID, Blank()),
                           Notes: S3_Note.Text,
-                          OriginalInput: JSON({schemaVersion: 1, siteName: siteName, primeCompany: company, primeContact: Trim(S3_Contact.Text), employeeName: worker.Title, workContent: S3_Note.Text}, JSONFormat.Compact)
+                          OriginalInput: JSON({schemaVersion: 1, siteName: siteName, primeCompany: company, primeContact: Trim(S3_Contact.Text), employeeName: worker.Title, jobType: Trim(S3_Job.Text), workContent: S3_Note.Text}, JSONFormat.Compact)
                           }); true,
                           Collect(colCalendarErrors, {workerName: worker.Title, message: FirstError.Message}); false
                           )
@@ -326,7 +348,20 @@ Screens:
                           )
                           )
                           )
-                        Y: =1244
+                        Y: =1360
+                  - S3_ReportBtn:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =64
+                        Size: =18
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Text: ="日報作成"
+                        OnSelect: =Navigate(S11_Report, ScreenTransition.None)
+                        Y: =1440
       - S3_NavBar:
           Control: Rectangle@2.3.0
           Properties:
