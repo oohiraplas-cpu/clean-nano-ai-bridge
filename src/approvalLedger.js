@@ -9,6 +9,7 @@
 
 const APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const APPROVED_STATUS = '承認';
+const SCOPE_KEYS = Object.freeze(['appId', 'environmentId', 'changeSha']);
 
 /** 承認台帳の列名（内部名）の既定値は持たない。設定で明示された場合だけ使う。 */
 const REQUIRED_FIELD_KEYS = Object.freeze(['requestId', 'stepIndex', 'tool', 'status', 'approver', 'approvedAt', 'revoked']);
@@ -22,6 +23,14 @@ function validateApprovalRecord(record, expected, { now = new Date() } = {}) {
   if (record.requestId !== expected.requestId) return { valid: false, reason: 'request_mismatch' };
   if (Number(record.stepIndex) !== expected.stepIndex) return { valid: false, reason: 'step_mismatch' };
   if (record.tool !== expected.tool) return { valid: false, reason: 'tool_mismatch' };
+  // A scoped approval must match the exact app, environment and change SHA.
+  // A missing field is never a wildcard.
+  if (SCOPE_KEYS.some((key) => Object.prototype.hasOwnProperty.call(expected, key))) {
+    for (const key of SCOPE_KEYS) {
+      if (typeof expected[key] !== 'string' || !expected[key].trim()) return { valid: false, reason: 'approval_scope_incomplete' };
+      if (typeof record[key] !== 'string' || record[key] !== expected[key]) return { valid: false, reason: `${key}_mismatch` };
+    }
+  }
   if (record.status !== APPROVED_STATUS) return { valid: false, reason: 'not_approved' };
   if (record.revoked === true || record.revoked === 'はい') return { valid: false, reason: 'revoked' };
   if (typeof record.approver !== 'string' || record.approver.trim() === '') return { valid: false, reason: 'approver_missing' };
@@ -64,6 +73,10 @@ class ApprovalLedger {
     }
     if (!Array.isArray(rows) || rows.length === 0) return { approved: false, reason: 'no_record' };
     const map = this.config.fieldMap;
+    if (SCOPE_KEYS.some((key) => Object.prototype.hasOwnProperty.call(expected, key)) &&
+        !SCOPE_KEYS.every((key) => typeof map[key] === 'string' && map[key].trim())) {
+      return { approved: false, reason: 'approval_scope_columns_unconfigured' };
+    }
     const normalized = rows.map((row) => ({
       requestId: row[map.requestId],
       stepIndex: row[map.stepIndex],
@@ -71,7 +84,10 @@ class ApprovalLedger {
       status: row[map.status],
       approver: row[map.approver],
       approvedAt: row[map.approvedAt],
-      revoked: row[map.revoked]
+      revoked: row[map.revoked],
+      appId: map.appId ? row[map.appId] : undefined,
+      environmentId: map.environmentId ? row[map.environmentId] : undefined,
+      changeSha: map.changeSha ? row[map.changeSha] : undefined
     }));
     let last = { valid: false, reason: 'no_record' };
     for (const record of normalized) {
