@@ -5,6 +5,23 @@ const crypto = require('node:crypto');
 // Read-only observations are not permission to publish.
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
+// Keep legacy short keys while allowing canonical Unicode Git paths.
+// Validate archive entries consistently with the PAC source reader.
+function safeSegments(value, separator) {
+  return value.split(separator).every(part =>
+    part !== '' && part !== '.' && part !== '..' &&
+    !part.includes('\0') && !/[\r\n]/.test(part));
+}
+function validGitKey(value) {
+  return typeof value === 'string' && !value.includes('\\') &&
+    value.endsWith('.pa.yaml') && safeSegments(value, '/') &&
+    (/^[\w.-]+\.pa\.yaml$/.test(value) ||
+      (value.startsWith('powerapps/') && value.split('/').length >= 4));
+}
+function validArchiveEntry(value) {
+  return typeof value === 'string' && /^Src[\\/]/.test(value) &&
+    value.endsWith('.pa.yaml') && safeSegments(value, /[\\/]/);
+}
 function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = null } = {}) {
   const authMode = settings.POWERAPPS_RUNTIME_AUTH_MODE;
   const map = settings.POWERAPPS_RUNTIME_SOURCE_MAP;
@@ -12,9 +29,7 @@ function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = nul
   try { mapping = JSON.parse(map); } catch { /* no contents in report */ }
   const sourceMapSchemaValid = !!mapping && typeof mapping === 'object' && !Array.isArray(mapping)
     && Object.keys(mapping).length > 0 && Object.entries(mapping).every(([key, value]) =>
-      typeof key === 'string' && /^[\w.-]+\.pa\.yaml$/.test(key)
-      && typeof value === 'string' && /^Src[\\/][\w./\\-]+\.pa\.yaml$/.test(value)
-      && !value.split(/[\\/]/).some(part => part === '..'));
+      validGitKey(key) && validArchiveEntry(value));
   const runtimeProbeVerified = pacProbe?.trustedAdapterVerified === true
     && pacProbe?.status === 'ok'
     && pacProbe?.source === 'power-apps-saved-msapp'
