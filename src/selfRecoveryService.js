@@ -40,6 +40,54 @@ const RECOVERY_STATE = {
  * Self-Recovery Service class
  */
 class SelfRecoveryService {
+  /** Read-only recovery: retry only transient read failures, never mutations. */
+  async inspectDependency(read) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        return { value: await read(), attempts: attempt };
+      } catch (error) {
+        const status = error?.statusCode ?? error?.status;
+        const authFailure = status === 401 || status === 403;
+        const transient = !authFailure && ([502, 503, 504].includes(status) ||
+          ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(error?.code));
+        if (!transient || attempt === 2) {
+          // Do not propagate provider messages, credentials, or response bodies.
+          const failure = new Error(authFailure ? 'authentication_required' :
+            transient ? 'transient_read_failed' : 'dependency_read_failed');
+          failure.attempts = attempt;
+          throw failure;
+        }
+      }
+    }
+  }
+
+  /** Health is not proof of runtime source, approval, save or publication. */
+  buildBridgeRecoveryReport(dependencies = {}, attempts = {}) {
+    const checks = ['powerApps', 'sharePoint', 'powerAutomate', 'git'].map(name => ({
+      name,
+      status: dependencies[name]?.status === 'ok' ? 'PASS' :
+        name === 'powerAutomate' && dependencies[name]?.optional === true &&
+          dependencies[name]?.status === 'not_configured' ? 'SKIPPED' : 'BLOCKED',
+      attempts: attempts[name] || 0,
+      nextAction: dependencies[name]?.status === 'ok' ? null :
+        dependencies[name]?.status === 'not_configured' ? 'verify_existing_configuration' :
+        dependencies[name]?.message === 'authentication_required' ? 'reauthenticate_then_recheck' :
+        'inspect_connection_then_recheck'
+    }));
+    const unverified = ['azure_running_sha', 'pac_registered_source',
+      'sharepoint_approval_etag', 'app_checker', 'backup_restore', 'published_artifact'];
+    return {
+      mode: 'read_only',
+      connectivityStatus: checks.every(check => check.status !== 'BLOCKED') ? 'PASS' : 'BLOCKED',
+      recoveryStatus: 'BLOCKED',
+      productionReady: false,
+      checks,
+      unverified,
+      nextAction: checks.some(check => check.status === 'BLOCKED') ?
+        'resolve_blocked_connections' : 'collect_independent_runtime_evidence'
+    };
+  }
+
   constructor({
     stateContextStore = null,
     transactionManager = null,

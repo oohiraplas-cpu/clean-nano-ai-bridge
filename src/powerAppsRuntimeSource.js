@@ -34,6 +34,15 @@ function pacWorkerEnvironment(config, parent = process.env) {
   env.USERPROFILE = config.pacProfileHome;
   env.AZURE_TOKEN_CREDENTIALS = 'ManagedIdentityCredential';
   if (clientId) env.AZURE_CLIENT_ID = clientId;
+  // App Service's local Managed Identity transport must reach the PAC child.
+  // These host-injected values are private: never return or log this env.
+  // Do not inherit legacy MSI, workload identity or service principal settings.
+  const identityKeys = ['IDENTITY_ENDPOINT', 'IDENTITY_HEADER'];
+  if (identityKeys.some(key => Object.prototype.hasOwnProperty.call(parent, key))) {
+    if (!identityKeys.every(key => typeof parent[key] === 'string' && parent[key].trim()))
+      throw sourceUnavailable('managed_identity_transport_incomplete');
+    for (const key of identityKeys) env[key] = parent[key];
+  }
   return env;
 }
 
@@ -94,6 +103,36 @@ class PowerAppsRuntimeSourceAdapter {
       runtimeHash: crypto.createHash('sha256').update(observed.content).digest('hex'),
       encoding: observed.encoding, source: 'power-apps-saved-msapp', format: 'pa.yaml' };
   }
+  // In-process only: retrieve and validate PAC source, then bind to an already
+  // registered StateRegistry session. Never treat GitHub mirror as PAC evidence.
+  async bindRuntimeObservation(relativePath, { stateContext, assertStateContext,
+    stateRegistry, stateSessionId, scope } = {}) {
+    if (!stateRegistry || typeof stateRegistry.bindSourceObservation !== 'function' ||
+        typeof stateRegistry.lookup !== 'function' || !stateSessionId || !scope)
+      throw validationBlocked(['registered state session required']);
+    if (typeof assertStateContext !== 'function')
+      throw validationBlocked(['trusted State Manager validation required']);
+    // Reject missing/expired sessions before invoking the PAC worker.
+    const initialSession = await stateRegistry.lookup(stateContext?.correlationId, stateSessionId, scope);
+    if (!initialSession || initialSession.status === 'BLOCKED')
+      throw validationBlocked(['registered state session not found']);
+    const source = await this.getSourceFile(relativePath, { stateContext, assertStateContext });
+    const { validateRuntimeObservation } = require('./productionEvidenceGateDraft');
+    const checked = validateRuntimeObservation(source, {
+      appId: stateContext.appId, environment: stateContext.environment, path: relativePath
+    });
+    if (checked.status !== 'PASS') throw validationBlocked([checked.reason]);
+    assertStateContext();
+    const registered = await stateRegistry.lookup(stateContext.correlationId, stateSessionId, scope);
+    if (!registered || registered.status === 'BLOCKED')
+      throw validationBlocked(['registered state session not found']);
+    const bound = await stateRegistry.bindSourceObservation(stateContext.correlationId,
+      stateSessionId, scope, checked.sourceObservation, relativePath);
+    if (!bound || bound.status === 'BLOCKED' || bound.stateContextComplete !== true)
+      throw validationBlocked(['state source binding not verified']);
+    return { ...bound, runtimeSourceVerified: true, runtimeHash: checked.runtimeHash };
+  }
+
   // Trusted in-process caller only: never accept a caller-supplied proof flag.
   // Reuses the adapter's validated read-only PAC download and strips source content.
   async getSourceEvidence(relativePath, context) {

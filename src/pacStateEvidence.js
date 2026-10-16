@@ -25,6 +25,11 @@ async function readPacEvidenceWithRegisteredState({
   assertStateContext();
   if (result?.trustedAdapterVerified !== true || result?.status !== 'ok')
     throw new Error('trusted_pac_evidence_unavailable');
+  // A trusted PAC fetch alone does not prove that the registered Git source matches.
+  const crypto = require('node:crypto');
+  const expectedHash = crypto.createHash('sha256').update(registeredRecord.source.content).digest('hex');
+  if (typeof result.runtimeHash !== 'string' || result.runtimeHash !== expectedHash)
+    throw new Error('pac_registered_source_mismatch');
   return result;
 }
 

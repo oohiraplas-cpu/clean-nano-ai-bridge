@@ -59,13 +59,13 @@ test('PAC source evidence requires registered State Manager callback', async () 
 
 test('registered State Manager evidence bridge revalidates before and after read', async () => {
   const { readPacEvidenceWithRegisteredState } = require('../src/pacStateEvidence');
-  const record = { context: { appId: 'app' }, source: { path: 'S1_Home.pa.yaml' } };
+  const record = { context: { appId: 'app' }, source: { path: 'S1_Home.pa.yaml', content: 'test source' } };
   let checks = 0;
   const adapter = { getSourceEvidence: async (path, options) => {
     assert.equal(path, record.source.path);
     assert.equal(options.stateContext, record.context);
     options.assertStateContext();
-    return { status: 'ok', trustedAdapterVerified: true };
+    return { status: 'ok', trustedAdapterVerified: true, runtimeHash: require('node:crypto').createHash('sha256').update(record.source.content).digest('hex') };
   } };
   const evidence = await readPacEvidenceWithRegisteredState({
     adapter, registeredRecord: record, relativePath: record.source.path,

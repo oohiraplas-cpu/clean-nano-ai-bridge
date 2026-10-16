@@ -11,6 +11,7 @@ const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
+const { createAuthenticatedDraftRunner } = require('./authenticatedDraftRunner');
 const { editImageSource, validateImageParams } = require('./powerAppsImages');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
@@ -20,6 +21,8 @@ const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
 const { createAzureMetadataReader } = require('./azureMetadataReader');
+const { createAzureKuduEvidenceReader } = require('./azureKuduEvidenceReader');
+const { createArmManagedIdentityTokenProvider } = require('./azureManagedIdentityAuth');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
@@ -193,7 +196,7 @@ const MCP_METHODS = Object.freeze([
   'get_execution_queue',
   'get_execution_status',
   'get_checkpoint',
-  'get_azure_deployment_metadata', 'verify_github_ci_artifact',
+  'get_azure_deployment_metadata', 'get_azure_kudu_evidence', 'verify_github_ci_artifact',
   'get_powerapps_media_asset', 'update_powerapps_image'
 ]);
 
@@ -1395,6 +1398,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'get_azure_kudu_evidence',
+    description: 'Azure/Kudu read-only metadata. Runtime SHA remains unverified.',
+    inputSchema: { type: 'object', properties: { expectedSha: { type: 'string' } }, required: ['expectedSha'], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
     name: 'get_powerapps_media_asset',
     description: 'Git正本の画像をBase64のまま取得・出力、または指定パスを一覧確認します。読み取り専用。',
     inputSchema: { type: 'object', properties: {
@@ -1503,7 +1512,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, scope) {
   if (method === 'get_powerapps_media_asset') {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
     if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
@@ -1544,6 +1553,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         status: Number.isInteger(entry.status) ? entry.status : null,
         receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
       })).slice(0, 30), deploymentShaMatched: false, effectiveRbacVerified: false, pacRuntimeVerified: false };
+  }
+  if (method === 'get_azure_kudu_evidence') {
+    if (!params || Object.keys(params).length !== 1 || !/^[a-f0-9]{40}$/i.test(params.expectedSha || '')) throw requestError('expected_sha_required');
+    const reader = bridgeServices?.azureKudu?.inspect;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_kudu_reader_unavailable' };
+    const evidence = await reader(params.expectedSha);
+    return { status: 'blocked', reason: typeof evidence?.reason === 'string' ? evidence.reason : 'runtime_artifact_unverified', armVerified: evidence?.armVerified === true, kuduVerified: evidence?.kuduVerified === true, deploymentHistoryShaMatched: evidence?.historyMatched === true, runtimeShaVerified: false };
   }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
@@ -2182,23 +2198,39 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
           if (!sourceFile || !sourceFile.content) {
             contract.missing.push('Source file not found for State Registry binding');
             contract.status = 'BLOCKED';
-          } else if (sourceFile.sha !== contract.stateContext.sha) {
-            contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
-            contract.status = 'BLOCKED';
           } else {
-            const bound = stateRegistry.bind(
-              contract.stateContext.correlationId,
-              contract.stateContext.correlationId,
-              scope,
-              {
-                ...sourceFile,
-                branch: contract.stateContext.branch,
-                canonicalBranch: contract.stateContext.canonicalBranch,
-                sha: contract.stateContext.sha
-              },
-              sourceFile.path
-            );
-            contract.stateSessionId = bound.stateSessionId;
+            // StateContext.sha identifies a branch commit, whereas sourceFile.sha
+            // identifies a Git blob. Never compare or overwrite one with the other.
+            // An independently issued, registered session is required (fail closed).
+            const sessionId = params.stateSessionId;
+            if (!sessionId) {
+              contract.missing.push('State Registry binding requires a registered stateSessionId from get_powerapps_state');
+              contract.status = 'BLOCKED';
+            } else {
+              const registered = stateRegistry.lookup(contract.stateContext.correlationId, sessionId, scope);
+              if (registered.context.sha !== contract.stateContext.sha ||
+                  registered.context.branch !== contract.stateContext.branch ||
+                  registered.context.appId !== contract.stateContext.appId ||
+                  registered.context.environment !== contract.stateContext.environment) {
+                contract.missing.push('Registered StateContext does not match execution contract');
+                contract.status = 'BLOCKED';
+              } else {
+                const observedSha = blobSha(sourceFile.content);
+                if (sourceFile.sha !== observedSha) {
+                  contract.missing.push('Observed source blob SHA does not match content');
+                  contract.status = 'BLOCKED';
+                } else {
+                  const bound = stateRegistry.bindSourceObservation(
+                    contract.stateContext.correlationId,
+                    sessionId,
+                    scope,
+                    { ...sourceFile, sha: observedSha },
+                    sourceFile.path
+                  );
+                  contract.stateSessionId = bound.stateSessionId;
+                }
+              }
+            }
           }
         } catch (err) {
           contract.missing.push(`State Registry binding failed: ${err.message}`);
@@ -2615,6 +2647,21 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 }
 
 // 新ツール（検証・デプロイ・権限・ユーザー保護）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
+function createAzureKuduDefaultReader() {
+  const resourceId = process.env.AZURE_BRIDGE_RESOURCE_ID;
+  if (!resourceId) return null;
+  try {
+    const getArmToken = createArmManagedIdentityTokenProvider({ fetchImpl: fetch });
+    const getKuduToken = async () => { throw new Error('kudu_auth_unconfigured'); };
+    const request = async ({ method, url, headers, redirect }) => {
+      if (method !== 'GET') throw new Error('read_only');
+      const response = await fetch(url, { method, headers, redirect, signal: AbortSignal.timeout(12000) });
+      return { status: response.status, data: response.ok ? await response.json() : null };
+    };
+    return createAzureKuduEvidenceReader({ resourceId, request, getArmToken, getKuduToken });
+  } catch { return null; }
+}
+
 function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injected = {}) {
   const deployment = injected.deployment || new DeploymentService(config.deployment || {});
   const permissions = injected.permissions || new PermissionsService({ powerAppsStore, config: config.permissions || {} });
@@ -2670,6 +2717,7 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
     permissions,
     userProtection,
     azureMetadata,
+    azureKudu: injected.azureKudu && typeof injected.azureKudu.inspect === 'function' ? injected.azureKudu : createAzureKuduDefaultReader(),
     validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
     verifySaveResult: injected.verifySaveResult || verifySave
   };
@@ -2746,6 +2794,29 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
   app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  // Read-only Draft CI evidence endpoint. Draft writes are deliberately NOT routed.
+  app.post('/api/draft/ci-evidence', mcpAuth, async (req, res) => {
+    if (!config.mcpApiKey) return res.status(503).json({ status: 'BLOCKED', reason: 'mcp_auth_not_configured' });
+    const plan = req.body?.plan;
+    if (!plan || plan.operation !== 'ci_verify' ||
+        plan.targetId !== 'oohiraplas-cpu/clean-nano-ai-bridge' ||
+        plan.environmentId !== 'draft/approved-execution-engine-20261014') {
+      return res.status(403).json({ status: 'BLOCKED', reason: 'draft_ci_scope_required' });
+    }
+    try {
+      const run = createAuthenticatedDraftRunner({
+        store: powerAppsGitStore,
+        owner: 'oohiraplas-cpu',
+        repo: 'clean-nano-ai-bridge',
+        branch: 'draft/approved-execution-engine-20261014'
+      });
+      const result = await run({ plan });
+      return res.status(result.status === 'PASS' ? 200 : 503).json(result);
+    } catch {
+      return res.status(503).json({ status: 'BLOCKED', reason: 'authenticated_github_unavailable' });
+    }
+  });
+
   app.post('/mcp', mcpAuth, (req, res, next) => {
     handleMcpRequest(req, res, next).catch(next);
   });
@@ -2852,6 +2923,12 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (method === 'compare_powerapps_with_git') {
         if (error.payload?.status === 'state_context_invalid') {
           error.payload = { ...error.payload, comparisonStatus: 'validation_blocked' };
+        } else if (['pac_registered_source_mismatch', 'registered_state_changed', 'registered_state_evidence_required'].includes(error.message)) {
+          // Trusted PAC/registry provenance failures are validation failures, not transport outages.
+          const safe = new Error('Power Apps runtime source validation blocked');
+          safe.status = 409;
+          safe.payload = { status: 'validation_blocked', comparisonStatus: 'validation_blocked' };
+          throw safe;
         } else if (!error.payload?.comparisonStatus) {
           // Do not expose provider diagnostics or connection information.
           const safe = new Error('Power Apps/Git source could not be read');
@@ -2877,6 +2954,20 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       if (metadata.sha !== record.context.sha || metadata.branch !== record.context.branch) throw contextError(['画像編集前に正本commitまたはbranchが変化しました']);
       const source = await powerAppsGitStore.getSourceFile(record.source.path);
       if (source.sha !== record.source.sha || source.branch !== record.context.branch || source.writable !== true) throw contextError(['画像編集前に観測ソースが変化したか書込み不可です']);
+      // Fail closed before any Git write: validate image bytes, digest and dimensions.
+      // Existing property-only edits do not introduce image bytes.
+      if (params.base64Content !== undefined) {
+        const { validateImageMediaDraft } = require('./imageMediaValidationDraft');
+        const imageCheck = validateImageMediaDraft({
+          base64Content: params.base64Content,
+          contentType: params.contentType
+        });
+        if (imageCheck.status !== 'PASS') {
+          const error = requestError('画像の事前検証に失敗しました');
+          error.payload = { status: 'BLOCKED', reason: imageCheck.reason };
+          throw error;
+        }
+      }
       const content = editImageSource(source.content, params);
       stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(record.source.path, content, params.message || `${params.operation} image: ${params.controlName}`, params.branch, record.source.sha));
@@ -2894,7 +2985,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);

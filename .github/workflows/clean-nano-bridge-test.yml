@@ -314,3 +314,21 @@ jobs:
           path: ci-diagnostic/diagnostic.json
           if-no-files-found: error
           retention-days: 1
+
+      - name: "One-page Bridge CI report"
+        if: always()
+        env:
+          NPM_RESULT: ${{ steps.npm_test.outcome }}
+          OPENAPI_RESULT: ${{ steps.openapi_validation.outcome }}
+          MCP_RESULT: ${{ steps.mcp_contract.outcome }}
+          SAFETY_RESULT: ${{ steps.safety_validation.outcome }}
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const results=[process.env.NPM_RESULT,process.env.OPENAPI_RESULT,process.env.MCP_RESULT,process.env.SAFETY_RESULT];
+          const names=['npm test','OpenAPI','MCP','Safety'];
+          const rows=names.map((name,i)=>'| '+name+' | '+(results[i]==='success'?'PASS':'BLOCKED')+' |');
+          const status=results.every(x=>x==='success')?'PASS':'BLOCKED';
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,['## clean nano Bridge','| 工程 | 状態 |','|---|---|',...rows,'| CI検証 | '+status+' |','| 本番反映・Power Apps公開 | 未実施 |'].join('\n')+'\n');
+          if(status!=='PASS')process.exitCode=1;
+          NODE

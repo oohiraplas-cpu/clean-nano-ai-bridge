@@ -38,6 +38,17 @@ Managed Identity到達性、実プロファイル参照先と選択済みIDを�
 
 ## 設定前の読み取り確認
 
+### App Service の子プロセスへの認証経路
+
+App Service が注入する `IDENTITY_ENDPOINT` と `IDENTITY_HEADER` は、
+PAC 専用子プロセスへ対で引き継ぎます。片方だけ、または空値なら停止します。
+これらはアプリ設定へ手入力する値ではありません。値の取得・ログ出力は不要です。
+Bridge の SPN 秘密値、Workload Identity、旧 MSI 設定は引き継ぎません。
+この修正だけでは PAC インストール、専用認証、Power Apps 取得権限や
+SOURCE_MAP の確認は完了しません。
+
+根拠: [App Service Managed Identity の REST エンドポイント](https://learn.microsoft.com/en-us/azure/app-service/overview-managed-identity#rest-endpoint-reference)
+
 Azure管理接続を持つ担当者/実行環境で次を確認します。リソースグループ名、
 Managed IdentityのClient ID/Principal IDは実取得し、推測しません。
 
