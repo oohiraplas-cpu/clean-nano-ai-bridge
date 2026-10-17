@@ -308,7 +308,7 @@ Screens:
                         Size: =18
                         Width: =Parent.Width - 32
                         X: =16
-                        DisplayMode: =If(gblSaving || !gblIdentityVerified || IsBlank(gblEmpID) || IsBlank(User().EntraObjectId) || !(Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), DisplayMode.Disabled, DisplayMode.Edit)
+                        DisplayMode: =If(!gblAttendanceUniqueConstraintVerified || gblSaving || !gblIdentityVerified || IsBlank(gblEmpID) || IsBlank(User().EntraObjectId) || !(Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), DisplayMode.Disabled, DisplayMode.Edit)
                         Text: ="出勤情報を登録する"
                         OnSelect: |-
                           =If(!gblAttendanceUniqueConstraintVerified, Notify("勤怠キーの一意制約が未確認のため登録を停止しています", NotificationType.Error), If(!gblSaving && gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))),
