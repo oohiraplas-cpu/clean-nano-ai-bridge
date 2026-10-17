@@ -487,7 +487,7 @@ class PlatformOrchestrator {
 
           if (appInfo && appState && sourceInfo) {
             diagnostics.powerApps.status = 'VERIFIED';
-            checks.targetId = appInfo.id;
+            checks.targetId = (appInfo.appId ?? appInfo.id);
             checks.environmentId = appInfo.environmentId;
             checks.tenantId = this.config?.sharePoint?.tenantId || null;
             checks.version = appState.version || '1.0.0';

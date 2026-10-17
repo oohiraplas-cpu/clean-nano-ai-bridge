@@ -525,7 +525,7 @@ async function inspectPowerAppsStructure(options = {}) {
         });
       }
 
-      if (appId !== undefined && appId !== appInfo.id) {
+      if (appId !== undefined && appId !== (appInfo.appId ?? appInfo.id)) {
         return createCommonResponse({ status: 'error', verified: false,
           data: { structure: null }, errors: ['appId: observed app mismatch'], summary: 'Target app mismatch' });
       }
@@ -544,7 +544,7 @@ async function inspectPowerAppsStructure(options = {}) {
 
       // 構造情報を構築
       structure = {
-        appId: appInfo.id,
+        appId: (appInfo.appId ?? appInfo.id),
         appName: appInfo.name,
         environmentId: appInfo.environmentId,
         sourceOrigin: 'powerapps_environment',
