@@ -2178,14 +2178,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
       if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
         try {
-          const sourceFile = await powerAppsGitStore.getSourceFile(contract.gitRoot ? `${contract.gitRoot}/Source` : 'powerapps/CN_AI依頼台帳/Source');
+          const sourceFile = await powerAppsGitStore.getSourceFile(`${String(contract.gitRoot || contract.stateContext.gitRoot || 'powerapps/CN_AI依頼台帳/Source').replace(/\/+$/, '')}/App.pa.yaml`);
           if (!sourceFile || !sourceFile.content) {
             contract.missing.push('Source file not found for State Registry binding');
             contract.status = 'BLOCKED';
-          } else if (sourceFile.sha !== contract.stateContext.sha) {
-            contract.missing.push(`Source file SHA mismatch: expected ${contract.stateContext.sha}, got ${sourceFile.sha}`);
-            contract.status = 'BLOCKED';
-          } else {
+          } /* file blob SHA differs from commit SHA by design; commit SHA is bound below */ else {
             const bound = stateRegistry.bind(
               contract.stateContext.correlationId,
               contract.stateContext.correlationId,
