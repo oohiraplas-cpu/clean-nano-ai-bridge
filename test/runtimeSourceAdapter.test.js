@@ -149,7 +149,29 @@ async function mcpFixture(t, options = {}) {
   store.getAppState = async () => ({ ...state, operationId: crypto.randomUUID() });
   const gitStore = {
     canonicalBranch: 'main',
-    getSourceFile: async file => { gitReads++; assert.equal(file, FILE); return { ...source }; },
+    getSourceFile: async file => {
+      gitReads++;
+      if (options.multiScreens) {
+        const name = Object.keys(options.multiScreens).find(n => file === `powerapps/CN_AI依頼台帳/Source/${n}.pa.yaml`);
+        if (!name) throw new Error('FILE_NOT_FOUND');
+        if (options.failFetch === name) throw new Error('Simulated source read failure');
+        const content = options.multiScreens[name];
+        return { status: 'ok', path: file, content, sha: options.shaMismatch === name ? '0'.repeat(40) : blobSha(content), branch: 'main', canonicalBranch: 'main' };
+      }
+      assert.equal(file, FILE);
+      return { ...source };
+    },
+    resolveTargetNamesToFiles: async names => {
+      const results = [], errors = [];
+      for (const name of names) {
+        if (!options.multiScreens?.[name] || options.failResolve === name) {
+          errors.push({ name, error: 'FILE_NOT_FOUND', reason: 'Screen not found' });
+        } else {
+          results.push({ name, path: `powerapps/CN_AI依頼台帳/Source/${name}.pa.yaml`, sha: blobSha(options.multiScreens[name]) });
+        }
+      }
+      return { results, errors };
+    },
     getSourceFileMetadata: async (gitRoot) => {
       return {
         branch: 'main',
@@ -465,4 +487,57 @@ test('PowerAppsStore internal PAC worker provides registered read-only evidence'
   assert.equal(evidence.source, 'power-apps-saved-msapp');
   assert.equal(evidence.runtimeHash, crypto.createHash('sha256').update(SOURCE).digest('hex'));
   assert.equal(JSON.stringify(evidence).includes(SOURCE), false);
+});
+
+const G6_SCREENS = {
+  S3_Register: 'Screens:\\n  S3_Register:\\n    Properties:\\n      Fill: =Color.White\\n',
+  S11_Report: 'Screens:\\n  S11_Report:\\n    Properties:\\n      Fill: =Color.Green\\n'
+};
+const G6_NAMES = Object.keys(G6_SCREENS);
+async function g6State(f) {
+  const response = await f.call('get_powerapps_state');
+  assert.equal(response.isError, false);
+  const { correlationId, stateSessionId } = response.structuredContent;
+  assert.ok(correlationId && stateSessionId);
+  return { correlationId, stateSessionId };
+}
+test('G6 HTTP: both screen observations succeed', async t => {
+  const f = await mcpFixture(t, { multiScreens: G6_SCREENS });
+  const state = await g6State(f);
+  const response = await f.call('get_powerapps_source', { targetNames: G6_NAMES, ...state });
+  assert.notEqual(response.isError, true);
+  const result = response.structuredContent.result;
+  assert.equal(result.successCount, 2);
+  assert.equal(result.errorCount, 0);
+  for (const item of result.sourceObservations) {
+    assert.equal(item.sourceObservationComplete, true);
+    assert.equal(item.fileSha, blobSha(G6_SCREENS[item.screenName]));
+  }
+});
+for (const [failure, option] of [['all missing', 'failResolveAll'], ['partial resolve', 'failResolve'], ['partial fetch', 'failFetch'], ['SHA mismatch', 'shaMismatch']]) {
+  test(`G6 HTTP: ${failure} invalidates session`, async t => {
+    const opts = { multiScreens: G6_SCREENS };
+    if (option === 'failResolveAll') opts.failResolve = 'S3_Register';
+    else opts[option] = 'S11_Report';
+    const f = await mcpFixture(t, opts);
+    const state = await g6State(f);
+    const names = option === 'failResolveAll' ? ['S3_Register'] : G6_NAMES;
+    const args = { targetNames: names, ...state };
+    const first = await f.call('get_powerapps_source', args);
+    assert.equal(first.isError, true);
+    assert.match(JSON.stringify(first.structuredContent), /SourceObservation incomplete/);
+    const retry = await f.call('get_powerapps_source', args);
+    assert.equal(retry.isError, true);
+    assert.match(JSON.stringify(retry.structuredContent), /not registered|expired|session mismatch/);
+  });
+}
+test('G6 HTTP: foreign MCP session cannot invalidate owner', async t => {
+  const f = await mcpFixture(t, { multiScreens: G6_SCREENS });
+  const state = await g6State(f);
+  const args = { targetNames: G6_NAMES, ...state };
+  const foreign = await f.call('get_powerapps_source', args, 'foreign-session');
+  assert.equal(foreign.isError, true);
+  const owner = await f.call('get_powerapps_source', args);
+  assert.notEqual(owner.isError, true);
+  assert.equal(owner.structuredContent.result.successCount, 2);
 });
