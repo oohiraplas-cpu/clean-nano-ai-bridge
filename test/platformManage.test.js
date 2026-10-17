@@ -103,3 +103,9 @@ test('errors are audited', async () => {
 test('exactly four tools', () => {
   assert.deepStrictEqual(pm.TOOL_NAMES, ['sharepoint_manage', 'powerapps_manage', 'powerautomate_manage', 'powerplatform_validate']);
 });
+
+test('powerFxCheck ignores apostrophes inside comments', () => {
+  const fx = require('../src/platformManage')._internal.powerFxCheck;
+  assert.deepStrictEqual(fx("/*hasn't been added*/\nSet(a, 1) // don't"), []);
+  assert.ok(fx('Set(a, "x').length > 0);
+});

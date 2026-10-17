@@ -339,7 +339,20 @@ function resourcesOf(inner) {
 }
 
 // balanced (), [], {}, quotes; single-line Power Fx sanity check
-function powerFxCheck(script) {
+function stripFxComments(src) {
+  let out = ''; let q = null;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (q) { out += ch; if (ch === q) { if (src[i + 1] === q) { out += q; i++; } else q = null; } continue; }
+    if (ch === '"' || ch === "'") { q = ch; out += ch; continue; }
+    if (ch === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? src.length : e + 1; out += ' '; continue; }
+    if (ch === '/' && src[i + 1] === '/') { const e = src.indexOf('\n', i + 2); i = e < 0 ? src.length : e - 1; continue; }
+    out += ch;
+  }
+  return out;
+}
+function powerFxCheck(rawScript) {
+  const script = stripFxComments(String(rawScript || ''));
   const issues = [];
   let inStr = null; const stack = [];
   const pairs = { ')': '(', ']': '[', '}': '{' };
@@ -469,7 +482,12 @@ async function powerautomateManage(p, deps = {}) {
       pfw._internal.parseClientdata(JSON.stringify(clientdata));
       const body = { category: 5, type: 1, primaryentity: 'none', name: p.name, description: p.description || 'created by powerautomate_manage', clientdata: JSON.stringify(clientdata) };
       const { out, attempts } = await withRepair(op, () => dv.post('workflows?$select=workflowid', body));
-      const newId = out.workflowid || (out['@odata.id'] || '').match(/\(([^)]+)\)/)?.[1];
+      let newId = (out && (out.workflowid || ((out['@odata.id'] || '').match(/\(([0-9a-f-]{36})\)/i) || [])[1])) || null;
+      if (!newId) {
+        const q = await dv.get(`workflows?$filter=name eq '${String(p.name).replace(/'/g, "''")}' and category eq 5&$orderby=createdon desc&$top=1&$select=workflowid`);
+        newId = q.value && q.value[0] && q.value[0].workflowid;
+      }
+      if (!newId) throw new OpError('flow created but id could not be re-read', 'conflict');
       const re = await dv.get(`workflows(${newId})?$select=name,statecode,clientdata`);
       return { verified: !!re.clientdata, data: { flowId: newId, name: re.name, state: re.statecode === 1 ? 'on' : 'off' }, attempts };
     }
