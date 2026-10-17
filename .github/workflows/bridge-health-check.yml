@@ -1,0 +1,20 @@
+name: Bridge health check (manual, read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    env:
+      BASE: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net
+    steps:
+      - name: GET /health
+        run: |
+          out=$(mktemp)
+          code=$(curl -sS -m 30 -o "$out" -w '%{http_code}' "$BASE/health" 2>/dev/null) || code="ERR($?)"
+          echo "::notice title=health::status=${code:-none} body=$(head -c 200 "$out" 2>/dev/null | tr '\n\r' '  ')"
+          if [ "$code" != "200" ]; then echo "::error::/health expected 200, got ${code:-none}"; exit 1; fi
