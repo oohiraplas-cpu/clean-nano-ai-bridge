@@ -15,6 +15,8 @@ async function main() {
   const sourceBranch = settings.POWERAPPS_GITHUB_BRANCH || 'main';
   const sourceRoot = settings.POWERAPPS_GITHUB_ROOT || 'powerapps/CN_AI依頼台帳/Source';
   const report = { verificationCommit: process.env.GITHUB_SHA, mode: process.env.VERIFICATION_MODE || 'smoke', azure: { name: app.name, state: app.state, host: app.defaultHostName }, settingsPresent: Object.keys(settings).filter(k => /^(POWERAPPS_|DEPLOY_|PERMISSIONS_|MCP_API_KEY|TASK_STORE_BACKEND|SHAREPOINT_)/.test(k)).sort(), sourceBranch, sourceRoot, health: null, initialize: null, tools: null, smoke: {}, availability: {}, mutations: [] };
+  const deploymentShaSetting = typeof settings.DEPLOYMENT_SHA === 'string' && /^[a-f0-9]{40}$/i.test(settings.DEPLOYMENT_SHA) ? settings.DEPLOYMENT_SHA.toLowerCase() : null;
+  report.deploymentShaSetting = { present: Object.prototype.hasOwnProperty.call(settings, 'DEPLOYMENT_SHA'), value: deploymentShaSetting, matchesVerificationCommit: deploymentShaSetting !== null && deploymentShaSetting === String(process.env.GITHUB_SHA || '').toLowerCase(), trust: 'app_setting_written_by_deploy_workflow_not_independent' };
   try { report.azure.deployments = azure(['webapp', 'log', 'deployment', 'list', ...args]).slice(0, 3).map(d => ({ id: d.id, status: d.status, active: d.active, endTime: d.end_time, commitSha: typeof d.commitSha === 'string' && /^[a-f0-9]{40}$/i.test(d.commitSha) ? d.commitSha : null })); } catch { report.azure.deploymentMetadata = 'access_denied_or_unavailable'; }
   // Read-only Azure identity and RBAC observations. Never print tokens, settings values or role assignments.
   // A successful list request verifies query access, NOT sufficient permissions.
