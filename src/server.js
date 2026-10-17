@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -167,7 +168,7 @@ const MCP_METHODS = Object.freeze([
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target',
+  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list',
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
@@ -858,6 +859,48 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'list_power_apps',
     description: '環境内のPower Appsキャンバスアプリ一覧（App ID・名称・公開日時）をDataverseから取得します。取得できない場合は構成済みアプリ1件のみ返し、その旨をwarningsに示します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'powerapps_app_read',
+    description: 'Power Appsキャンバスアプリの定義(ソリューション内.msapp)を読み取ります。search=文字列で該当行を検索、file=ファイル内容取得、どちらも無ければファイル一覧。編集前の調査用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        solutionName: { type: 'string', description: 'Dataverseソリューションの一意名 (例: CN_AIIraiDaicho)' },
+        appFile: { type: 'string', description: 'ソリューション内に複数アプリがある場合の.msappファイル名の一部' },
+        search: { type: 'string', description: '検索文字列(Power Fx/プロパティ等)' },
+        file: { type: 'string', description: '取得するファイルパス (例: Src/MainScreen1.pa.yaml)' },
+        maxResults: { type: 'integer', minimum: 1, maximum: 200 }
+      },
+      required: ['solutionName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerapps_app_edit_publish',
+    description: 'Power Appsキャンバスアプリを編集→保存→公開→再取得検証まで一括実行します。変更前スナップショットを自動保存(ロールバック可)。edits=数式/プロパティ文字列の置換、images=メディア画像の追加/差替え(名前で割当: Image = 名前)。find不一致時は何も変更しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        solutionName: { type: 'string' },
+        appFile: { type: 'string' },
+        edits: { type: 'array', items: { type: 'object', properties: { find: { type: 'string', minLength: 1 }, replace: { type: 'string' }, file: { type: 'string' }, expectCount: { type: 'integer', minimum: 1 } }, required: ['find', 'replace'], additionalProperties: false } },
+        images: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' } }, required: ['name'], additionalProperties: false } },
+        dryRun: { type: 'boolean', description: 'trueなら検証のみ(反映しない)' }
+      },
+      required: ['solutionName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerapps_app_rollback',
+    description: 'powerapps_app_edit_publishが保存したスナップショットへ戻して公開します。',
+    inputSchema: { type: 'object', properties: { snapshotId: { type: 'string' } }, required: ['snapshotId'], additionalProperties: false }
+  },
+  {
+    name: 'powerapps_snapshots_list',
+    description: '保存済みのPower Appsスナップショット一覧(新しい順)を返します。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
@@ -2048,6 +2091,27 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const r = getResolver(powerAppsStore, powerAppsGitStore);
     const list = await r.listApps();
     return createCommonResponse({ status: list.verified ? 'ok' : 'error', verified: list.verified, data: { source: list.source, apps: list.apps }, warnings: list.warnings, summary: `アプリ${list.apps.length}件（取得元: ${list.source}）` });
+  }
+  if (method === 'powerapps_app_read' || method === 'powerapps_app_edit_publish' || method === 'powerapps_app_rollback' || method === 'powerapps_snapshots_list') {
+    try {
+      const p = params || {};
+      if (method === 'powerapps_app_read') {
+        const d = await powerAppsSolutionWriter.readApp(p);
+        return createCommonResponse({ status: 'ok', verified: true, data: d, warnings: [], summary: `${d.app}: ${d.matches ? d.matches.length + '件一致' : d.content !== undefined ? d.file : d.fileCount + 'ファイル'}` });
+      }
+      if (method === 'powerapps_app_edit_publish') {
+        const d = await powerAppsSolutionWriter.applyEdit(p);
+        return createCommonResponse({ status: d.status === 'published_verify_failed' ? 'partial' : 'ok', verified: d.status !== 'published_verify_failed', data: d, warnings: d.verified === false ? ['公開後の再取得で一部の変更を確認できませんでした'] : [], summary: `${d.status} snapshot=${d.snapshotId}` });
+      }
+      if (method === 'powerapps_app_rollback') {
+        const d = await powerAppsSolutionWriter.rollback(p);
+        return createCommonResponse({ status: 'ok', verified: true, data: d, warnings: [], summary: `rolled back to ${d.snapshotId}` });
+      }
+      const d = powerAppsSolutionWriter.listSnapshots();
+      return createCommonResponse({ status: 'ok', verified: true, data: d, warnings: [], summary: `${d.snapshots.length}件` });
+    } catch (err) {
+      return createCommonResponse({ status: 'error', verified: false, data: null, warnings: [err.message], summary: `${method} 失敗: ${err.message}` });
+    }
   }
   if (method === 'list_environments') {
     const r = getResolver(powerAppsStore, powerAppsGitStore);
