@@ -32,6 +32,54 @@ function classify(err) {
 
 const FALLBACK = ['microsoft_api', 'cli_or_powershell', 'solution_operation', 'computer_use'];
 
+
+// ---------- premium guard (fail-closed: unknown connectors are treated as premium) ----------
+const STANDARD_CONNECTORS = new Set(['shared_sharepointonline', 'shared_office365', 'shared_office365users', 'shared_office365groups', 'shared_teams', 'shared_onedriveforbusiness', 'shared_onedrive', 'shared_excelonlinebusiness', 'shared_msnweather', 'shared_planner', 'shared_todo', 'shared_outlook', 'shared_flowpush', 'shared_microsoftforms', 'shared_onenote', 'shared_rss', 'shared_approvals', 'shared_wordonlinebusiness', 'shared_sendmail', 'shared_powerappsnotification', 'shared_bingmaps', 'shared_translatorv2', 'shared_yammer', 'shared_microsoftbookings', 'shared_shifts']);
+const PREMIUM_ACTION_TYPES = new Set(['http', 'httpwebhook', 'response']);
+function premiumScan(obj) {
+  const text = typeof obj === 'string' ? obj : JSON.stringify(obj || {});
+  const found = new Map();
+  const re = /\/apis\/([A-Za-z0-9_\-.]+)/g; let m;
+  while ((m = re.exec(text))) { const n = m[1].toLowerCase(); if (!STANDARD_CONNECTORS.has(n)) found.set(n, 'connector'); }
+  const walk = (o) => {
+    if (!o || typeof o !== 'object') return;
+    if (typeof o.type === 'string') {
+      const t = o.type.toLowerCase();
+      if (PREMIUM_ACTION_TYPES.has(t)) found.set(`action:${o.type}`, 'builtin');
+      if (t === 'request' && o.kind && String(o.kind).toLowerCase() === 'http') found.set('trigger:Request(Http)', 'builtin');
+    }
+    for (const v of Object.values(o)) walk(v);
+  };
+  try { walk(typeof obj === 'string' ? JSON.parse(obj) : obj); } catch (_) { /* text-only scan */ }
+  return [...found.entries()].map(([name, kind]) => ({ name, kind }));
+}
+function assertNoPremium(obj, where) {
+  const hits = premiumScan(obj);
+  if (hits.length) throw new OpError(`プレミアム該当(またはStandard未確認)のため停止しました: ${hits.map((h) => h.name).join(', ')} [${where}]。利用者課金を防ぐため実行していません。`, 'blocked_premium', { premium: hits });
+}
+
+// ---------- chat-friendly input normalisation ----------
+const OP_ALIASES = {
+  sharepoint_manage: { item_get: 'search', items: 'search', item_list: 'search', list_items: 'search', items_get: 'search', count: 'search', query: 'search', find: 'search', list_get: 'get', columns: 'get', column_get: 'get', lists: 'get', item_add: 'item_create', add: 'item_create', create_item: 'item_create', item_edit: 'item_update', update: 'item_update', edit: 'item_update', update_item: 'item_update', create_list: 'list_create', add_column: 'column_create', column_add: 'column_create', column_edit: 'column_update', choices_update: 'choice_update', bulk_add: 'bulk_create', bulk_edit: 'bulk_update', index: 'index_create', validate: 'schema_validate', remove: 'delete' },
+  powerapps_manage: { get: 'app_get', info: 'app_get', app: 'app_get', state: 'state_get', status: 'state_get', source: 'source_get', screens: 'screen_get', screen_list: 'screen_get', controls: 'control_get', powerfx: 'powerfx_get', fx_get: 'powerfx_get', fx_edit: 'powerfx_edit', image_set: 'image_assign', assign_image: 'image_assign', add_image: 'image_add', replace_image: 'image_replace', check: 'app_checker', appchecker: 'app_checker', checker: 'app_checker', verify: 'publish_verify', rollback: 'restore', re_read: 'reread' },
+  powerautomate_manage: { flows: 'list', flow_list: 'list', flow_get: 'get', history: 'runs', run_history: 'runs', runs_get: 'runs', run: 'test', execute: 'test', errors: 'failures', failed: 'failures', repair: 'auto_repair', fix: 'auto_repair', connections: 'connection_check', on: 'enable', off: 'disable', rollback: 'restore', remove: 'delete' },
+  powerplatform_validate: { env: 'environment', changes: 'unexpected_changes', fx: 'powerfx', columns: 'sp_column_types', image: 'image_assignment', recover: 'recoverability', premium: 'premium_check', license: 'premium_check' },
+};
+const JSON_KEYS = ['fields', 'items', 'rules', 'edits', 'images', 'definition', 'set', 'columns', 'column', 'patch', 'connectionReferences', 'expected', 'expect', 'choices', 'scripts', 'allowed', 'value'];
+function normalizeParams(tool, params) {
+  const p = { ...(params || {}) };
+  for (const k of JSON_KEYS) {
+    if (typeof p[k] === 'string' && /^\s*[[{]/.test(p[k])) { try { p[k] = JSON.parse(p[k]); } catch (_) { /* keep as-is */ } }
+  }
+  if (p.operation) {
+    const o = String(p.operation).trim().toLowerCase().replace(/[\s-]+/g, '_');
+    p.operation = (OP_ALIASES[tool] && OP_ALIASES[tool][o]) || o;
+  }
+  if (!p.list && (p.listName || p.listId)) p.list = p.listName || p.listId;
+  if (!p.flowId && p.id && tool === 'powerautomate_manage') p.flowId = p.id;
+  return p;
+}
+
 // ---------- audit ----------
 function auditFile(env) { return path.join(paw.settings(env).snapshotDir, 'audit.jsonl'); }
 function audit(env, rec) {
@@ -116,6 +164,14 @@ async function spResolveSite(g, p, env) {
     const u = new URL(p.siteUrl);
     const s = await g.get(`/sites/${u.hostname}:${u.pathname.replace(/\/$/, '') || '/'}`);
     return s.id;
+  }
+  if (p.site) {
+    if (/^https?:\/\//i.test(p.site)) return spResolveSite(g, { siteUrl: p.site }, env);
+    const r = await g.get(`/sites?search=${encodeURIComponent(p.site)}&$select=id,name,displayName,webUrl`);
+    const want = String(p.site).toLowerCase();
+    const hit = (r.value || []).find((x) => [x.name, x.displayName, (x.webUrl || '').split('/').pop()].some((v) => String(v || '').toLowerCase() === want));
+    if (!hit) throw new OpError(`site "${p.site}" not found (candidates: ${(r.value || []).slice(0, 5).map((x) => x.webUrl).join(', ')})`, 'not_found');
+    return hit.id;
   }
   const d = spSettings(env).siteId;
   if (!d) throw new OpError('siteId or siteUrl required (SHAREPOINT_SITE_ID not set)', 'invalid_input');
@@ -256,7 +312,7 @@ async function sharepointManage(p, deps = {}) {
       const q = [`$expand=fields`, `$top=${top}`];
       if (p.filter) q.push(`$filter=${enc(p.filter)}`);
       const r = await g.get(`/sites/${site}/lists/${listId}/items?${q.join('&')}`, { Prefer: 'HonorNonIndexedQueriesWarningMayFailRandomly' });
-      return { verified: true, data: { listId, count: (r.value || []).length, items: (r.value || []).map((i) => ({ id: i.id, fields: i.fields })) } };
+      return { verified: true, data: { listId, count: (r.value || []).length, hasMore: !!r['@odata.nextLink'], items: (r.value || []).map((i) => ({ id: i.id, fields: i.fields })) } };
     }
     case 'schema_validate': {
       const listId = await L();
@@ -432,6 +488,7 @@ async function powerappsManage(p, deps = {}) {
     case 'datasource_add':
     case 'datasource_edit':
       if (!(p.edits || []).length && !(p.rules || []).length) throw new OpError(`${op} needs edits [{file?, find, replace}] and/or rules`, 'invalid_input');
+      assertNoPremium((p.edits || []).map((e) => e.replace || e.content || ''), `powerapps_manage.${op}`);
       return writeOp({ edits: p.edits || [], rules: p.rules || [] });
     case 'image_add':
     case 'image_replace': {
@@ -441,7 +498,7 @@ async function powerappsManage(p, deps = {}) {
     }
     case 'image_assign': return writeOp({ rules: [{ control: p.control, property: p.property || 'Image', script: p.imageName }] });
     case 'save':
-    case 'publish': return writeOp({ edits: p.edits || [], images: p.images || [], rules: p.rules || [] });
+    case 'publish': assertNoPremium((p.edits || []).map((e) => e.replace || e.content || ''), `powerapps_manage.${op}`); return writeOp({ edits: p.edits || [], images: p.images || [], rules: p.rules || [] });
     case 'reread':
     case 'publish_verify': {
       const { inner, buf } = await exportInner(p, deps);
@@ -478,11 +535,12 @@ async function powerautomateManage(p, deps = {}) {
     case 'get': return { verified: true, data: await pfw.readFlow({ flowId: id, search: p.search }, { ...deps, client: dv }) };
     case 'create': {
       if (!p.name || !p.definition) throw new OpError('name and definition {triggers, actions} required', 'invalid_input');
+      assertNoPremium({ definition: p.definition, connectionReferences: p.connectionReferences || {} }, 'powerautomate_manage.create');
       const clientdata = { properties: { connectionReferences: p.connectionReferences || {}, definition: { $schema: 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#', contentVersion: '1.0.0.0', parameters: { $connections: { defaultValue: {}, type: 'Object' }, $authentication: { defaultValue: {}, type: 'SecureObject' } }, ...p.definition } }, schemaVersion: '1.0.0.0' };
       pfw._internal.parseClientdata(JSON.stringify(clientdata));
       const body = { category: 5, type: 1, primaryentity: 'none', name: p.name, description: p.description || 'created by powerautomate_manage', clientdata: JSON.stringify(clientdata) };
       const { out, attempts } = await withRepair(op, () => dv.post('workflows?$select=workflowid', body));
-      let newId = (out && (out.workflowid || ((out['@odata.id'] || '').match(/\(([0-9a-f-]{36})\)/i) || [])[1])) || null;
+      let newId = (out && (out.workflowid || ((out['@odata.id'] || out['OData-EntityId'] || '').match(/\(([0-9a-f-]{36})\)/i) || [])[1])) || null;
       if (!newId) {
         const q = await dv.get(`workflows?$filter=name eq '${String(p.name).replace(/'/g, "''")}' and category eq 5&$orderby=createdon desc&$top=1&$select=workflowid`);
         newId = q.value && q.value[0] && q.value[0].workflowid;
@@ -494,6 +552,7 @@ async function powerautomateManage(p, deps = {}) {
     case 'edit':
     case 'trigger_edit':
     case 'action_edit': {
+      assertNoPremium({ edits: p.edits, set: p.set, value: p.value, connectionReferences: p.connectionReferences }, `powerautomate_manage.${op}`);
       if (p.edits) return { verified: true, data: await pfw.updateFlow({ flowId: id, edits: p.edits, dryRun: p.dryRun }, { ...deps, client: dv }) };
       const f = await getFlow();
       const cd = pfw._internal.parseClientdata(f.clientdata);
@@ -627,6 +686,17 @@ async function powerplatformValidate(p, deps = {}) {
       return { verified: apps.length > 0 || flows.length > 0, data: { appSnapshots: apps.slice(0, 10), flowSnapshots: flows } };
     }
     case 'audit': return { verified: true, data: { entries: auditTail(env, Number(p.top) || 30) } };
+    case 'premium_check': {
+      const out = {};
+      if (p.flowId) { const f = await dvClient(deps).get(`workflows(${String(p.flowId).toLowerCase()})?$select=name,clientdata`); out.flow = { name: f.name, premium: premiumScan(f.clientdata || '') }; }
+      if (p.flowId === undefined || p.appFile || p.solutionName) {
+        const { inner } = await exportInner(p, deps);
+        const text = inner.filter((e) => /^(Connections|References|DataSources)/i.test(norm(e.name))).map((e) => e.data.toString('utf8')).join('\n');
+        out.app = { premium: premiumScan(text) };
+      }
+      const all = [...((out.flow && out.flow.premium) || []), ...((out.app && out.app.premium) || [])];
+      return { verified: all.length === 0, data: { ...out, premiumFound: all.length, result: all.length ? 'premium_or_unknown_detected' : 'standard_only' } };
+    }
     default: throw new OpError(`unknown validate operation "${op}"`, 'invalid_input');
   }
 }
@@ -639,25 +709,28 @@ async function run(tool, params = {}, deps = {}) {
   const opId = `pm_${crypto.randomUUID()}`;
   try {
     if (!HANDLERS[tool]) throw new OpError(`unknown tool ${tool}`, 'invalid_input');
-    if (!params.operation) throw new OpError('operation is required', 'invalid_input');
+    params = normalizeParams(tool, params);
+    if (!params.operation) throw new OpError(`operation is required. valid: ${validOps(tool).join(', ')}`, 'invalid_input');
+    if (!validOps(tool).includes(params.operation)) throw new OpError(`unknown operation "${params.operation}". valid: ${validOps(tool).join(', ')}`, 'invalid_input');
     const r = await HANDLERS[tool](params, deps);
     const res = { status: r.verified ? 'ok' : 'partial', verified: !!r.verified, operationId: opId, tool, operation: params.operation, data: r.data, repair: r.attempts && r.attempts.length ? r.attempts : undefined, elapsedMs: Date.now() - t0 };
     audit(env, { opId, tool, operation: params.operation, status: res.status, verified: res.verified, elapsedMs: res.elapsedMs });
     return res;
   } catch (e) {
     const kind = classify(e);
-    const res = { status: kind === 'approval_required' ? 'approval_required' : 'error', verified: false, operationId: opId, tool, operation: params.operation, errorKind: kind, error: String(e.message).slice(0, 800), repair: e.attempts, approval: e.approval, fallback: e.fallback || (['transient', 'unknown', 'unsupported'].includes(kind) ? FALLBACK.slice(1) : undefined), elapsedMs: Date.now() - t0 };
+    const res = { status: kind === 'approval_required' ? 'approval_required' : kind === 'blocked_premium' ? 'blocked_premium' : 'error', premium: e.premium, verified: false, operationId: opId, tool, operation: params.operation, errorKind: kind, error: String(e.message).slice(0, 800), repair: e.attempts, approval: e.approval, fallback: e.fallback || (['transient', 'unknown', 'unsupported'].includes(kind) ? FALLBACK.slice(1) : undefined), elapsedMs: Date.now() - t0 };
     audit(env, { opId, tool, operation: params.operation, status: res.status, errorKind: kind, error: res.error.slice(0, 200) });
     return res;
   }
 }
 
 const op = (list) => ({ type: 'string', enum: list });
+function validOps(tool) { const d = TOOL_DEFS.find((t) => t.name === tool); return d ? d.inputSchema.properties.operation.enum : []; }
 const TOOL_DEFS = [
-  { name: 'sharepoint_manage', description: 'SharePointリスト操作を1ツールで実行(operation指定)。書込後は再取得して一致検証、列名は表示名→内部名へ自動補正。物理削除は confirm="DELETE <対象>" が必須。', inputSchema: { type: 'object', properties: { operation: op(['list_create', 'column_create', 'column_update', 'choice_update', 'item_create', 'item_update', 'bulk_create', 'bulk_update', 'get', 'search', 'index_create', 'schema_validate', 'delete']), siteId: { type: 'string' }, siteUrl: { type: 'string' }, list: { type: 'string', description: 'リストID or 表示名' }, displayName: { type: 'string' }, template: { type: 'string' }, columns: { type: 'array', items: { type: 'object' } }, column: { description: '列名/ID(更新系) または Graph columnDefinition(作成)' }, patch: { type: 'object' }, choices: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['add', 'replace'] }, itemId: { type: 'string' }, fields: { type: 'object' }, items: { type: 'array', items: { type: 'object' } }, filter: { type: 'string' }, top: { type: 'integer' }, expected: { type: 'array', items: { type: 'object' } }, target: { type: 'string', enum: ['list', 'column', 'item'] }, confirm: { type: 'string' } }, required: ['operation'] } },
-  { name: 'powerapps_manage', description: 'Power Appsキャンバスアプリ操作を1ツールで実行(operation指定)。ソリューション書出→編集→取込→社内公開→再取得検証、変更前スナップショット自動保存(restoreで復元)。画像はimages[{name,base64|url}]、割当はassignTo/control+imageName。', inputSchema: { type: 'object', properties: { operation: op(['app_get', 'state_get', 'source_get', 'screen_get', 'screen_add', 'screen_edit', 'control_get', 'control_add', 'control_edit', 'powerfx_get', 'powerfx_edit', 'datasource_add', 'datasource_edit', 'image_add', 'image_replace', 'image_assign', 'save', 'publish', 'reread', 'publish_verify', 'app_checker', 'restore', 'snapshots']), solutionName: { type: 'string' }, appFile: { type: 'string' }, screen: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, script: { type: 'string' }, rules: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, images: { type: 'array', items: { type: 'object' } }, name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' }, assignTo: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, file: { type: 'string' }, maxResults: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' } }, required: ['operation'] } },
-  { name: 'powerautomate_manage', description: 'Power Automateクラウドフロー操作を1ツールで実行(operation指定)。作成/編集(トリガー・アクション)/接続確認/有効化/テスト/実行履歴/失敗箇所/自動修復/再実行/復元。物理削除は confirm="DELETE flow <id>" が必須。', inputSchema: { type: 'object', properties: { operation: op(['list', 'get', 'create', 'edit', 'trigger_edit', 'action_edit', 'connection_check', 'save', 'enable', 'disable', 'test', 'runs', 'failures', 'auto_repair', 'rerun', 'restore', 'delete']), flowId: { type: 'string' }, solutionName: { type: 'string' }, nameContains: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, definition: { type: 'object' }, connectionReferences: { type: 'object' }, value: {}, set: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, top: { type: 'integer' }, waitMs: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' }, confirm: { type: 'string' } }, required: ['operation'] } },
-  { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
+  { name: 'sharepoint_manage', description: 'SharePointリスト操作を1ツールで実行(operation指定)。アイテム一覧・件数=search(list指定)、リスト一覧=get(list省略)、列定義=get(list指定)。site=サイト名(例 cleannano)可、list=表示名可。書込後は再取得して一致検証、列名は表示名→内部名へ自動補正。物理削除は confirm="DELETE <対象>" が必須。', inputSchema: { type: 'object', properties: { site: { type: 'string', description: 'サイト名(例 cleannano)またはURL' }, operation: op(['list_create', 'column_create', 'column_update', 'choice_update', 'item_create', 'item_update', 'bulk_create', 'bulk_update', 'get', 'search', 'index_create', 'schema_validate', 'delete']), siteId: { type: 'string' }, siteUrl: { type: 'string' }, list: { type: 'string', description: 'リストID or 表示名' }, displayName: { type: 'string' }, template: { type: 'string' }, columns: { type: 'array', items: { type: 'object' } }, column: { description: '列名/ID(更新系) または Graph columnDefinition(作成)' }, patch: { type: 'object' }, choices: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['add', 'replace'] }, itemId: { type: 'string' }, fields: { type: 'object' }, items: { type: 'array', items: { type: 'object' } }, filter: { type: 'string' }, top: { type: 'integer' }, expected: { type: 'array', items: { type: 'object' } }, target: { type: 'string', enum: ['list', 'column', 'item'] }, confirm: { type: 'string' } }, required: ['operation'] } },
+  { name: 'powerapps_manage', description: 'Power Appsキャンバスアプリ操作を1ツールで実行(operation指定)。状態=state_get、画面一覧=screen_get、検査=app_checker。プレミアム/未確認コネクタを含む変更は自動停止(blocked_premium)。ソリューション書出→編集→取込→社内公開→再取得検証、変更前スナップショット自動保存(restoreで復元)。画像はimages[{name,base64|url}]、割当はassignTo/control+imageName。', inputSchema: { type: 'object', properties: { operation: op(['app_get', 'state_get', 'source_get', 'screen_get', 'screen_add', 'screen_edit', 'control_get', 'control_add', 'control_edit', 'powerfx_get', 'powerfx_edit', 'datasource_add', 'datasource_edit', 'image_add', 'image_replace', 'image_assign', 'save', 'publish', 'reread', 'publish_verify', 'app_checker', 'restore', 'snapshots']), solutionName: { type: 'string' }, appFile: { type: 'string' }, screen: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, script: { type: 'string' }, rules: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, images: { type: 'array', items: { type: 'object' } }, name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' }, assignTo: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, file: { type: 'string' }, maxResults: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' } }, required: ['operation'] } },
+  { name: 'powerautomate_manage', description: 'Power Automateクラウドフロー操作を1ツールで実行(operation指定)。一覧=list(nameContains)、履歴=runs、失敗=failures。プレミアム(HTTP/カスタム/Dataverse等)を含む作成・編集は自動停止(blocked_premium)。作成/編集(トリガー・アクション)/接続確認/有効化/テスト/実行履歴/失敗箇所/自動修復/再実行/復元。物理削除は confirm="DELETE flow <id>" が必須。', inputSchema: { type: 'object', properties: { operation: op(['list', 'get', 'create', 'edit', 'trigger_edit', 'action_edit', 'connection_check', 'save', 'enable', 'disable', 'test', 'runs', 'failures', 'auto_repair', 'rerun', 'restore', 'delete']), flowId: { type: 'string' }, solutionName: { type: 'string' }, nameContains: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, definition: { type: 'object' }, connectionReferences: { type: 'object' }, value: {}, set: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, top: { type: 'integer' }, waitMs: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' }, confirm: { type: 'string' } }, required: ['operation'] } },
+  { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): premium_check(アプリ/フローのプレミアム該当検出)/environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
 ];
 
-module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
+module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };

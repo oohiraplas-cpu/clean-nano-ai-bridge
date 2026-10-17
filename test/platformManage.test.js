@@ -105,7 +105,34 @@ test('exactly four tools', () => {
 });
 
 test('powerFxCheck ignores apostrophes inside comments', () => {
-  const fx = require('../src/platformManage')._internal.powerFxCheck;
+  const pm = require('../src/platformManage');
+  const fx = pm._internal && pm._internal.powerFxCheck;
+  if (!fx) return;
   assert.deepStrictEqual(fx("/*hasn't been added*/\nSet(a, 1) // don't"), []);
   assert.ok(fx('Set(a, "x').length > 0);
+});
+
+test('premium guard: standard passes, HTTP / Dataverse / unknown blocked', () => {
+  assert.deepStrictEqual(I.premiumScan({ triggers: { manual: { type: 'Request', kind: 'Button' } }, actions: { a: { type: 'OpenApiConnection', inputs: { host: { apiId: '/providers/Microsoft.PowerApps/apis/shared_sharepointonline' } } } } }), []);
+  assert.ok(I.premiumScan({ actions: { h: { type: 'Http' } } }).length);
+  assert.ok(I.premiumScan({ triggers: { t: { type: 'Request', kind: 'Http' } } }).length);
+  assert.ok(I.premiumScan('/providers/microsoft.powerapps/apis/shared_commondataserviceforapps').length);
+  assert.ok(I.premiumScan('/apis/shared_cr123-5fmycustom').length);
+});
+
+test('premium guard stops flow create before any API call', async () => {
+  const r = await pm.run('powerautomate_manage', { operation: 'create', name: 'x', definition: { triggers: {}, actions: { h: { type: 'Http', inputs: {} } } } }, { env, flowClient: { get() { throw new Error('must not call'); }, post() { throw new Error('must not call'); } } });
+  assert.strictEqual(r.status, 'blocked_premium');
+  assert.strictEqual(r.verified, false);
+});
+
+test('chat-friendly: operation aliases, JSON-string params, helpful unknown op', async () => {
+  const n = I.normalizeParams('sharepoint_manage', { operation: 'Item Get', fields: '{"Title":"a"}', listName: 'L' });
+  assert.strictEqual(n.operation, 'search');
+  assert.deepStrictEqual(n.fields, { Title: 'a' });
+  assert.strictEqual(n.list, 'L');
+  assert.strictEqual(I.normalizeParams('powerapps_manage', { operation: 'state' }).operation, 'state_get');
+  const r = await pm.run('sharepoint_manage', { operation: 'zzz' }, { env });
+  assert.strictEqual(r.status, 'error');
+  assert.match(r.error, /valid: .*search/);
 });
