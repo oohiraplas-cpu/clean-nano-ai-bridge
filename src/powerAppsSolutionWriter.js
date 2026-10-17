@@ -57,6 +57,8 @@ function createDataverseClient(cfg, fetchImpl = globalThis.fetch) {
       return importJobId;
     },
     async publishAll() { await call('PublishAllXml', {}); },
+    // Read-only GET of a Web API path (e.g. canvasapps?$filter=...). No write.
+    async get(path) { return call(path); },
   };
 }
 
