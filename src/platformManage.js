@@ -76,6 +76,8 @@ function normalizeParams(tool, params) {
     p.operation = (OP_ALIASES[tool] && OP_ALIASES[tool][o]) || o;
   }
   if (!p.list && (p.listName || p.listId)) p.list = p.listName || p.listId;
+  if (p.appFile && GUID.test(String(p.appFile))) delete p.appFile;
+  if (!p.appFile && p.appName) p.appFile = p.appName;
   if (!p.flowId && p.id && tool === 'powerautomate_manage') p.flowId = p.id;
   return p;
 }
@@ -447,13 +449,26 @@ function appChecker(inner) {
 function solutionDefaults(p, env) {
   return { solutionName: p.solutionName || env.POWERAPPS_SOLUTION_UNIQUE_NAME || 'CN_AIIraiDaicho', appFile: p.appFile };
 }
+// Tolerant app lookup for chat input: exact filter -> alphanumeric-normalised name -> configured default -> single app.
+function pickApp(outer, appFile, defaultAppFile) {
+  try { return paw._internal.findMsapps(outer, appFile); } catch (e) {
+    if (!appFile) throw e;
+    const apps = outer.filter((x) => /\.msapp$/i.test(x.name));
+    const key = String(appFile).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const hit = key ? apps.filter((x) => x.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(key)) : [];
+    if (hit.length === 1) return hit[0];
+    if (defaultAppFile && defaultAppFile !== appFile) { try { return paw._internal.findMsapps(outer, defaultAppFile); } catch (_) { /* fall through */ } }
+    if (apps.length === 1) return apps[0];
+    throw e;
+  }
+}
 async function exportInner(p, deps) {
   const env = deps.env || process.env;
   const dv = deps.client || paw.createDataverseClient(paw.settings(env), deps.fetch);
   const { solutionName, appFile } = solutionDefaults(p, env);
   const buf = await dv.exportSolution(solutionName);
   const outer = readZip(buf);
-  const app = paw._internal.findMsapps(outer, appFile);
+  const app = pickApp(outer, appFile, solutionDefaults({}, env).appFile);
   return { buf, app, inner: readZip(app.data), solutionName };
 }
 
@@ -733,4 +748,4 @@ const TOOL_DEFS = [
   { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): premium_check(アプリ/フローのプレミアム該当検出)/environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
 ];
 
-module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
+module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { pickApp, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };

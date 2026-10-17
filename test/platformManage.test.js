@@ -141,3 +141,11 @@ test('premium guard: msapp-style api names without shared_ prefix are recognised
   assert.deepStrictEqual(I.premiumScan('{"ApiId":"/providers/microsoft.powerapps/apis/office365users"} /apis/msnweather /apis/sharepointonline'), []);
   assert.ok(I.premiumScan('/apis/commondataserviceforapps').length);
 });
+
+test('chat-friendly app lookup: GUID appFile dropped, spaced app name matches msapp file', () => {
+  assert.strictEqual(I.normalizeParams('powerapps_manage', { operation: 'state', appFile: 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e' }).appFile, undefined);
+  const outer = [{ name: 'CanvasApps/cr296_cleannanokk_ab12.msapp', data: Buffer.from('') }, { name: 'CanvasApps/cr296_other_cd34.msapp', data: Buffer.from('') }];
+  assert.strictEqual(I.pickApp(outer, 'clean nano kk').name, 'CanvasApps/cr296_cleannanokk_ab12.msapp');
+  assert.strictEqual(I.pickApp(outer, 'nomatch', 'other').name, 'CanvasApps/cr296_other_cd34.msapp');
+  assert.throws(() => I.pickApp(outer, 'nomatch'));
+});
