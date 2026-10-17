@@ -182,3 +182,40 @@ test('control_get filters by screen/controlType and caps output (Copilot Studio 
   const c = await P({ operation: 'powerfx_get', control: 'Label1', property: 'Text' }, deps);
   assert.deepStrictEqual(c.data.controls[0].rules, [{ property: 'Text', script: '"Hello"' }]);
 });
+
+// App ID binding: app_get resolves canvasappid by internal name (single match only) and
+// fails verification when the caller names an appId that does not match.
+test('app_get returns appId from canvasapps and binds an expected appId (Fail-Closed)', async () => {
+  const { writeZip } = require('../src/zipLite');
+  const ctl = { Name: 'StarVisible17', Template: { Name: 'label' }, Rules: [{ Property: 'Text', InvariantScript: '"*"' }], Children: [] };
+  const inner = writeZip([{ name: 'Controls/1.json', data: Buffer.from(JSON.stringify({ TopParent: { Name: 'Screen2', Template: { Name: 'screen' }, Rules: [], Children: [ctl] } })) }]);
+  const outer = writeZip([{ name: 'CanvasApps/cr296_cnai_12e0a.msapp', data: inner }]);
+  const APP = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
+  const mkClient = (rows) => {
+    const calls = [];
+    return { calls, exportSolution: async () => outer, get: async (p) => { calls.push(p); return { value: rows }; } };
+  };
+  const P = I.powerappsManage;
+  const env = { POWERAPPS_SOLUTION_NAME: 'CN_AIIraiDaicho' };
+
+  const one = mkClient([{ canvasappid: APP, name: 'cr296_cnai_12e0a' }]);
+  const g = await P({ operation: 'app_get' }, { env, client: one });
+  assert.strictEqual(g.verified, true);
+  assert.strictEqual(g.data.appId, APP);
+  assert.ok(one.calls[0].includes('canvasapps') && one.calls[0].includes('cr296_cnai_12e0a'));
+
+  const m = await P({ operation: 'app_get', appId: APP.toUpperCase() }, { env, client: mkClient([{ canvasappid: APP }]) });
+  assert.strictEqual(m.verified, true);
+  assert.strictEqual(m.data.appIdMatch, true);
+
+  const bad = await P({ operation: 'app_get', appId: '00000000-0000-0000-0000-000000000000' }, { env, client: mkClient([{ canvasappid: APP }]) });
+  assert.strictEqual(bad.verified, false);
+  assert.strictEqual(bad.data.appIdMatch, false);
+
+  const none = await P({ operation: 'state_get', appId: APP }, { env, client: mkClient([]) });
+  assert.strictEqual(none.data.appId, null);
+  assert.strictEqual(none.verified, false);
+
+  const multi = await P({ operation: 'app_get' }, { env, client: mkClient([{ canvasappid: APP }, { canvasappid: '11111111-1111-1111-1111-111111111111' }]) });
+  assert.strictEqual(multi.data.appId, null);
+});
