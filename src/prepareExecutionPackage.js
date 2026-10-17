@@ -455,15 +455,18 @@ async function prepareExecutionPackage(options = {}) {
     let gitBranches, sourceList, canonicalBranch, baseSha, sourceState;
     try {
       // Parallel reads: branches and source list
-      const [branchResult, sourceResult] = await Promise.all([
+      const [branchResult, sourceResult, sourceMeta] = await Promise.all([
         appTargetResolver.listBranches?.() || Promise.resolve({}),
-        powerAppsGitStore?.getSourceFileList?.() || Promise.resolve({ files: [] })
+        powerAppsGitStore?.getSourceFileList?.() ||
+          powerAppsGitStore?._listSourceFilesInRoot?.() ||
+          Promise.resolve({ files: [] }),
+        powerAppsGitStore?.getSourceFileMetadata?.(targetApp?.gitRoot) || Promise.resolve(null)
       ]);
 
       gitBranches = branchResult.branches || [];
       canonicalBranch = branchResult.canonicalBranch || 'main';
-      sourceList = sourceResult.files || [];
-      baseSha = branchResult.canonicalSha || null;
+      sourceList = Array.isArray(sourceResult) ? sourceResult : (sourceResult?.files || []);
+      baseSha = branchResult.canonicalSha || sourceMeta?.sha || null;
 
       if (!canonicalBranch) {
         contract.missing.push('Step 3: canonicalBranch not found');
