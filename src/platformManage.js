@@ -40,7 +40,7 @@ function premiumScan(obj) {
   const text = typeof obj === 'string' ? obj : JSON.stringify(obj || {});
   const found = new Map();
   const re = /\/apis\/([A-Za-z0-9_\-.]+)/g; let m;
-  while ((m = re.exec(text))) { const n = m[1].toLowerCase(); if (!STANDARD_CONNECTORS.has(n)) found.set(n, 'connector'); }
+  while ((m = re.exec(text))) { const raw = m[1].toLowerCase(); const n = raw.startsWith('shared_') ? raw : `shared_${raw}`; if (!STANDARD_CONNECTORS.has(n)) found.set(n, 'connector'); }
   const walk = (o) => {
     if (!o || typeof o !== 'object') return;
     if (typeof o.type === 'string') {
