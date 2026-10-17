@@ -3,6 +3,7 @@ require('dotenv').config();
 const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
+const platformManage = require('./platformManage');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -169,7 +170,7 @@ const MCP_METHODS = Object.freeze([
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback',
+  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback', ...platformManage.TOOL_NAMES,
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
@@ -862,6 +863,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '環境内のPower Appsキャンバスアプリ一覧（App ID・名称・公開日時）をDataverseから取得します。取得できない場合は構成済みアプリ1件のみ返し、その旨をwarningsに示します。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
+  ...platformManage.TOOL_DEFS,
   {
     name: 'powerautomate_flow_list',
     description: 'Power Automateクラウドフロー(Dataverse上のソリューション対応フロー)の一覧を返します。solutionNameでソリューション内に限定、nameContainsで名前の部分一致検索。',
@@ -2156,6 +2158,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const r = getResolver(powerAppsStore, powerAppsGitStore);
     const list = await r.listApps();
     return createCommonResponse({ status: list.verified ? 'ok' : 'error', verified: list.verified, data: { source: list.source, apps: list.apps }, warnings: list.warnings, summary: `アプリ${list.apps.length}件（取得元: ${list.source}）` });
+  }
+  if (platformManage.TOOL_NAMES.includes(method)) {
+    const d = await platformManage.run(method, params || {});
+    return createCommonResponse({ status: d.status === 'ok' ? 'ok' : d.status === 'partial' ? 'partial' : 'error', verified: d.verified, data: d, warnings: d.error ? [d.error] : [], summary: `${method}.${d.operation} ${d.status}` });
   }
   if (typeof method === 'string' && method.startsWith('powerautomate_flow_')) {
     try {
