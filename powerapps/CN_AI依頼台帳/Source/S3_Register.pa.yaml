@@ -311,7 +311,7 @@ Screens:
                         DisplayMode: =If(gblSaving || !gblIdentityVerified || IsBlank(gblEmpID) || IsBlank(User().EntraObjectId) || !(Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), DisplayMode.Disabled, DisplayMode.Edit)
                         Text: ="出勤情報を登録する"
                         OnSelect: |-
-                          =If(!gblSaving && gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))),
+                          =If(!gblAttendanceUniqueConstraintVerified, Notify("勤怠キーの一意制約が未確認のため登録を停止しています", NotificationType.Error), If(!gblSaving && gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))),
                           With({siteName: Coalesce(Trim(S3_SiteManual.Text), S3_Site.Selected.Title), company: Trim(S3_Prime.Text), s: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_Start.Selected.Value), e0: DateTimeValue(Text(gblSelDate, "yyyy-mm-dd") & " " & S3_End.Selected.Value)},
                           With({e: If(e0 <= s, DateAdd(e0, 1, TimeUnit.Days), e0)},
                           If(IsEmpty(S3_Workers.SelectedItems), Notify("全員の作業員を選択してください", NotificationType.Error),
@@ -347,7 +347,7 @@ Screens:
                           )
                           )
                           )
-                          )
+                          ))
                         Y: =1360
                   - S3_ReportBtn:
                       Control: Classic/Button@2.2.0
