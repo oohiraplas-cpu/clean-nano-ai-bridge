@@ -2186,7 +2186,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
             const bound = stateRegistry.bind(
               contract.stateContext.correlationId,
               contract.stateContext.correlationId,
-              scope,
+              'powerapps',
               {
                 ...sourceFile,
                 branch: contract.stateContext.branch,
