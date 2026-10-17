@@ -2,7 +2,7 @@ Screens:
   S2_Calendar:
     Properties:
       Fill: =RGBA(10, 10, 10, 1)
-      OnVisible: =If(gblCalType = "運営" && Lower(User().Email) <> "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com", Set(gblCalType, "解体")); If(IsBlank(gblCalType), Set(gblCalType, "解体")); If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1))); If(IsBlank(gblEmpID), Clear(colAttend), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+      OnVisible: =Set(gblOpsAuthorized, false); Clear(colOps); Clear(colAttend); If(gblCalType = "運営", Set(gblCalType, "解体")); If(IsBlank(gblCalType), Set(gblCalType, "解体")); If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1))); If(IsBlank(gblEmpID), Clear(colAttend), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months)))); If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colOps))
     Children:
       - S2_Calendar_MobileScroll:
           Control: GroupContainer@1.5.0
@@ -47,7 +47,7 @@ Screens:
                         Height: =50
                         OnSelect: |-
                           =Set(gblMonth, DateAdd(gblMonth, -1, TimeUnit.Months));
-                          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colOps))
                         Size: =18
                         Text: ="＜"
                         Width: =50
@@ -62,7 +62,7 @@ Screens:
                         Height: =50
                         OnSelect: |-
                           =Set(gblMonth, DateAdd(gblMonth, 1, TimeUnit.Months));
-                          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                          ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colOps))
                         Size: =18
                         Text: ="＞"
                         Width: =50
@@ -110,7 +110,7 @@ Screens:
                         Items: |-
                           =ForAll(Sequence(42, 0), {d: DateAdd(gblMonth, Value - Weekday(gblMonth) + 1, TimeUnit.Days)})
                         OnSelect: |-
-                          =If(gblCalType = "運営", With({f: Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")), day: Filter('CN 運営カレンダー', Text(日付, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")), otDay: AddColumns(Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd"), 勤務区分.Value = "残業"), "mins", Coalesce(確定勤務分, DateDiff(開始日時, 終了日時, TimeUnit.Minutes) - Coalesce(休憩分, 0)))}, Notify(Text(ThisItem.d, "m/d") & "　稼働 " & CountRows(f) & "名（解体 " & CountRows(Filter(f, 業種.Value = "解体")) & "・設備 " & CountRows(Filter(f, 業種.Value = "設備")) & "）　早出 " & CountRows(Filter(f, 勤務区分.Value = "早出")) & "件　残業 " & CountRows(otDay) & "件（" & Text(Sum(otDay, mins) / 60, "0.0") & "時間）　売上 " & Text(Sum(day, 売上), "#,##0") & "　経費 " & Text(Sum(day, 経費), "#,##0") & "　粗利 " & Text(Sum(day, 売上) - Sum(day, 経費), "#,##0"), NotificationType.Information)), Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None))
+                          =If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), With({f: Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")), day: Filter('CN 運営カレンダー', Text(日付, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")), otDay: AddColumns(Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd"), 勤務区分.Value = "残業"), "mins", Coalesce(確定勤務分, DateDiff(開始日時, 終了日時, TimeUnit.Minutes) - Coalesce(休憩分, 0)))}, Notify(Text(ThisItem.d, "m/d") & "　稼働 " & CountRows(f) & "名（解体 " & CountRows(Filter(f, 業種.Value = "解体")) & "・設備 " & CountRows(Filter(f, 業種.Value = "設備")) & "）　早出 " & CountRows(Filter(f, 勤務区分.Value = "早出")) & "件　残業 " & CountRows(otDay) & "件（" & Text(Sum(otDay, mins) / 60, "0.0") & "時間）　売上 " & Text(Sum(day, 売上), "#,##0") & "　経費 " & Text(Sum(day, 経費), "#,##0") & "　粗利 " & Text(Sum(day, 売上) - Sum(day, 経費), "#,##0"), NotificationType.Information)), Set(gblSelDate, ThisItem.d); Navigate(S3_Register, ScreenTransition.None))
                         ShowScrollbar: =false
                         TemplatePadding: =2
                         TemplateSize: =Max(44, (Parent.Width - 32) / 7)
@@ -153,7 +153,7 @@ Screens:
                               OnSelect: '=Select(Parent)  '
                               Size: =10
                               Text: |-
-                                =If(gblCalType = "運営", With({n: CountRows(Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")))}, If(n > 0, "稼働 " & n & "名", "")), LookUp(colAttend, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).勤務区分.Value)
+                                =If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), With({n: CountRows(Filter(colOps, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")))}, If(n > 0, "稼働 " & n & "名", "")), LookUp(colAttend, Text(開始日時, "yyyymmdd") = Text(ThisItem.d, "yyyymmdd")).勤務区分.Value)
                               Width: =Parent.TemplateWidth
                               Y: =Parent.TemplateHeight - 26
                   - S2_Sum:
@@ -165,7 +165,7 @@ Screens:
                         Height: =130
                         Size: =13
                         Text: |-
-                          =If(gblCalType = "運営",
+                          =If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized),
                           With({ms: Filter('CN 運営カレンダー', 日付 >= gblMonth, 日付 < DateAdd(gblMonth, 1, TimeUnit.Months)), otRows: AddColumns(Filter(colOps, 勤務区分.Value = "残業"), "mins", Coalesce(確定勤務分, DateDiff(開始日時, 終了日時, TimeUnit.Minutes) - Coalesce(休憩分, 0)))},
                           With({sales: Sum(ms, 売上), exp: Sum(ms, 経費), otMin: Sum(otRows, mins),
                           otAmt: If(CountRows(Filter(CN_社員マスタ, !IsBlank('残業単価（1時間）'))) = 0, Blank(), Sum(AddColumns(otRows, "amt", Coalesce(LookUp(CN_社員マスタ, 社員ID = 社員レコードキー).'残業単価（1時間）', 0) * mins / 60), amt)),
@@ -184,7 +184,7 @@ Screens:
                         Fill: =If(gblCalType = "解体", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
                         FontWeight: =FontWeight.Bold
                         Height: =44
-                        OnSelect: =Set(gblCalType, "解体"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        OnSelect: =Set(gblCalType, "解体"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); Clear(colOps)
                         Size: =13
                         Text: ="解体"
                         Width: =(Parent.Width - 48) / 3
@@ -199,7 +199,7 @@ Screens:
                         Fill: =If(gblCalType = "設備", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
                         FontWeight: =FontWeight.Bold
                         Height: =44
-                        OnSelect: =Set(gblCalType, "設備"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        OnSelect: =Set(gblCalType, "設備"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); Clear(colOps)
                         Size: =13
                         Text: ="設備"
                         Width: =(Parent.Width - 48) / 3
@@ -214,10 +214,10 @@ Screens:
                         Fill: =If(gblCalType = "運営", RGBA(0, 204, 102, 1), RGBA(26, 58, 42, 1))
                         FontWeight: =FontWeight.Bold
                         Height: =44
-                        OnSelect: =Set(gblCalType, "運営"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営", ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))))
+                        OnSelect: =If(!(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), Clear(colOps); Notify("運営権限を確認できません", NotificationType.Error), Set(gblCalType, "運営"); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, 社員レコードキー = gblEmpID, 業種.Value = gblCalType, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))); If(gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized), ClearCollect(colOps, Filter(CN_勤怠明細台帳, 開始日時 >= gblMonth, 開始日時 < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colOps))
                         Size: =13
                         Text: ="運営"
-                        Visible: =Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+                        Visible: =(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
                         Width: =(Parent.Width - 48) / 3
                         X: =16 + 2 * ((Parent.Width - 48) / 3 + 8)
                         Y: =108
@@ -234,7 +234,7 @@ Screens:
             Y: =Parent.Height - 330
             DefaultDate: =Today()
             Format: ="yyyy/mm/dd"
-            Visible: =gblCalType = "運営" && Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Visible: =gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
       - S2_OpsSite:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -248,7 +248,7 @@ Screens:
             Y: =Parent.Height - 330
             Default: =""
             HintText: ="現場名"
-            Visible: =gblCalType = "運営" && Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Visible: =gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
       - S2_OpsSales:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -262,7 +262,7 @@ Screens:
             Y: =Parent.Height - 282
             Default: =""
             HintText: ="売上（円）"
-            Visible: =gblCalType = "運営" && Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Visible: =gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
       - S2_OpsExp:
           Control: Classic/TextInput@2.3.2
           Properties:
@@ -276,7 +276,7 @@ Screens:
             Y: =Parent.Height - 282
             Default: =""
             HintText: ="経費（円）"
-            Visible: =gblCalType = "運営" && Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Visible: =gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
       - S2_OpsSave:
           Control: Classic/Button@2.2.0
           Properties:
@@ -289,12 +289,12 @@ Screens:
             X: =16
             Y: =Parent.Height - 232
             Text: ="保存"
-            Visible: =gblCalType = "運営" && Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Visible: =gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
             OnSelect: |-
-              =IfError(Patch('CN 運営カレンダー', Defaults('CN 運営カレンダー'), {日付: S2_OpsDate.SelectedDate, 現場名: Trim(S2_OpsSite.Text), 売上: Value(Coalesce(S2_OpsSales.Text, "0")), 経費: Value(Coalesce(S2_OpsExp.Text, "0"))});
+              =If(!(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized) || gblCalType <> "運営", Clear(colOps); Notify("運営権限を確認できません", NotificationType.Error), IfError(Patch('CN 運営カレンダー', Defaults('CN 運営カレンダー'), {日付: S2_OpsDate.SelectedDate, 現場名: Trim(S2_OpsSite.Text), 売上: Value(Coalesce(S2_OpsSales.Text, "0")), 経費: Value(Coalesce(S2_OpsExp.Text, "0"))});
               Notify("保存しました", NotificationType.Success);
               Reset(S2_OpsSite); Reset(S2_OpsSales); Reset(S2_OpsExp); Refresh('CN 運営カレンダー'),
-              Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error))
+              Notify("保存できませんでした：" & FirstError.Message, NotificationType.Error)))
       - S2_OpsCancel:
           Control: Classic/Button@2.2.0
           Properties:
@@ -307,7 +307,7 @@ Screens:
             X: =24 + (Parent.Width - 40) / 2
             Y: =Parent.Height - 232
             Text: ="取消"
-            Visible: =gblCalType = "運営" && Lower(User().Email) = "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+            Visible: =gblCalType = "運営" && (gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)) && gblOpsAuthorized)
             OnSelect: =Reset(S2_OpsDate); Reset(S2_OpsSite); Reset(S2_OpsSales); Reset(S2_OpsExp)
       - S2_NavBar:
           Control: Rectangle@2.3.0
