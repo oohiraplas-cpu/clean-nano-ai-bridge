@@ -76,7 +76,7 @@ async function listFlows({ solutionName, nameContains, top = 50 } = {}, deps = {
   return { flows: rows.map((w) => ({ id: w.workflowid, name: w.name, state: stateOf(w.statecode), modifiedOn: w.modifiedon })) };
 }
 
-async function readFlow({ flowId, search } = {}, deps = {}) {
+async function readFlow({ flowId, search, raw = false } = {}, deps = {}) {
   const id = checkId(flowId);
   const w = await getFlow(clientOf(deps), id);
   const parsed = parseClientdata(w.clientdata);
@@ -93,6 +93,8 @@ async function readFlow({ flowId, search } = {}, deps = {}) {
       if (lines[i].includes(search)) out.matches.push({ line: i + 1, text: lines[i].slice(0, 300) });
     }
   } else out.definition = props.definition;
+  // Read-only: the raw clientdata string is returned only when explicitly requested (exact-text edits need it).
+  if (raw === true) out.clientdata = String(w.clientdata || '');
   return out;
 }
 

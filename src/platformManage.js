@@ -598,7 +598,7 @@ async function powerautomateManage(p, deps = {}) {
   const getFlow = () => dv.get(`workflows(${id})?$select=name,statecode,statuscode,clientdata,modifiedon`);
   switch (op) {
     case 'list': return { verified: true, data: await pfw.listFlows({ solutionName: p.solutionName, nameContains: p.nameContains, top: p.top }, { ...deps, client: dv }) };
-    case 'get': return { verified: true, data: await pfw.readFlow({ flowId: id, search: p.search }, { ...deps, client: dv }) };
+    case 'get': return { verified: true, data: await pfw.readFlow({ flowId: id, search: p.search, raw: p.raw === true }, { ...deps, client: dv }) };
     case 'create': {
       if (!p.name || !p.definition) throw new OpError('name and definition {triggers, actions} required', 'invalid_input');
       assertNoPremium({ definition: p.definition, connectionReferences: p.connectionReferences || {} }, 'powerautomate_manage.create');
