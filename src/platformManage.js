@@ -379,9 +379,11 @@ function applyRules(inner, rules) {
 function readRules(inner, control) {
   const out = [];
   for (const e of controlFiles(inner)) {
-    walkControls(parseJson(e).TopParent || parseJson(e), (n, parent) => {
+    const top = parseJson(e).TopParent || parseJson(e);
+    const scrName = top && top.Name;
+    walkControls(top, (n, parent) => {
       if (control && n.Name !== control) return;
-      out.push({ file: norm(e.name), control: n.Name, parent: parent && parent.Name, template: n.Template && n.Template.Name, rules: n.Rules.map((x) => ({ property: x.Property, script: x.InvariantScript })) });
+      out.push({ file: norm(e.name), screen: scrName, control: n.Name, parent: parent && parent.Name, template: n.Template && n.Template.Name, rules: n.Rules.map((x) => ({ property: x.Property, script: x.InvariantScript })) });
     });
   }
   return out;
@@ -490,7 +492,22 @@ async function powerappsManage(p, deps = {}) {
     case 'source_get': return { verified: true, data: await paw.readApp({ ...base, search: p.search, file: p.file, maxResults: p.maxResults }, deps) };
     case 'screen_get': { const { inner } = await exportInner(p, deps); return { verified: true, data: { screens: screensOf(inner).filter((s) => !p.screen || s.name === p.screen) } }; }
     case 'control_get':
-    case 'powerfx_get': { const { inner } = await exportInner(p, deps); return { verified: true, data: { controls: readRules(inner, p.control).map((c) => (p.property ? { ...c, rules: c.rules.filter((r) => r.property === p.property) } : c)) } }; }
+    case 'powerfx_get': {
+      const { inner } = await exportInner(p, deps);
+      const scr = p.screen ? String(p.screen) : null;
+      const typ = p.controlType ? String(p.controlType).toLowerCase() : null;
+      let all = readRules(inner, p.control);
+      if (scr) all = all.filter((c) => c.screen === scr);
+      if (typ) all = all.filter((c) => String(c.template || '').toLowerCase().includes(typ));
+      const max = Math.min(Math.max(Number(p.maxResults) || 30, 1), 100);
+      const brief = !p.control && !p.property;
+      const controls = all.slice(0, max).map((c) => {
+        if (brief) return { control: c.control, screen: c.screen, template: c.template, text: (c.rules.find((r) => r.property === 'Text') || {}).script };
+        const rules = p.property ? c.rules.filter((r) => r.property === p.property) : c.rules;
+        return { ...c, rules: rules.map((r) => ({ property: r.property, script: String(r.script || '').slice(0, 2000) })) };
+      });
+      return { verified: true, data: { total: all.length, returned: controls.length, truncated: all.length > controls.length, brief, controls } };
+    }
     case 'powerfx_edit':
     case 'control_edit': {
       const rules = p.rules || [{ control: p.control, property: p.property, script: p.script }];
@@ -518,11 +535,21 @@ async function powerappsManage(p, deps = {}) {
     case 'publish_verify': {
       const { inner, buf } = await exportInner(p, deps);
       const checks = (p.expect || []).map((x) => { const c = readRules(inner, x.control)[0]; const rule = c && c.rules.find((r) => r.property === (x.property || 'Image')); return { ...x, actual: rule ? rule.script : null, ok: !!rule && rule.script === x.script }; });
-      return { verified: checks.every((c) => c.ok), data: { solutionSha256: sha(buf), checks, checker: appChecker(inner) } };
+      const chk = appChecker(inner); return { verified: checks.every((c) => c.ok), data: { solutionSha256: sha(buf), checks, checker: { ok: chk.ok, errors: chk.errors.length, warnings: chk.warnings.length, firstErrors: chk.errors.slice(0, 5) } } };
     }
     case 'app_checker': { const { inner } = await exportInner(p, deps); const c = appChecker(inner); return { verified: c.ok, data: c }; }
-    case 'restore': return { verified: true, data: await paw.rollback({ snapshotId: p.snapshotId }, deps) };
-    case 'snapshots': return { verified: true, data: paw.listSnapshots(deps) };
+    case 'restore': {
+      // restore -> re-read -> compare every control rule with the pre-change snapshot
+      const r = await paw.rollback({ snapshotId: p.snapshotId }, deps);
+      const snapFile = path.join(paw.settings(env).snapshotDir, `${p.snapshotId}.zip`);
+      const snapInner = readZip(pickApp(readZip(fs.readFileSync(snapFile)), base.appFile, solutionDefaults({}, env).appFile).data);
+      const { inner } = await exportInner(p, deps);
+      const key = (rs) => rs.map((c) => `${c.control}|${c.rules.map((x) => `${x.property}=${x.script}`).sort().join(';')}`).sort();
+      const want = key(readRules(snapInner)); const got = key(readRules(inner));
+      const diff = want.filter((x) => !got.includes(x)).concat(got.filter((x) => !want.includes(x)));
+      return { verified: diff.length === 0, data: { ...r, reread: true, matchesSnapshot: diff.length === 0, controlsCompared: want.length, mismatches: diff.slice(0, 20) } };
+    }
+    case 'snapshots': { const all = paw.listSnapshots(deps); const arr = Array.isArray(all) ? all : (all.snapshots || []); return { verified: true, data: { total: arr.length, snapshots: arr.slice(0, 20) } }; }
     default: throw new OpError(`unknown powerapps operation "${op}"`, 'invalid_input');
   }
 }
@@ -577,7 +604,7 @@ async function powerautomateManage(p, deps = {}) {
       const snap = path.join(paw.settings(deps.env || process.env).snapshotDir, 'flows');
       fs.mkdirSync(snap, { recursive: true });
       const snapshotId = `${id}_${new Date().toISOString().replace(/[:.]/g, '-')}`;
-      fs.writeFileSync(path.join(snap, `${snapshotId}.json`), JSON.stringify({ flowId: id, clientdata: f.clientdata, statecode: f.statecode }));
+      fs.writeFileSync(path.join(snap, `${snapshotId}.json`), JSON.stringify({ id, flowId: id, clientdata: f.clientdata, statecode: f.statecode }));
       for (const s of sets) setPath(cd.properties.definition, scope && !s.path.startsWith(scope) ? `${scope}.${s.path}` : s.path, s.value);
       if (p.connectionReferences) cd.properties.connectionReferences = { ...cd.properties.connectionReferences, ...p.connectionReferences };
       pfw._internal.parseClientdata(JSON.stringify(cd));
@@ -625,10 +652,10 @@ async function powerautomateManage(p, deps = {}) {
         const r = await flowRuns(dv, id, 1);
         const run = r.runs[0];
         if (run && (!before.runs[0] || run.name !== before.runs[0].name) && run.status && !/Running|Waiting/i.test(run.status)) { latest = run; break; }
-        if (run) latest = run;
       }
       const ok = !!latest && /Succeeded/i.test(latest.status || '');
-      return { verified: ok, data: { triggered: true, run: latest } };
+      // Never report a pre-existing run as the result of this test.
+      return { verified: ok, data: { triggered: true, newRun: !!latest, status: latest ? latest.status : 'no_new_run', run: latest, previousRun: before.runs[0] ? before.runs[0].name : null, note: latest ? undefined : 'no new run was observed within waitMs; result NOT verified' } };
     }
     case 'runs': { const r = await flowRuns(dv, id, Number(p.top) || 10); return { verified: r.source !== 'unavailable', data: r }; }
     case 'failures': { const r = await flowRuns(dv, id, Number(p.top) || 20); const failed = r.runs.filter((x) => /Failed/i.test(x.status || '')); return { verified: r.source !== 'unavailable', data: { failed: failed.map((x) => ({ run: x.name, start: x.starttime, code: x.errorcode, message: (x.errormessage || '').slice(0, 500) })) } }; }
@@ -641,7 +668,7 @@ async function powerautomateManage(p, deps = {}) {
       const fails = await powerautomateManage({ operation: 'failures', flowId: id, top: 5 }, { ...deps, flowClient: dv });
       return { verified: conn.verified, data: { steps, lastFailures: fails.data.failed, fallback: conn.verified ? [] : FALLBACK.slice(1) } };
     }
-    case 'restore': return { verified: true, data: await pfw.rollbackFlow({ snapshotId: p.snapshotId }, { ...deps, client: dv }) };
+    case 'restore': { const r = await pfw.rollbackFlow({ snapshotId: p.snapshotId }, { ...deps, client: dv }); return { verified: r.verified === true, data: r }; }
     case 'delete': {
       requireConfirm(p, `flow ${id}`);
       const f = await getFlow();
@@ -743,7 +770,7 @@ const op = (list) => ({ type: 'string', enum: list });
 function validOps(tool) { const d = TOOL_DEFS.find((t) => t.name === tool); return d ? d.inputSchema.properties.operation.enum : []; }
 const TOOL_DEFS = [
   { name: 'sharepoint_manage', description: 'SharePointリスト操作を1ツールで実行(operation指定)。アイテム一覧・件数=search(list指定)、リスト一覧=get(list省略)、列定義=get(list指定)。site=サイト名(例 cleannano)可、list=表示名可。書込後は再取得して一致検証、列名は表示名→内部名へ自動補正。物理削除は confirm="DELETE <対象>" が必須。', inputSchema: { type: 'object', properties: { site: { type: 'string', description: 'サイト名(例 cleannano)またはURL' }, operation: op(['list_create', 'column_create', 'column_update', 'choice_update', 'item_create', 'item_update', 'bulk_create', 'bulk_update', 'get', 'search', 'index_create', 'schema_validate', 'delete']), siteId: { type: 'string' }, siteUrl: { type: 'string' }, list: { type: 'string', description: 'リストID or 表示名' }, displayName: { type: 'string' }, template: { type: 'string' }, columns: { type: 'array', items: { type: 'object' } }, column: { description: '列名/ID(更新系) または Graph columnDefinition(作成)' }, patch: { type: 'object' }, choices: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['add', 'replace'] }, itemId: { type: 'string' }, fields: { type: 'object' }, items: { type: 'array', items: { type: 'object' } }, filter: { type: 'string' }, top: { type: 'integer' }, expected: { type: 'array', items: { type: 'object' } }, target: { type: 'string', enum: ['list', 'column', 'item'] }, confirm: { type: 'string' } }, required: ['operation'] } },
-  { name: 'powerapps_manage', description: 'Power Appsキャンバスアプリ操作を1ツールで実行(operation指定)。状態=state_get、画面一覧=screen_get、検査=app_checker。プレミアム/未確認コネクタを含む変更は自動停止(blocked_premium)。ソリューション書出→編集→取込→社内公開→再取得検証、変更前スナップショット自動保存(restoreで復元)。画像はimages[{name,base64|url}]、割当はassignTo/control+imageName。', inputSchema: { type: 'object', properties: { operation: op(['app_get', 'state_get', 'source_get', 'screen_get', 'screen_add', 'screen_edit', 'control_get', 'control_add', 'control_edit', 'powerfx_get', 'powerfx_edit', 'datasource_add', 'datasource_edit', 'image_add', 'image_replace', 'image_assign', 'save', 'publish', 'reread', 'publish_verify', 'app_checker', 'restore', 'snapshots']), solutionName: { type: 'string' }, appFile: { type: 'string' }, screen: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, script: { type: 'string' }, rules: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, images: { type: 'array', items: { type: 'object' } }, name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' }, assignTo: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, file: { type: 'string' }, maxResults: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' } }, required: ['operation'] } },
+  { name: 'powerapps_manage', description: 'Power Appsキャンバスアプリ操作を1ツールで実行(operation指定)。状態=state_get、画面一覧=screen_get、検査=app_checker。プレミアム/未確認コネクタを含む変更は自動停止(blocked_premium)。ソリューション書出→編集→取込→社内公開→再取得検証、変更前スナップショット自動保存(restoreで復元)。画像はimages[{name,base64|url}]、割当はassignTo/control+imageName。', inputSchema: { type: 'object', properties: { operation: op(['app_get', 'state_get', 'source_get', 'screen_get', 'screen_add', 'screen_edit', 'control_get', 'control_add', 'control_edit', 'powerfx_get', 'powerfx_edit', 'datasource_add', 'datasource_edit', 'image_add', 'image_replace', 'image_assign', 'save', 'publish', 'reread', 'publish_verify', 'app_checker', 'restore', 'snapshots']), solutionName: { type: 'string' }, appFile: { type: 'string' }, screen: { type: 'string' }, controlType: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, script: { type: 'string' }, rules: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, images: { type: 'array', items: { type: 'object' } }, name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' }, assignTo: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, file: { type: 'string' }, maxResults: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' } }, required: ['operation'] } },
   { name: 'powerautomate_manage', description: 'Power Automateクラウドフロー操作を1ツールで実行(operation指定)。一覧=list(nameContains)、履歴=runs、失敗=failures。プレミアム(HTTP/カスタム/Dataverse等)を含む作成・編集は自動停止(blocked_premium)。作成/編集(トリガー・アクション)/接続確認/有効化/テスト/実行履歴/失敗箇所/自動修復/再実行/復元。物理削除は confirm="DELETE flow <id>" が必須。', inputSchema: { type: 'object', properties: { operation: op(['list', 'get', 'create', 'edit', 'trigger_edit', 'action_edit', 'connection_check', 'save', 'enable', 'disable', 'test', 'runs', 'failures', 'auto_repair', 'rerun', 'restore', 'delete']), flowId: { type: 'string' }, solutionName: { type: 'string' }, nameContains: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, definition: { type: 'object' }, connectionReferences: { type: 'object' }, value: {}, set: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, top: { type: 'integer' }, waitMs: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' }, confirm: { type: 'string' } }, required: ['operation'] } },
   { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): premium_check(アプリ/フローのプレミアム該当検出)/environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
 ];

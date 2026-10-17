@@ -149,3 +149,36 @@ test('chat-friendly app lookup: GUID appFile dropped, spaced app name matches ms
   assert.strictEqual(I.pickApp(outer, 'nomatch', 'other').name, 'CanvasApps/cr296_other_cd34.msapp');
   assert.throws(() => I.pickApp(outer, 'nomatch'));
 });
+
+test('flow test never reports a pre-existing run as the new result', async () => {
+  const runs = [{ name: 'old', status: 'Succeeded' }];
+  const cd = JSON.stringify({ properties: { connectionReferences: {}, definition: { triggers: { r: { type: 'Recurrence' } }, actions: {} } } });
+  const dv = { get: async (q) => (q.startsWith('flowruns') ? { value: runs } : { clientdata: cd, statecode: 1 }), patch: async () => ({}) };
+  const r = await pm.run('powerautomate_manage', { operation: 'test', flowId: '11111111-1111-1111-1111-111111111111', waitMs: 30 }, { env, flowClient: dv, pollMs: 5 });
+  assert.strictEqual(r.verified, false);
+  assert.strictEqual(r.data.status, 'no_new_run');
+});
+
+test('control_get filters by screen/controlType and caps output (Copilot Studio size limit)', async () => {
+  const { writeZip } = require('../src/zipLite');
+  const ctl = (name, tpl, text) => ({ Name: name, Template: { Name: tpl }, Rules: [{ Property: 'Text', InvariantScript: text }, { Property: 'X', InvariantScript: '0' }], Children: [] });
+  const scr = (name, kids) => Buffer.from(JSON.stringify({ TopParent: { Name: name, Template: { Name: 'screen' }, Rules: [], Children: kids } }));
+  const many = Array.from({ length: 80 }, (_, i) => ctl(`Btn${i}`, 'button', `"b${i}"`));
+  const inner = writeZip([
+    { name: 'Controls/1.json', data: scr('Screen1', many) },
+    { name: 'Controls/2.json', data: scr('Screen2', [ctl('Label1', 'label', '"Hello"'), ctl('Btn9x', 'button', '"x"')]) },
+  ]);
+  const outer = writeZip([{ name: 'CanvasApps/app_DocumentUri.msapp', data: inner }]);
+  const deps = { env: { POWERAPPS_SOLUTION_NAME: 'S' }, client: { exportSolution: async () => outer } };
+  const P = I.powerappsManage;
+  const a = await P({ operation: 'control_get', screen: 'Screen2', controlType: 'Label' }, deps);
+  assert.strictEqual(a.data.total, 1);
+  assert.deepStrictEqual(a.data.controls[0], { control: 'Label1', screen: 'Screen2', template: 'label', text: '"Hello"' });
+  const b = await P({ operation: 'control_get' }, deps);
+  assert.strictEqual(b.data.total, 84);
+  assert.strictEqual(b.data.returned, 30);
+  assert.strictEqual(b.data.truncated, true);
+  assert.ok(JSON.stringify(b).length < 6000);
+  const c = await P({ operation: 'powerfx_get', control: 'Label1', property: 'Text' }, deps);
+  assert.deepStrictEqual(c.data.controls[0].rules, [{ property: 'Text', script: '"Hello"' }]);
+});
