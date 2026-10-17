@@ -91,7 +91,7 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Clear(colAttend)); Notify("最新のデータを読み込みました", NotificationType.Success)
+            OnSelect: =Refresh(CN_勤怠明細台帳); Refresh(CN_社員台帳); Refresh(CN_社員マスタ); Refresh(CN_現場台帳); Set(gblIdentityVerified, false); Set(gblEmpID, Blank()); Clear(colAttend); Clear(colOps); Set(gblOpsAuthorized, false); Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank())); If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true); ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))); Notify("本人確認後に最新のデータを読み込みました", NotificationType.Success), Set(gblCurrentEmployee, Blank()); Notify("本人確認に失敗したため表示を停止しました", NotificationType.Error))
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="データを再読み込み"
             Width: =Parent.Width - 32
