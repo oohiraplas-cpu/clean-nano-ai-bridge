@@ -41,6 +41,7 @@ function createClient(cfg, fetchImpl = globalThis.fetch) {
     get: (p) => call('GET', p),
     patch: async (p, body) => { await call('PATCH', p, body); },
     post: (p, body) => call('POST', p, body),
+    del: async (p) => { await call('DELETE', p); },
   };
 }
 
