@@ -136,3 +136,8 @@ test('chat-friendly: operation aliases, JSON-string params, helpful unknown op',
   assert.strictEqual(r.status, 'error');
   assert.match(r.error, /valid: .*search/);
 });
+
+test('premium guard: msapp-style api names without shared_ prefix are recognised as standard', () => {
+  assert.deepStrictEqual(I.premiumScan('{"ApiId":"/providers/microsoft.powerapps/apis/office365users"} /apis/msnweather /apis/sharepointonline'), []);
+  assert.ok(I.premiumScan('/apis/commondataserviceforapps').length);
+});
