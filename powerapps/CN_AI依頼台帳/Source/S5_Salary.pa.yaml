@@ -14,9 +14,10 @@ Screens:
         =If(IsBlank(gblMonth), Set(gblMonth, Date(Year(Today()), Month(Today()), 1)));
         Set(gblEmpID, Blank());
         Set(gblIdentityVerified, false);
+        Clear(colAttend); Clear(colOps); Set(gblOpsAuthorized, false);
         Set(gblCurrentEmployee, If(!IsBlank(User().EntraObjectId), LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId)), Blank()));
         If(!IsBlank(Trim(Coalesce(gblCurrentEmployee.EmployeeID, ""))) && !IsBlank(User().EntraObjectId) && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId)), Set(gblEmpID, Trim(gblCurrentEmployee.EmployeeID)); Set(gblIdentityVerified, true));
-        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Clear(colAttend); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
+        If(gblIdentityVerified && !IsBlank(gblEmpID) && !IsBlank(User().EntraObjectId) && (Trim(Coalesce(gblCurrentEmployee.EmployeeID, "")) = gblEmpID && Lower(Trim(Coalesce(gblCurrentEmployee.EntraObjectId, ""))) = Lower(Text(User().EntraObjectId))), ClearCollect(colAttend, Filter(CN_勤怠明細台帳, EmployeeRecordKey = gblEmpID, StartAt >= gblMonth, StartAt < DateAdd(gblMonth, 1, TimeUnit.Months))), Set(gblEmpID, Blank()); Set(gblIdentityVerified, false); Set(gblCurrentEmployee, Blank()); Clear(colAttend); Clear(colOps); Set(gblOpsAuthorized, false); Notify("本人確認が完了していません。管理者に連絡してください。", NotificationType.Error))
     Children:
       - S5_Title:
           Control: Label@2.5.1
