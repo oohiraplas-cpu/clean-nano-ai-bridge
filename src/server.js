@@ -2183,19 +2183,25 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
             contract.missing.push('Source file not found for State Registry binding');
             contract.status = 'BLOCKED';
           } /* file blob SHA differs from commit SHA by design; commit SHA is bound below */ else {
+            const begun = stateRegistry.begin(
+              {
+                ...contract.stateContext,
+                environmentId: contract.stateContext.environmentId || contract.stateContext.environment
+              },
+              'powerapps'
+            );
             const bound = stateRegistry.bind(
-              contract.stateContext.correlationId,
-              contract.stateContext.correlationId,
+              begun.correlationId || contract.stateContext.correlationId,
+              begun.stateSessionId,
               'powerapps',
               {
                 ...sourceFile,
                 branch: contract.stateContext.branch,
-                canonicalBranch: contract.stateContext.canonicalBranch,
-                sha: contract.stateContext.sha
+                canonicalBranch: contract.stateContext.canonicalBranch
               },
               sourceFile.path
             );
-            contract.stateSessionId = bound.stateSessionId;
+            contract.stateSessionId = bound.stateSessionId || begun.stateSessionId;
           }
         } catch (err) {
           contract.missing.push(`State Registry binding failed: ${err.message}`);
