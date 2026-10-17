@@ -122,6 +122,7 @@ async function main() {
   const gate = report.health?.httpStatus === 200 && report.health.status === 'ok' && report.initialize.success && (report.mode === 'baseline' || report.tools.matchesCheckout === true);
   report.publicationGatePassed = gate;
   console.log('::notice title=Production Bridge evidence::' + JSON.stringify(report));
+  console.log('::notice title=Deployment SHA evidence::' + JSON.stringify(report.deploymentShaSetting));
   if (!gate) process.exitCode = 1;
 }
 main().catch(() => { console.error('::error::Production verification could not read Azure metadata or complete safe requests; no setting values or response bodies emitted.'); process.exitCode = 1; });
