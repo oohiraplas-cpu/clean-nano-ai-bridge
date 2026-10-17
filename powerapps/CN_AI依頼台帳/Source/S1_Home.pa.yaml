@@ -146,6 +146,20 @@ Screens:
             Width: =(Parent.Width - 40) / 2
             X: =24 + (Parent.Width - 40) / 2
             Y: =426
+      - S1_InvoiceEntry:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderThickness: =1
+            Color: =RGBA(190, 190, 195, 1)
+            Fill: =RGBA(18, 48, 31, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =48
+            DisplayMode: =DisplayMode.Disabled
+            Text: ="請求書自動作成（連携確認待ち）"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =604
       - S1_StatusCard:
           Control: Rectangle@2.3.0
           Properties:
