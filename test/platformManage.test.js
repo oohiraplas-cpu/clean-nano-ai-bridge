@@ -185,6 +185,25 @@ test('control_get filters by screen/controlType and caps output (Copilot Studio 
 
 // App ID binding: app_get resolves canvasappid by internal name (single match only) and
 // fails verification when the caller names an appId that does not match.
+test('internalNameOf strips folder and _DocumentUri suffix', () => {
+  assert.strictEqual(I.internalNameOf('CanvasApps/cr296_cnai_12e0a_DocumentUri.msapp'), 'cr296_cnai_12e0a');
+  assert.strictEqual(I.internalNameOf('CanvasApps/cr296_cnai_12e0a.msapp'), 'cr296_cnai_12e0a');
+});
+
+test('app_get looks up canvasapps by the real _DocumentUri entry name', async () => {
+  const { writeZip } = require('../src/zipLite');
+  const inner = writeZip([{ name: 'Controls/1.json', data: Buffer.from(JSON.stringify({ TopParent: { Name: 'Screen2', Template: { Name: 'screen' }, Rules: [], Children: [] } })) }]);
+  const outer = writeZip([{ name: 'CanvasApps/cr296_cnai_12e0a_DocumentUri.msapp', data: inner }]);
+  const APP = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
+  const calls = [];
+  const client = { exportSolution: async () => outer, get: async (p) => { calls.push(p); return { value: [{ canvasappid: APP }] }; } };
+  const r = await I.powerappsManage({ operation: 'app_get', appId: APP }, { env: { POWERAPPS_SOLUTION_NAME: 'CN_AIIraiDaicho' }, client });
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.data.appId, APP);
+  assert.ok(calls[0].includes("cr296_cnai_12e0a'"));
+  assert.ok(!calls[0].includes('DocumentUri'));
+});
+
 test('app_get returns appId from canvasapps and binds an expected appId (Fail-Closed)', async () => {
   const { writeZip } = require('../src/zipLite');
   const ctl = { Name: 'StarVisible17', Template: { Name: 'label' }, Rules: [{ Property: 'Text', InvariantScript: '"*"' }], Children: [] };

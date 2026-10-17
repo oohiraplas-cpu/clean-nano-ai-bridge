@@ -474,10 +474,18 @@ async function exportInner(p, deps) {
   return { buf, app, inner: readZip(app.data), solutionName, dv };
 }
 
+// Canvas app internal name from a solution entry name, e.g.
+// "CanvasApps/cr296_cnai_12e0a_DocumentUri.msapp" → "cr296_cnai_12e0a".
+function internalNameOf(entryName) {
+  const base = String(entryName).replace(/\\/g, '/').split('/').pop() || '';
+  return base.replace(/\.msapp$/i, '').replace(/_DocumentUri$/i, '');
+}
+
 // Resolves the canvas app GUID from its internal name. Fail-Closed: 0 or >1 rows → null.
-async function canvasAppIdOf(dv, internalName) {
+async function canvasAppIdOf(dv, entryName) {
+  const internalName = internalNameOf(entryName);
   if (!internalName) return null;
-  const filter = encodeURIComponent(`name eq '${String(internalName).replace(/'/g, "''")}'`);
+  const filter = encodeURIComponent(`name eq '${internalName.replace(/'/g, "''")}'`);
   const r = await dv.get(`canvasapps?$select=canvasappid,name&$filter=${filter}`);
   const rows = (r && r.value) || [];
   return rows.length === 1 && rows[0].canvasappid ? String(rows[0].canvasappid).toLowerCase() : null;
@@ -496,7 +504,7 @@ async function powerappsManage(p, deps = {}) {
     case 'state_get': {
       const { app, inner, buf, solutionName, dv } = await exportInner(p, deps);
       const chk = appChecker(inner);
-      const appId = await canvasAppIdOf(dv, norm(app.name));
+      const appId = await canvasAppIdOf(dv, app.name);
       const data = { solutionName, app: norm(app.name), appId, solutionSha256: sha(buf), screens: screensOf(inner), images: resourcesOf(inner).filter((r) => r.Content === 'Image').map((r) => r.Name), checker: { ok: chk.ok, errors: chk.errors.length, warnings: chk.warnings.length } };
       // Target binding: when the caller names an appId, the solution's app must match it exactly.
       if (p.appId !== undefined) {
@@ -791,4 +799,4 @@ const TOOL_DEFS = [
   { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): premium_check(アプリ/フローのプレミアム該当検出)/environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
 ];
 
-module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { pickApp, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
+module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { pickApp, internalNameOf, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
