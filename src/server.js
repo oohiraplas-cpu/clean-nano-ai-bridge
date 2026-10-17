@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
+const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -168,7 +169,7 @@ const MCP_METHODS = Object.freeze([
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list',
+  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback',
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
@@ -860,6 +861,70 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     name: 'list_power_apps',
     description: '環境内のPower Appsキャンバスアプリ一覧（App ID・名称・公開日時）をDataverseから取得します。取得できない場合は構成済みアプリ1件のみ返し、その旨をwarningsに示します。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'powerautomate_flow_list',
+    description: 'Power Automateクラウドフロー(Dataverse上のソリューション対応フロー)の一覧を返します。solutionNameでソリューション内に限定、nameContainsで名前の部分一致検索。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        solutionName: { type: 'string', description: 'Dataverseソリューションの一意名' },
+        nameContains: { type: 'string', description: 'フロー名の部分一致' },
+        top: { type: 'integer', minimum: 1, maximum: 200 }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_read',
+    description: 'フロー定義(トリガー/アクション/接続参照)を読み取ります。search=文字列で該当行のみ返します。編集前の調査用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowId: { type: 'string', description: 'フローID (workflowid GUID)' },
+        search: { type: 'string', description: '検索文字列' }
+      },
+      required: ['flowId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_update',
+    description: 'フロー定義(clientdata)を文字列置換で編集→保存→再取得検証まで一括実行します。変更前スナップショットを自動保存(ロールバック可)。find不一致や定義が壊れる場合は何も変更しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowId: { type: 'string' },
+        edits: { type: 'array', items: { type: 'object', properties: { find: { type: 'string', minLength: 1 }, replace: { type: 'string' }, expectCount: { type: 'integer', minimum: 1 } }, required: ['find', 'replace'], additionalProperties: false } },
+        dryRun: { type: 'boolean', description: 'trueなら検証のみ(反映しない)' }
+      },
+      required: ['flowId', 'edits'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_set_state',
+    description: 'フローをオン/オフします(再取得で状態を検証)。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowId: { type: 'string' },
+        state: { type: 'string', enum: ['on', 'off'] }
+      },
+      required: ['flowId', 'state'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_rollback',
+    description: 'powerautomate_flow_updateが保存したスナップショットへフロー定義を戻します。',
+    inputSchema: {
+      type: 'object',
+      properties: { snapshotId: { type: 'string' } },
+      required: ['snapshotId'],
+      additionalProperties: false
+    }
   },
   {
     name: 'powerapps_app_read',
@@ -2091,6 +2156,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const r = getResolver(powerAppsStore, powerAppsGitStore);
     const list = await r.listApps();
     return createCommonResponse({ status: list.verified ? 'ok' : 'error', verified: list.verified, data: { source: list.source, apps: list.apps }, warnings: list.warnings, summary: `アプリ${list.apps.length}件（取得元: ${list.source}）` });
+  }
+  if (typeof method === 'string' && method.startsWith('powerautomate_flow_')) {
+    try {
+      const p = params || {};
+      const fn = { powerautomate_flow_list: 'listFlows', powerautomate_flow_read: 'readFlow', powerautomate_flow_update: 'updateFlow', powerautomate_flow_set_state: 'setFlowState', powerautomate_flow_rollback: 'rollbackFlow' }[method];
+      if (!fn) throw new Error('unknown tool');
+      const d = await powerAutomateFlowWriter[fn](p);
+      const bad = typeof d.status === 'string' && d.status.endsWith('verify_failed');
+      return createCommonResponse({ status: bad ? 'partial' : 'ok', verified: !bad, data: d, warnings: [], summary: `${method} ${d.status || 'ok'}` });
+    } catch (err) {
+      return createCommonResponse({ status: 'error', verified: false, data: null, warnings: [err.message], summary: `${method} 失敗: ${err.message}` });
+    }
   }
   if (method === 'powerapps_app_read' || method === 'powerapps_app_edit_publish' || method === 'powerapps_app_rollback' || method === 'powerapps_snapshots_list') {
     try {
