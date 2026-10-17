@@ -204,9 +204,10 @@ async function readApp({ solutionName, appFile, search, file, maxResults = 20 },
   return { app: app.name, solutionSha256: sha(buf), fileCount: files.length, files: search ? undefined : files, matches: search ? matches : undefined };
 }
 
-async function applyEdit({ solutionName, appFile, edits = [], images = [], dryRun = false }, deps = {}) {
+async function applyEdit({ solutionName, appFile, edits = [], images = [], rules = [], dryRun = false }, deps = {}) {
   if (!solutionName) throw new Error('solutionName is required');
-  if (!edits.length && !images.length) throw new Error('nothing to change: provide edits and/or images');
+  if (!edits.length && !images.length && !rules.length) throw new Error('nothing to change: provide edits, images and/or rules');
+  if (rules.length && typeof deps.applyRules !== 'function') throw new Error('rules need deps.applyRules');
   const cfg = settings(deps.env);
   const fetchImpl = deps.fetch || globalThis.fetch;
   const dv = deps.client || createDataverseClient(cfg, fetchImpl);
@@ -216,11 +217,12 @@ async function applyEdit({ solutionName, appFile, edits = [], images = [], dryRu
   const { outer, app, inner } = innerOf(before, appFile);
   const editReport = applyTextEdits(inner, edits);
   const imageReport = await applyImages(inner, images, fetchImpl);
+  const ruleReport = rules.length ? deps.applyRules(inner, rules) : [];
   app.data = writeZip(inner);
   const after = writeZip(outer);
   // self-check: package reopens
   innerOf(after, appFile);
-  if (dryRun) return { status: 'dry_run', snapshotId, app: app.name, edits: editReport, images: imageReport, elapsedMs: Date.now() - t0 };
+  if (dryRun) return { status: 'dry_run', snapshotId, app: app.name, edits: editReport, images: imageReport, rules: ruleReport, elapsedMs: Date.now() - t0 };
   const importJobId = await dv.importSolution(after);
   await dv.publishAll();
   const verifyBuf = await dv.exportSolution(solutionName);
@@ -235,10 +237,15 @@ async function applyEdit({ solutionName, appFile, edits = [], images = [], dryRu
     const e = v.find((x) => norm(x.name) === im.path);
     checks.push({ image: im.name, ok: !!e && sha(e.data) === im.sha256 });
   }
+  for (const r of rules) {
+    const c = (deps.readRules ? deps.readRules(v, r.control) : [])[0];
+    const rule = c && c.rules.find((x) => x.property === r.property);
+    checks.push({ rule: `${r.control}.${r.property}`, ok: !!rule && rule.script === r.script });
+  }
   const verified = checks.every((c) => c.ok);
   return {
     status: verified ? 'published_verified' : 'published_verify_failed',
-    verified, snapshotId, importJobId, app: app.name, edits: editReport, images: imageReport, checks,
+    verified, snapshotId, importJobId, app: app.name, edits: editReport, images: imageReport, rules: ruleReport, checks,
     note: 'Imported as unmanaged solution and published (PublishAllXml). Rollback with powerapps_solution_rollback {snapshotId}.',
     elapsedMs: Date.now() - t0,
   };
