@@ -34,10 +34,10 @@ function validateApprovalRecord(record, expected, { now = new Date() } = {}) {
 
 /**
  * 承認台帳の設定を検証する。必要な列名がすべて指定されていなければ未設定とみなす。
- * @param {object} config - { fieldMap: { requestId, stepIndex, tool, status, approver, approvedAt, revoked }, listId, siteId }
+ * @param {object} config - { fieldMap: { requestId, stepIndex, tool, status, approver, approvedAt, revoked }, siteId, listId または listName }
  */
 function isApprovalLedgerConfigured(config) {
-  if (!config || !config.siteId || !config.listId || !config.fieldMap) return false;
+  if (!config || !config.siteId || !(config.listId || config.listName) || !config.fieldMap) return false;
   return REQUIRED_FIELD_KEYS.every((key) => typeof config.fieldMap[key] === 'string' && config.fieldMap[key].length > 0);
 }
 

@@ -10,6 +10,7 @@ const { getConfig } = require('./config');
 const { getAgentRegistry } = require('./agentRegistry');
 const { ExecutionQueue } = require('./executionQueue');
 const { ApprovalLedger } = require('./approvalLedger');
+const { createApprovalLedgerFetchRows } = require('./approvalLedgerSource');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
@@ -200,9 +201,21 @@ const MCP_METHODS = Object.freeze([
   'get_powerapps_media_asset', 'update_powerapps_image'
 ]);
 
-// 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
-// 承認台帳は未設定（fail closed）。SharePoint承認台帳の列名・サイトが実環境で確認されるまで、承認は得られない。
-const executionQueue = new ExecutionQueue({ ledger: new ApprovalLedger() });
+// 実行キューは設定（config）ごとに1つ保持する（再起動で消える。永続化は後続で検討）。
+// 承認台帳は config.approvalLedger で設定されたときだけ SharePoint を読む。未設定なら承認は得られない（fail closed）。
+const executionQueues = new WeakMap();
+function getExecutionQueue(config) {
+  if (!executionQueues.has(config)) {
+    const ledgerConfig = config.approvalLedger;
+    const reader = new SharePointReader(config.sharepoint);
+    const ledger = new ApprovalLedger({
+      config: ledgerConfig,
+      fetchRows: createApprovalLedgerFetchRows({ reader, config: ledgerConfig || {} })
+    });
+    executionQueues.set(config, new ExecutionQueue({ ledger }));
+  }
+  return executionQueues.get(config);
+}
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
@@ -2734,18 +2747,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return getAgentRegistry({ publicTools: MCP_PUBLIC_TOOLS });
   }
   if (method === 'create_execution_request') {
-    return executionQueue.createRequest(params);
+    return getExecutionQueue(config).createRequest(params);
   }
   if (method === 'get_execution_queue') {
-    return { queue: executionQueue.getQueue() };
+    return { queue: getExecutionQueue(config).getQueue() };
   }
   if (method === 'get_execution_status') {
     if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
-    return executionQueue.getStatus(params.requestId);
+    return getExecutionQueue(config).getStatus(params.requestId);
   }
   if (method === 'get_checkpoint') {
     if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
-    return executionQueue.getCheckpoint(params.requestId);
+    return getExecutionQueue(config).getCheckpoint(params.requestId);
   }
 
   if (method === 'export_evidence') {
