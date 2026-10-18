@@ -1613,7 +1613,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, requestScope) {
   if (method === 'get_powerapps_media_asset') {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
     if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
@@ -1677,32 +1677,17 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return { task_id: task.id, status: task.status, result: task.result ?? null };
   }
   if (method === 'get_powerapps_source') {
+      if (Boolean(params.correlationId) !== Boolean(params.stateSessionId)) throw requestError('Complete session pair required', 400);
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
 
     // targetNames 指定時: 複数ファイルを個別展開→SourceObservation検証→bindSourceObservation
     if (params.targetNames && params.targetNames.length > 0) {
+      if (!params.correlationId || !params.stateSessionId) throw requestError('Complete session pair required', 400);
+      if (!/^[a-f0-9]{64}$/.test(requestScope || '')) throw requestError('Request scope unavailable', 400);
+      stateRegistry.lookup(params.correlationId, params.stateSessionId, requestScope);
       const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(params.targetNames);
 
-      if (errors.length > 0 && results.length === 0) {
-        // すべて失敗した場合、最初のエラーを返す
-        const err = errors[0];
-        const statusMap = {
-          'AUTH_CONFIGURATION': 503,
-          'FILE_NOT_FOUND': 404,
-          'AMBIGUOUS_PATH': 400,
-          'BRANCH_MISMATCH': 409,
-          'GITHUB_API_ERROR': 502
-        };
-        const error = new Error(err.reason);
-        error.status = statusMap[err.error] || 400;
-        error.payload = {
-          status: err.error,
-          targetNames: params.targetNames,
-          failedCount: errors.length
-        };
-        throw error;
-      }
 
       // Phase 6: 各resultについてSourceObservation検証→bindSourceObservation
       // Fail-Closed: stateSessionId必須（Phase 6 Architecture）
@@ -1772,7 +1757,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
             };
 
             // StateRegistry.bindSourceObservation()で原子的bind
-            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+            const scope = requestScope;
             const bindResult = stateRegistry.bindSourceObservation(
               params.correlationId,
               params.stateSessionId,
@@ -1797,6 +1782,14 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
         }
       }
 
+      if (errors.length || bindErrors.length || sourceObservations.length !== params.targetNames.length) {
+        stateRegistry.lookup(params.correlationId, params.stateSessionId, requestScope);
+        const invalidation = stateRegistry.invalidateBySessionId(params.stateSessionId, 'source_observation_incomplete');
+        if (!invalidation.invalidated) throw requestError('Session invalidation failed', 409);
+        const error = requestError('SourceObservation incomplete', 409);
+        error.payload = { status: 'source_observation_incomplete', failedTargets: errors.map(e => ({ name: e.name, error: e.error, reason: e.reason })), bindingFailures: bindErrors, totalRequested: params.targetNames.length, successCount: sourceObservations.length };
+        throw error;
+      }
       return {
         status: 'ok',
         method: 'get_powerapps_source',
@@ -1833,32 +1826,6 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     }
 
     const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
-
-    // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
-    if (params.stateSessionId && params.correlationId) {
-      const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-      try {
-        // Compute blob SHA for content validation
-        const blobShaFunc = require('./stateContext').blobSha;
-        const fileSha = blobShaFunc(fileResult.content);
-
-        const source = {
-          sha: fileSha,
-          path: resolvedPath,
-          content: fileResult.content
-        };
-
-        stateRegistry.bindSourceObservation(
-          params.correlationId,
-          params.stateSessionId,
-          scope,
-          source,
-          resolvedPath
-        );
-      } catch (e) {
-        console.warn('Failed to save source to StateContext:', e.message);
-      }
-    }
 
     return fileResult;
   }
@@ -3044,7 +3011,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
@@ -3164,7 +3131,6 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       let bound = stateRegistry.response(stateRegistry.lookup(session.correlationId, session.stateSessionId, scope));
 
       if (!params.targetNames && source && source.sha && source.path && source.content) {
-        try {
           // Single-file binding: use bindSourceObservation
           const sourceObs = {
             sha: source.sha,
@@ -3178,10 +3144,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
             sourceObs,
             source.path
           );
-        } catch (e) {
-          console.warn('bindSourceObservation failed in compare_powerapps_with_git:', e.message);
-          // Continue with current state if binding fails (backward compatibility)
-        }
+ 
       }
 
       const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
