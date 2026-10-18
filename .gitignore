@@ -10,3 +10,5 @@ __pycache__/
 data/deployments.jsonl
 data/powerapps-operations.jsonl
 C:\Users\oohir\Documents\bridge-mcp-test.ps1
+data/execution-queue.json
+data/execution-queue.json.*.tmp

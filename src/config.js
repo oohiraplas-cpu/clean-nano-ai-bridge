@@ -35,6 +35,7 @@ function getConfig(env = process.env) {
     nodeEnv: env.NODE_ENV || 'development',
     corsOrigins: origins,
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
+    executionStorePath: path.resolve(env.EXECUTION_STORE_PATH || 'data/execution-queue.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     mcpApiKey: env.MCP_API_KEY || '',
     stateContextRegistry: {
