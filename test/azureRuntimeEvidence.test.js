@@ -29,3 +29,80 @@ test('invalid source map never leaks its content', () => {
   assert.equal(result.sourceMapSchemaValid, false);
   assert.equal(JSON.stringify(result).includes('password'), false);
 });
+
+test('Unicode canonical Git paths and archive entries are accepted without runtime proof', () => {
+  const sourceMap = {
+    'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src/画面/S1_Home.pa.yaml',
+    'powerapps/CN_AI依頼台帳/Source/S2_Calendar.pa.yaml': 'Src\\画面\\S2_Calendar.pa.yaml'
+  };
+  const result = collectRuntimeEvidence({ settings: {
+    POWERAPPS_RUNTIME_AUTH_MODE: 'managedIdentity',
+    POWERAPPS_RUNTIME_SOURCE_MAP: JSON.stringify(sourceMap)
+  } });
+  assert.equal(result.sourceMapSchemaValid, true);
+  assert.equal(result.sourceMapVerified, false);
+  assert.equal(result.pacProfileVerified, false);
+});
+
+test('unsafe or malformed SOURCE_MAP entries fail closed without leaking values', () => {
+  const goodKey = 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml';
+  const goodEntry = 'Src/画面/S1_Home.pa.yaml';
+  const invalid = [
+    ['powerapps/../Source/S1_Home.pa.yaml', goodEntry],
+    ['powerapps//Source/S1_Home.pa.yaml', goodEntry],
+    ['powerapps/./Source/S1_Home.pa.yaml', goodEntry],
+    ['powerapps/CN_AI依頼台帳/Source/Bad\0.pa.yaml', goodEntry],
+    ['powerapps\\CN_AI依頼台帳\\Source\\S1_Home.pa.yaml', goodEntry],
+    ['/powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml', goodEntry],
+    [goodKey, 'Src/../S1_Home.pa.yaml'],
+    [goodKey, 'Src//S1_Home.pa.yaml'],
+    [goodKey, 'Src/./S1_Home.pa.yaml'],
+    [goodKey, 'Src\\..\\S1_Home.pa.yaml'],
+    [goodKey, 'Src/secret\0.pa.yaml'],
+    [goodKey, '/Src/S1_Home.pa.yaml']
+  ];
+  for (const [key, value] of invalid) {
+    const result = collectRuntimeEvidence({ settings: {
+      POWERAPPS_RUNTIME_SOURCE_MAP: JSON.stringify({ [key]: value })
+    } });
+    assert.equal(result.sourceMapSchemaValid, false, JSON.stringify({ key, value }));
+    assert.equal(result.sourceMapVerified, false);
+    assert.ok(!JSON.stringify(result).includes('secret'));
+  }
+  assert.equal(collectRuntimeEvidence({ settings: {
+    POWERAPPS_RUNTIME_SOURCE_MAP: '{invalid-json'
+  } }).sourceMapSchemaValid, false);
+});
+
+test('Unicode Git and ZIP paths preserve legacy mapping support', () => {
+  for (const map of [
+    { 'App.pa.yaml': 'Src/App.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src/S1_Home.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S2_Calendar.pa.yaml': 'Src/画面/S2_Calendar.pa.yaml' },
+    { 'powerapps/CN_AI依頼台帳/Source/S1_Home.pa.yaml': 'Src\\画面\\S1_Home.pa.yaml' }
+  ]) {
+    const result = collectRuntimeEvidence({ settings: { POWERAPPS_RUNTIME_SOURCE_MAP: JSON.stringify(map) } });
+    assert.equal(result.sourceMapSchemaValid, true);
+    assert.equal(result.sourceMapVerified, false);
+  }
+});
+
+test('unsafe source map paths fail closed without exposing map contents', () => {
+  const bad = [
+    { '../App.pa.yaml': 'Src/App.pa.yaml' },
+    { 'powerapps//Source/S1.pa.yaml': 'Src/S1.pa.yaml' },
+    { 'powerapps/../Source/S1.pa.yaml': 'Src/S1.pa.yaml' },
+    { 'powerapps/CN/Source/S1.pa.yaml': '../Src/S1.pa.yaml' },
+    { 'powerapps/CN/Source/S1.pa.yaml': 'Src//S1.pa.yaml' },
+    { 'powerapps/CN/Source/S1.pa.yaml': 'Src/../S1.pa.yaml' },
+    { 'powerapps/CN/Source/S1.pa.yaml': 'C:\\Src\\S1.pa.yaml' },
+    { 'powerapps/CN/Source/S1.pa.yaml': 'Src/secret\0.pa.yaml' },
+    { 'powerapps/CN/Source/S1.pa.yaml': 'Src/secret\n.pa.yaml' }
+  ];
+  for (const map of bad) {
+    const result = collectRuntimeEvidence({ settings: { POWERAPPS_RUNTIME_SOURCE_MAP: JSON.stringify(map) } });
+    assert.equal(result.sourceMapSchemaValid, false);
+    assert.equal(result.sourceMapVerified, false);
+    assert.equal(JSON.stringify(result).includes('secret'), false);
+  }
+});
