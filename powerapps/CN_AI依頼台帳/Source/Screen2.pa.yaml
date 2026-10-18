@@ -237,6 +237,7 @@ Screens:
                               DataField: ="Title"
                               Default: =ThisItem.タイトル
                               DisplayName: ="書類名"
+                              Update: =DataCardValue13.Text
                               MaxLength: =DataSourceInfo([@CN_OCR受信箱], DataSourceInfo.MaxLength, タイトル)
                               Required: =true
                               Width: =400
@@ -553,7 +554,7 @@ Screens:
                               Height: =40
                               LayoutMinHeight: =16
                               LayoutMinWidth: =16
-                              OnSelect: =
+                              OnSelect: =SubmitForm(SubmitArtForm1)
                               Text: ="書類を保存"
                               Width: =120
                         - CancelButton1:
