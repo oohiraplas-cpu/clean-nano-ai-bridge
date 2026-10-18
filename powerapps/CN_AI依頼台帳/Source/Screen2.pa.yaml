@@ -239,6 +239,7 @@ Screens:
                               DisplayName: ="書類名"
                               MaxLength: =DataSourceInfo([@CN_OCR受信箱], DataSourceInfo.MaxLength, タイトル)
                               Required: =true
+                              Update: =DataCardValue13.Text
                               Width: =400
                               X: =0
                               Y: =0
@@ -553,7 +554,7 @@ Screens:
                               Height: =40
                               LayoutMinHeight: =16
                               LayoutMinWidth: =16
-                              OnSelect: =
+                              OnSelect: =SubmitForm(SubmitArtForm1)
                               Text: ="書類を保存"
                               Width: =120
                         - CancelButton1:
