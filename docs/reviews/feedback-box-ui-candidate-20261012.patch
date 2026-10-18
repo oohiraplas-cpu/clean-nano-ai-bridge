@@ -1,0 +1,119 @@
+--- a/powerapps/CN_AI依頼台帳/Source/S7_Settings.pa.yaml
++++ b/powerapps/CN_AI依頼台帳/Source/S7_Settings.pa.yaml
+@@ -112,12 +112,12 @@
+           Control: Label@2.5.1
+           Properties:
+             Color: =RGBA(120, 120, 120, 1)
+-            Height: =110
++            Height: =Min(110, Max(0, Parent.Height - 582))
+             Size: =11
+             Text: ="データの保存先（SharePoint cleannano）" & Char(10) & "出勤：CN_勤怠明細台帳" & Char(10) & "作業員：CN_社員台帳" & Char(10) & "給与単価：CN_社員マスタ" & Char(10) & "現場：CN_現場台帳"
+             Width: =Parent.Width - 32
+             X: =16
+-            Y: =432
++            Y: =496
+       - S7_NavBar:
+           Control: Rectangle@2.3.0
+           Properties:
+@@ -230,3 +230,101 @@
+             Width: =Parent.Width / 5
+             X: =Parent.Width / 5 * 4
+             Y: =Parent.Height - 70
++      - S7_Feedback:
++          Control: Classic/Button@2.2.0
++          Properties:
++            BorderThickness: =0
++            Color: =RGBA(10, 10, 10, 1)
++            Fill: =RGBA(0, 204, 102, 1)
++            FontWeight: =FontWeight.Bold
++            Height: =52
++            OnSelect: =UpdateContext({locFeedbackOpen:true})
++            Text: ="ご意見ボックス"
++            Width: =Parent.Width - 32
++            X: =16
++            Y: =432
++      - S7_FeedbackBackdrop:
++          Control: Rectangle@2.3.0
++          Properties:
++            Fill: =RGBA(10, 10, 10, 0.95)
++            Height: =Parent.Height
++            Visible: =locFeedbackOpen
++            Width: =Parent.Width
++      - S7_FeedbackPanel:
++          Control: Rectangle@2.3.0
++          Properties:
++            BorderColor: =RGBA(0, 204, 102, 1)
++            BorderThickness: =1
++            Fill: =RGBA(26, 58, 42, 1)
++            Height: =Min(440, Parent.Height - 32)
++            Visible: =locFeedbackOpen
++            Width: =Parent.Width - 32
++            X: =16
++            Y: =(Parent.Height - Self.Height) / 2
++      - S7_FeedbackTitle:
++          Control: Label@2.5.1
++          Properties:
++            Color: =RGBA(0, 204, 102, 1)
++            FontWeight: =FontWeight.Bold
++            Height: =44
++            Text: ="ご意見ボックス"
++            Visible: =locFeedbackOpen
++            Width: =S7_FeedbackPanel.Width - 32
++            X: =32
++            Y: =S7_FeedbackPanel.Y + 12
++      - S7_FeedbackUser:
++          Control: Label@2.5.1
++          Properties:
++            Color: =RGBA(255, 255, 255, 1)
++            Height: =44
++            Text: ="投稿者：" & User().FullName
++            Visible: =locFeedbackOpen
++            Width: =S7_FeedbackPanel.Width - 32
++            X: =32
++            Y: =S7_FeedbackTitle.Y + 44
++      - S7_FeedbackBody:
++          Control: Classic/TextInput@2.3.2
++          Properties:
++            AccessibleLabel: ="ご意見の本文"
++            Default: =""
++            Height: =S7_FeedbackPanel.Height - 232
++            HintText: ="ご意見をご記入ください（必須）"
++            Mode: =TextMode.MultiLine
++            Visible: =locFeedbackOpen
++            Width: =S7_FeedbackPanel.Width - 32
++            X: =32
++            Y: =S7_FeedbackUser.Y + 48
++      - S7_FeedbackGate:
++          Control: Label@2.5.1
++          Properties:
++            Color: =RGBA(255, 255, 255, 1)
++            Height: =40
++            Size: =11
++            Text: ="保存先フロー・本人照合・動作検証が完了するまで送信できません。"
++            Visible: =locFeedbackOpen
++            Width: =S7_FeedbackPanel.Width - 32
++            X: =32
++            Y: =S7_FeedbackBody.Y + S7_FeedbackBody.Height + 8
++      - S7_FeedbackSend:
++          Control: Classic/Button@2.2.0
++          Properties:
++            DisplayMode: =DisplayMode.Disabled
++            Height: =52
++            OnSelect: =Notify("安全検証が未完了です。", NotificationType.Warning)
++            Text: ="送信（検証待ち）"
++            Visible: =locFeedbackOpen
++            Width: =(S7_FeedbackPanel.Width - 44) / 2
++            X: =32
++            Y: =S7_FeedbackPanel.Y + S7_FeedbackPanel.Height - 68
++      - S7_FeedbackClose:
++          Control: Classic/Button@2.2.0
++          Properties:
++            Color: =RGBA(0, 204, 102, 1)
++            Fill: =RGBA(10, 10, 10, 1)
++            Height: =52
++            OnSelect: =UpdateContext({locFeedbackOpen:false})
++            Text: ="戻る"
++            Visible: =locFeedbackOpen
++            Width: =(S7_FeedbackPanel.Width - 44) / 2
++            X: =S7_FeedbackSend.X + S7_FeedbackSend.Width + 12
++            Y: =S7_FeedbackSend.Y
