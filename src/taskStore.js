@@ -59,7 +59,19 @@ class TaskStore {
 
   async next() {
     const tasks = await this.read();
-    return tasks.find((task) => !NEXT_EXCLUDED_STATUSES.has(task.status)) || null;
+    const priorityRank = { critical: 4, urgent: 4, high: 3, normal: 2, low: 1 };
+    const candidates = tasks
+      .filter((task) => !NEXT_EXCLUDED_STATUSES.has(task.status))
+      .filter((task) => task.source !== 'local-demo' && task.id !== 'demo-001')
+      .filter((task) => task.status !== 'エラー' || task.retry_count < 3);
+    // Resume running tasks before starting new work. Stable sort preserves FIFO ties.
+    candidates.sort((a, b) => {
+      const running = Number(b.status === '実行中') - Number(a.status === '実行中');
+      if (running) return running;
+      return (priorityRank[String(b.priority || 'normal').toLowerCase()] || 2) -
+        (priorityRank[String(a.priority || 'normal').toLowerCase()] || 2);
+    });
+    return candidates[0] || null;
   }
 }
 
