@@ -1,0 +1,22 @@
+name: Production MCP Smoke
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/prod-smoke.yml'
+      - 'scripts/verify-production-mcp-smoke.js'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify production MCP (nine checks)
+        env:
+          MCP_BASE_URL: https://cn-engineering-mcp-ajcbh6f6gegzdhh3.westus3-01.azurewebsites.net
+          CN_MCP_API_KEY: ${{ secrets.CN_MCP_API_KEY }}
+        run: node scripts/verify-production-mcp-smoke.js
