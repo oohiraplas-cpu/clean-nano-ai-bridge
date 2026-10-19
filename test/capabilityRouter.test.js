@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {buildRegistry,route,operation,classify} = require('../src/capabilityRouter');
+const {buildRegistry,route,operation,operationForCall,classify} = require('../src/capabilityRouter');
 test('five MCP categories and conservative unknown classification',()=>{
   assert.equal(classify('get_powerapps_app'),'CN-POWER-MCP');
   assert.equal(classify('get_azure_deployment_metadata'),'CN-CLOUD-MCP');
@@ -34,4 +34,17 @@ test('side-effecting validation and publish remain gated',()=>{
   assert.equal(classify('unrecognized_tool'),null);
   const r=buildRegistry([{name:'unrecognized_tool'}]);
   assert.equal(route(r,'unrecognized_tool',{}, {authenticated:true,permitted:true,humanApprovalVerified:true,auditReady:true,policyVerified:true,targetVerified:true},{unrecognized_tool:()=>({status:'ok'})}).status,'BLOCKED');
+});
+
+test('multiplexed tools enforce actual operation and approval',()=>{
+  assert.equal(operationForCall('powerapps_manage',{operation:'publish'}),'PUBLISH');
+  assert.equal(operationForCall('sharepoint_manage',{operation:'delete'}),'DELETE');
+  assert.equal(operationForCall('powerautomate_manage',{operation:'test'}),'EXECUTE');
+  assert.equal(operationForCall('powerapps_manage',{operation:'screen_get'}),'READ');
+  assert.equal(operationForCall('powerapps_manage',{}),null);
+  const r=buildRegistry([{name:'powerapps_manage'}]);
+  const ctx={authenticated:true,permitted:true,auditReady:true,policyVerified:true,targetVerified:true};
+  const h={powerapps_manage:()=>({status:'ok'})};
+  assert.equal(route(r,'powerapps_manage',{operation:'publish'},ctx,h).status,'BLOCKED');
+  assert.equal(route(r,'powerapps_manage',{operation:'screen_get'},ctx,h).status,'ok');
 });
