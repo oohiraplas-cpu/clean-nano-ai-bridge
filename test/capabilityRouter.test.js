@@ -25,5 +25,13 @@ test('router blocks unknown, unverified auth, permission and approval',()=>{
   assert.equal(route(r,'unknown',{}, {},handlers).status,'BLOCKED');
   assert.equal(route(r,'update_powerapps_app',{}, {},handlers).status,'BLOCKED');
   assert.equal(route(r,'update_powerapps_app',{}, {authenticated:true,permitted:true},handlers).status,'BLOCKED');
-  assert.equal(route(r,'update_powerapps_app',{}, {authenticated:true,permitted:true,humanApprovalVerified:true},handlers).status,'ok');
+  assert.equal(route(r,'update_powerapps_app',{}, {authenticated:true,permitted:true,humanApprovalVerified:true,auditReady:true,policyVerified:true,targetVerified:true},handlers).status,'ok');
+});
+
+test('side-effecting validation and publish remain gated',()=>{
+  assert.equal(operation('validate_powerapps_change'),'EXECUTE');
+  assert.equal(operation('powerapps_app_edit_publish'),'PUBLISH');
+  assert.equal(classify('unrecognized_tool'),null);
+  const r=buildRegistry([{name:'unrecognized_tool'}]);
+  assert.equal(route(r,'unrecognized_tool',{}, {authenticated:true,permitted:true,humanApprovalVerified:true,auditReady:true,policyVerified:true,targetVerified:true},{unrecognized_tool:()=>({status:'ok'})}).status,'BLOCKED');
 });
