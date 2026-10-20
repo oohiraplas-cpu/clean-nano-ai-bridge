@@ -35,10 +35,17 @@ node_test.describe('prepare_execution_package', () => {
           if (simulateError === 'app_resolution') throw new Error('App resolution failed');
           if (!appExists) return null;
           return {
-            id: 'app-000-' + query.appName,
-            environmentId: 'env-prod-001',
-            environmentName: 'Production',
-            name: query.appName
+            status: 'ok',
+            verified: true,
+            data: {
+              appId: 'app-000-' + query,
+              environmentId: 'env-prod-001',
+              displayName: query,
+              gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+              gitBranch: 'main',
+              sourceOnCanonicalBranch: true,
+              writesAllowed: true
+            }
           };
         },
         listBranches: async () => {
@@ -451,10 +458,18 @@ node_test.describe('prepare_execution_package - State Context fields', () => {
   node_test.test('StateContext fields populated correctly', async () => {
     const resolvers = {
       appTargetResolver: {
-        resolve: async () => ({
-          id: 'test-app-id',
-          environmentId: 'test-env-id',
-          environmentName: 'Test Env'
+        resolve: async (query) => ({
+          status: 'ok',
+          verified: true,
+          data: {
+            appId: 'test-app-id',
+            environmentId: 'test-env-id',
+            displayName: query,
+            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+            gitBranch: 'main',
+            sourceOnCanonicalBranch: true,
+            writesAllowed: true
+          }
         }),
         listBranches: async () => ({
           branches: ['main'],
@@ -491,14 +506,17 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
     const resolvers = {
       appTargetResolver: {
         resolve: async (query) => ({
-          id: 'registered-app-id',
-          environmentId: 'env-prod-001',
-          environmentName: 'Production',
-          name: query.appName,
-          source: 'registry', // Indicates it came from registry
-          repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
-          gitRoot: 'powerapps/CN_AI依頼台帳/Source',
-          canonicalBranch: 'main'
+          status: 'ok',
+          verified: true,
+          data: {
+            appId: 'registered-app-id',
+            environmentId: 'env-prod-001',
+            displayName: query,
+            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+            gitBranch: 'main',
+            sourceOnCanonicalBranch: true,
+            writesAllowed: true
+          }
         }),
         listBranches: async () => ({
           branches: ['main'],
@@ -525,7 +543,7 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
     assert.strictEqual(result.status, 'BLOCKED', 'Status should be BLOCKED (no objective provided)');
     assert.strictEqual(result.target.appName, 'CN_AI依頼台帳');
     assert.strictEqual(result.target.appId, 'registered-app-id');
-    assert.strictEqual(result.diagnostics.step1AppResolution.resolutionSource, 'registry');
+    assert.strictEqual(result.diagnostics.step1AppResolution.resolutionSource, 'resolve_app_target');
   });
 
   // Scenario 2: Registry unregistered + resolver success → resolution success
@@ -538,15 +556,18 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
           // Simulating: registry lookup fails (returns null), but resolver succeeds
           // In real implementation, appTargetResolver internally would handle this
           return {
-            id: 'dynamic-resolved-app-id',
-            environmentId: 'env-prod-002',
-            environmentName: 'Production',
-            name: query.appName,
-            source: 'resolve_app_target', // Indicates it came from dynamic resolution
-            repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
-            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
-            canonicalBranch: 'main'
-          };
+            status: 'ok',
+            verified: true,
+            data: {
+              appId: 'dynamic-resolved-app-id',
+              environmentId: 'env-prod-002',
+              displayName: query.appName,
+              gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+              gitBranch: 'main',
+              sourceOnCanonicalBranch: true,
+              writesAllowed: true
+            }
+            };
         },
         listBranches: async () => ({
           branches: ['main'],
@@ -586,18 +607,21 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
             'AI台帳': 'CN_AI依頼台帳',
             '台帳': 'CN_AI依頼台帳'
           };
-          const canonicalName = aliasMap[query.appName] || query.appName;
+          const canonicalName = aliasMap[query] || query;
           if (canonicalName === 'CN_AI依頼台帳') {
             return {
-              id: 'canonical-app-id',
-              environmentId: 'env-prod-001',
-              environmentName: 'Production',
-              name: canonicalName,
-              source: 'alias_resolved',
-              repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
-              gitRoot: 'powerapps/CN_AI依頼台帳/Source',
-              canonicalBranch: 'main'
-            };
+              status: 'ok',
+              verified: true,
+              data: {
+                appId: 'canonical-app-id',
+                environmentId: 'env-prod-001',
+                displayName: canonicalName,
+                gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+                gitBranch: 'main',
+                sourceOnCanonicalBranch: true,
+                writesAllowed: true
+              }
+              };
           }
           return null;
         },
@@ -633,19 +657,22 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
       appTargetResolver: {
         resolve: async (query) => {
           // Simulate multiple matching apps - resolver returns null to indicate ambiguity
-          if (query.appName === 'App' || query.appName === 'AI') {
+          if (query === 'App' || query === 'AI') {
             return null; // Multiple matches, cannot uniquely resolve
           }
           return {
-            id: 'unique-app-id',
-            environmentId: 'env-prod-001',
-            environmentName: 'Production',
-            name: query.appName,
-            source: 'registry',
-            repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
-            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
-            canonicalBranch: 'main'
-          };
+            status: 'ok',
+            verified: true,
+            data: {
+              appId: 'unique-app-id',
+              environmentId: 'env-prod-001',
+              displayName: query.appName,
+              gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+              gitBranch: 'main',
+              sourceOnCanonicalBranch: true,
+              writesAllowed: true
+            }
+            };
         },
         listBranches: async () => ({
           branches: ['main'],
@@ -714,17 +741,18 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
           // Return valid app, but source indicates there was a mismatch check internally
           // In real usage, appTargetResolver would validate registry vs resolved app
           return {
-            id: 'resolved-app-id',
-            environmentId: 'env-prod-001',
-            environmentName: 'Production',
-            name: query.appName,
-            source: 'resolve_app_target',
-            repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
-            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
-            canonicalBranch: 'main',
-            mismatchDetected: true, // Flag if registry != resolved
-            mismatchDetail: 'Registry has different environmentId'
-          };
+            status: 'ok',
+            verified: false,
+            data: {
+              appId: 'resolved-app-id',
+              environmentId: 'env-prod-001',
+              displayName: query.appName,
+              gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+              gitBranch: 'main',
+              sourceOnCanonicalBranch: true,
+              writesAllowed: false
+            }
+            };
         },
         listBranches: async () => ({
           branches: ['main'],
@@ -765,15 +793,18 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
         resolve: async (query) => {
           resolveCallCount++;
           return {
-            id: 'app-id',
-            environmentId: 'env-id',
-            environmentName: 'Prod',
-            name: query.appName,
-            source: 'registry',
-            repository: 'repo/path',
-            gitRoot: 'root',
-            canonicalBranch: 'main'
-          };
+            status: 'ok',
+            verified: true,
+            data: {
+              appId: 'app-id',
+              environmentId: 'env-id',
+              displayName: query.appName,
+              gitRoot: 'root',
+              gitBranch: 'main',
+              sourceOnCanonicalBranch: true,
+              writesAllowed: true
+            }
+            };
         },
         listBranches: async () => {
           branchCallCount++;
@@ -806,4 +837,21 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
     assert.strictEqual(branchCallCount, 1, 'appTargetResolver.listBranches() should be called exactly once');
     assert.ok(result.requestId, 'requestId should be generated');
   });
+});
+
+node_test.test('partial resolver evidence is fail-closed', async () => {
+  const result = await prepareExecutionPackage({
+    appName: 'clean nano kk',
+    resolvers: {
+      appTargetResolver: {
+        resolve: async () => ({
+          status: 'partial',
+          verified: false,
+          data: { appId: 'app', environmentId: 'env', gitRoot: 'source', gitBranch: 'main' }
+        })
+      }
+    }
+  });
+  assert.strictEqual(result.status, 'BLOCKED');
+  assert.strictEqual(result.target, null);
 });
