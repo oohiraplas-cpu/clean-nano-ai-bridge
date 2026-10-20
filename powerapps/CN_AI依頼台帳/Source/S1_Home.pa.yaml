@@ -42,15 +42,15 @@ Screens:
       - S1_VisualCard:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(133, 70, 168, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245, 245, 248, 1)
-            Fill: =RGBA(18, 54, 33, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
-            Height: =112
-            HoverFill: =RGBA(27, 76, 46, 1)
+            Height: =80
+            HoverFill: =RGBA(244, 247, 250, 1)
             OnSelect: =Navigate(S2_Calendar, ScreenTransition.None)
-            PressedFill: =RGBA(12, 42, 25, 1)
+            PressedFill: =RGBA(195, 202, 210, 1)
             Size: =18
             Text: ="▦  設備カレンダー" & Char(10) & "今日の設備予定・車両情報を開く  →"
             Width: =Parent.Width - 32
@@ -59,10 +59,10 @@ Screens:
       - S1_Scan:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245,245,248,1)
-            Fill: =RGBA(22, 66, 39, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
             OnSelect: =Notify("書類スキャン：OCR接続確認後に読み取りを開始します。原本は変更しません。", NotificationType.Information)
@@ -74,10 +74,10 @@ Screens:
       - S1_Report:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245,245,248,1)
-            Fill: =RGBA(22, 66, 39, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
             OnSelect: =Set(gblReportFromCalendar, false); Navigate(S11_Report, ScreenTransition.None)
@@ -89,10 +89,10 @@ Screens:
       - S1_Register:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245,245,248,1)
-            Fill: =RGBA(22, 66, 39, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
             OnSelect: =Navigate(S3_Register, ScreenTransition.None)
@@ -104,10 +104,10 @@ Screens:
       - S1_MyData:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245,245,248,1)
-            Fill: =RGBA(22, 66, 39, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
             OnSelect: =Navigate(S8_UserOnboarding, ScreenTransition.None)
@@ -119,12 +119,12 @@ Screens:
       - S1_Summary:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245,245,248,1)
-            Fill: =RGBA(18, 48, 31, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
-            Height: =58
+            Height: =68
             OnSelect: =Navigate(S4_Summary, ScreenTransition.None)
             Size: =13
             Text: ="実績・給与"
@@ -134,12 +134,12 @@ Screens:
       - S1_Settings:
           Control: Classic/Button@2.2.0
           Properties:
-            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
             Color: =RGBA(245,245,248,1)
-            Fill: =RGBA(18, 48, 31, 1)
+            Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
-            Height: =58
+            Height: =68
             OnSelect: =Navigate(S7_Settings, ScreenTransition.None)
             Size: =13
             Text: ="メンバー・設定"
