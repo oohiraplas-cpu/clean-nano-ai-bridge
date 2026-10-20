@@ -549,9 +549,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
           }
         },
         knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
-        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
+        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 1 }
       },
-      required: ['files'],
+      required: ['files', 'stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
