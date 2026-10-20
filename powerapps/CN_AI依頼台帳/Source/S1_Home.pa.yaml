@@ -44,7 +44,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245, 245, 248, 1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =80
@@ -61,7 +61,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245,245,248,1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
@@ -76,7 +76,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245,245,248,1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
@@ -91,7 +91,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245,245,248,1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
@@ -106,7 +106,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245,245,248,1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
@@ -121,7 +121,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245,245,248,1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
@@ -136,7 +136,7 @@ Screens:
           Properties:
             BorderColor: =RGBA(32, 37, 43, 1)
             BorderThickness: =1
-            Color: =RGBA(245,245,248,1)
+            Color: =RGBA(32, 37, 43, 1)
             Fill: =RGBA(228, 232, 236, 1)
             FontWeight: =FontWeight.Bold
             Height: =68
