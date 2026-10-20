@@ -77,7 +77,9 @@ Screens:
             FontWeight: =FontWeight.Bold
             Height: =52
             HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Navigate(S6_Members, ScreenTransition.None)
+            DisplayMode: =DisplayMode.Disabled
+            Visible: =false
+            OnSelect: =Notify("作業員の切替は許可されていません", NotificationType.Error)
             PressedFill: =RGBA(0, 160, 80, 1)
             Text: ="作業員を切り替える（メンバー一覧）"
             Width: =Parent.Width - 32
