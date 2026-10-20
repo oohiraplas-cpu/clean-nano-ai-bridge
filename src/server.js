@@ -214,6 +214,9 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   remarks: { type: 'string', description: '備考' }
 });
 
+// Shared membership index: avoid allocating a Set on every JSON-RPC request.
+const MCP_METHOD_SET = new Set(MCP_METHODS);
+
 const MCP_PUBLIC_TOOLS = Object.freeze([
   {
     name: 'health_check',
@@ -3331,8 +3334,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       }
       // Standard MCP tool methods (health_check, get_tasks, etc.) via tools/call
       // Map legacy method names to tools/call format for JSON-RPC 2.0 compatibility
-      const standardMethods = new Set(MCP_METHODS);
-      if (standardMethods.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
+      if (MCP_METHOD_SET.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
         // Convert standard method call to tools/call format
         return res.status(200).json(await (async () => {
           try {
