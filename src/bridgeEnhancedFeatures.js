@@ -435,7 +435,7 @@ function parseAndAnalyzePowerAppsSource(sourceContent, sourceOrigin = 'github_ca
  * @returns {Object} 共通レスポンス形式
  */
 async function inspectPowerAppsStructure(options = {}) {
-  const { powerAppsStore, appId, sourceContent, sourceOrigin = 'powerapps_environment', stateContext } = options;
+  const { powerAppsStore, appId, environmentId, sourceContent, sourceOrigin = 'powerapps_environment', stateContext } = options;
   const errors = [];
   const warnings = [];
   const unconfirmed = [];
@@ -510,7 +510,14 @@ async function inspectPowerAppsStructure(options = {}) {
       // Fallback to Power Apps API (legacy path)
       let appInfo = null;
       try {
-        appInfo = await powerAppsStore.getAppInfo?.();
+        // Never substitute the configured app's metadata for a different app.
+        // A cross-app read requires an explicit environment and uses the read-only
+        // per-target management API. Source/controls remain unverified until fetched.
+        if (appId && environmentId) {
+          appInfo = await powerAppsStore.getAppInfoForEnvironment?.({ appId, environmentId });
+        } else {
+          appInfo = await powerAppsStore.getAppInfo?.();
+        }
       } catch (error) {
         errors.push(`Failed to get app info: ${error.message}`);
       }
