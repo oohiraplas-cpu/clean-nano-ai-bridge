@@ -1613,7 +1613,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, requestScope) {
   if (method === 'get_powerapps_media_asset') {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
     if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
@@ -1772,7 +1772,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
             };
 
             // StateRegistry.bindSourceObservation()で原子的bind
-            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+            const scope = requestScope || 'POWERAPPS_SOURCE_RESOLUTION';
             const bindResult = stateRegistry.bindSourceObservation(
               params.correlationId,
               params.stateSessionId,
@@ -1836,7 +1836,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
     if (params.stateSessionId && params.correlationId) {
-      const scope = 'POWERAPPS_SOURCE_RESOLUTION';
+      const scope = requestScope || 'POWERAPPS_SOURCE_RESOLUTION';
       try {
         // Compute blob SHA for content validation
         const blobShaFunc = require('./stateContext').blobSha;
@@ -3044,7 +3044,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
