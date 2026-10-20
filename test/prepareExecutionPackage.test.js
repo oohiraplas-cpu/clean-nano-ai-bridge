@@ -506,14 +506,17 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
     const resolvers = {
       appTargetResolver: {
         resolve: async (query) => ({
-          id: 'registered-app-id',
-          environmentId: 'env-prod-001',
-          environmentName: 'Production',
-          name: query,
-          source: 'registry', // Indicates it came from registry
-          repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
-          gitRoot: 'powerapps/CN_AI依頼台帳/Source',
-          canonicalBranch: 'main'
+          status: 'ok',
+          verified: true,
+          data: {
+            appId: 'registered-app-id',
+            environmentId: 'env-prod-001',
+            displayName: query,
+            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+            gitBranch: 'main',
+            sourceOnCanonicalBranch: true,
+            writesAllowed: true
+          }
         }),
         listBranches: async () => ({
           branches: ['main'],
@@ -540,7 +543,7 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
     assert.strictEqual(result.status, 'BLOCKED', 'Status should be BLOCKED (no objective provided)');
     assert.strictEqual(result.target.appName, 'CN_AI依頼台帳');
     assert.strictEqual(result.target.appId, 'registered-app-id');
-    assert.strictEqual(result.diagnostics.step1AppResolution.resolutionSource, 'registry');
+    assert.strictEqual(result.diagnostics.step1AppResolution.resolutionSource, 'resolve_app_target');
   });
 
   // Scenario 2: Registry unregistered + resolver success → resolution success
