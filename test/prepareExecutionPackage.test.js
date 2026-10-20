@@ -458,10 +458,18 @@ node_test.describe('prepare_execution_package - State Context fields', () => {
   node_test.test('StateContext fields populated correctly', async () => {
     const resolvers = {
       appTargetResolver: {
-        resolve: async () => ({
-          id: 'test-app-id',
-          environmentId: 'test-env-id',
-          environmentName: 'Test Env'
+        resolve: async (query) => ({
+          status: 'ok',
+          verified: true,
+          data: {
+            appId: 'test-app-id',
+            environmentId: 'test-env-id',
+            displayName: query,
+            gitRoot: 'powerapps/CN_AI依頼台帳/Source',
+            gitBranch: 'main',
+            sourceOnCanonicalBranch: true,
+            writesAllowed: true
+          }
         }),
         listBranches: async () => ({
           branches: ['main'],
@@ -501,7 +509,7 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
           id: 'registered-app-id',
           environmentId: 'env-prod-001',
           environmentName: 'Production',
-          name: query.appName,
+          name: query,
           source: 'registry', // Indicates it came from registry
           repository: 'oohiraplas-cpu/clean-nano-ai-bridge',
           gitRoot: 'powerapps/CN_AI依頼台帳/Source',
@@ -596,7 +604,7 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
             'AI台帳': 'CN_AI依頼台帳',
             '台帳': 'CN_AI依頼台帳'
           };
-          const canonicalName = aliasMap[query.appName] || query.appName;
+          const canonicalName = aliasMap[query] || query;
           if (canonicalName === 'CN_AI依頼台帳') {
             return {
               status: 'ok',
@@ -646,7 +654,7 @@ node_test.describe('prepare_execution_package - Unified appTargetResolver (6 sce
       appTargetResolver: {
         resolve: async (query) => {
           // Simulate multiple matching apps - resolver returns null to indicate ambiguity
-          if (query.appName === 'App' || query.appName === 'AI') {
+          if (query === 'App' || query === 'AI') {
             return null; // Multiple matches, cannot uniquely resolve
           }
           return {
