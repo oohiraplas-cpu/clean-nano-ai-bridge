@@ -1469,7 +1469,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '実行依頼1件の状態（ステップごとの状態、承認状況を含む）を返します。読み取り専用。',
     inputSchema: {
       type: 'object',
-      properties: { requestId: { type: 'string', description: '実行依頼ID' } },
+      properties: { requestId: { type: 'string', description: '実行依頼ID' }, waitForTerminal: { type: 'boolean', description: '完了・停止・承認待ちまで待機し、途中経過を返さない（最大25秒）' }, timeoutMs: { type: 'integer', minimum: 0, maximum: 25000, description: '待機上限（ミリ秒、既定20000）' } },
       required: ['requestId'],
       additionalProperties: false
     },
@@ -2744,6 +2744,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
   if (method === 'get_execution_status') {
     if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    if (params.waitForTerminal === true) {
+      return require('./executionFinalResponse').waitForExecutionResult(executionQueue, params.requestId, {
+        timeoutMs: params.timeoutMs === undefined ? 20000 : params.timeoutMs
+      });
+    }
     return executionQueue.getStatus(params.requestId);
   }
   if (method === 'get_checkpoint') {
