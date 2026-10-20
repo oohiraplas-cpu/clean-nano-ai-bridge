@@ -374,9 +374,30 @@ async function prepareExecutionPackage(options = {}) {
       if (!step1.success && appName) {
         try {
           step1.resolutionMethod = 'appTargetResolver_dynamic';
-          targetApp = await appTargetResolver.resolve({ appName });
-          resolutionSource = targetApp?.source || 'resolve_app_target';
-          step1.success = targetApp?.id && targetApp?.environmentId;
+          // AppTargetResolver.resolve returns a common response envelope with
+          // data.appId/environmentId, not the legacy { id, environmentId } shape.
+          const resolved = await appTargetResolver.resolve(appName);
+          const candidate = resolved?.data;
+          if (resolved?.status === 'ok' && resolved?.verified === true &&
+              candidate?.appId && candidate?.environmentId &&
+              candidate?.gitRoot && candidate?.gitBranch &&
+              candidate?.sourceOnCanonicalBranch === true &&
+              candidate?.writesAllowed === true) {
+            targetApp = {
+              id: candidate.appId,
+              environmentId: candidate.environmentId,
+              appName: candidate.displayName,
+              gitRoot: candidate.gitRoot,
+              canonicalBranch: candidate.gitBranch,
+              source: 'resolve_app_target'
+            };
+            resolutionSource = 'resolve_app_target';
+            step1.success = true;
+          } else {
+            step1.resolverStatus = resolved?.status || 'unavailable';
+            step1.resolverUnconfirmed = resolved?.unconfirmed || [];
+            step1.success = false;
+          }
         } catch (resolveErr) {
           contract.missing.push(`Step 1 (app resolution): ${resolveErr.message}`);
           step1.resolverError = resolveErr.message;
