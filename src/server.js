@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
-const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
+// Power Automate flow writer is loaded only when a flow tool is invoked.
 const platformManage = require('./platformManage');
 const express = require('express');
 const cors = require('cors');
@@ -2171,7 +2171,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       const p = params || {};
       const fn = { powerautomate_flow_list: 'listFlows', powerautomate_flow_read: 'readFlow', powerautomate_flow_update: 'updateFlow', powerautomate_flow_set_state: 'setFlowState', powerautomate_flow_rollback: 'rollbackFlow' }[method];
       if (!fn) throw new Error('unknown tool');
-      const d = await powerAutomateFlowWriter[fn](p);
+      const d = await require('./powerAutomateFlowWriter')[fn](p);
       const bad = typeof d.status === 'string' && d.status.endsWith('verify_failed');
       return createCommonResponse({ status: bad ? 'partial' : 'ok', verified: !bad, data: d, warnings: [], summary: `${method} ${d.status || 'ok'}` });
     } catch (err) {
