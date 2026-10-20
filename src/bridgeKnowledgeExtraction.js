@@ -198,7 +198,9 @@ class AppTargetResolver {
     const app = matched.matches[0];
     if (matched.kind === 'partial') warnings.push(`「${query}」は部分一致で「${app.displayName}」に解決しました`);
 
-    const ruleKey = Object.keys(this.rules.apps || {}).find((k) => normalize(k) === normalize(app.displayName));
+    const ruleKey = Object.keys(this.rules.apps || {}).find((k) =>
+      [k, ...(this.rules.apps[k]?.aliases || [])].some((name) => normalize(name) === normalize(app.displayName))
+    );
     const ruleEntry = ruleKey ? this.rules.apps[ruleKey] : null;
     const gitRoot = ruleEntry?.gitRoot || null;
     const branch = this.git.canonicalBranch || null;
