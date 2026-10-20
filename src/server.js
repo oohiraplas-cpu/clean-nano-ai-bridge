@@ -825,6 +825,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       type: 'object',
       properties: {
         appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
+        environmentId: { type: 'string', description: '対象Power AppsのEnvironment ID（他アプリ参照時に必須）' },
         stateContext: STATE_CONTEXT_SCHEMA,
         stateSessionId: { type: 'string', description: 'Git保存ソース解析時の実行session ID（stateContextと併用時のみ有効）' },
         relativePath: { type: 'string', description: 'Git解析対象ファイルの相対パス（stateContextと併用時のみ有効）' }
@@ -2134,7 +2135,8 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     return inspectPowerAppsStructure({
       powerAppsStore,
-      appId: params.appId
+      appId: params.appId,
+      environmentId: params.environmentId
     });
   }
   if (method === 'get_executive_policy') return withUpstreamErrorStatus(Promise.resolve().then(() => getExecutivePolicy(params)), 400);
