@@ -21,8 +21,8 @@ Screens:
                 Properties:
                   DropShadow: =DropShadow.None
                   FillPortions: =0
-                  Height: =Max(640, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128)
-                  LayoutMinHeight: =Max(640, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128)
+                  Height: =Max(640, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128, '集計　売上'.Y + '集計　売上'.Height + 24)
+                  LayoutMinHeight: =Max(640, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128, '集計　売上'.Y + '集計　売上'.Height + 24)
                   LayoutMinWidth: =0
                   Width: =Parent.Width
                 Children:
@@ -215,9 +215,10 @@ Screens:
                         X: =Parent.Width * 3 / 4 - 2
                         Y: =105
                   - cnOpsGrossProfitPanel:
-                      Control: GroupContainer@1.3.0
+                      Control: GroupContainer@1.5.0
                       Variant: ManualLayout
                       Properties:
+                        DropShadow: =DropShadow.None
                         Visible: =gblCalType = "運営"
                         X: =16
                         Y: =840
