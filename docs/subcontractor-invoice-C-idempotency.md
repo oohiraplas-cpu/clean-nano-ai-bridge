@@ -1,0 +1,3 @@
+# C: Invoice uniqueness and atomicity (READ-only design)
+
+Verified CN_請求台帳.InvoiceKey and CN_人工明細台帳.LaborKey are required but unique=false. A client-side existence check cannot prevent concurrent duplicate submissions. Proposed dedicated invoice-line claim ledger keyed by PartnerKey+LaborKey with server-enforced uniqueness, atomic reservation and idempotent request ID. A labor line may be claimed only once across active submitted invoices; draft claims require expiry/recovery policy; cancellations/reissues require audit trail and explicit reversal. Do not alter existing SharePoint list settings without separate approval. Status BLOCKED pending approved persistence model and server-side atomic enforcement.
