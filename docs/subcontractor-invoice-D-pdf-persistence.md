@@ -1,0 +1,3 @@
+# D: PDF preview/persistence (READ-only design)
+
+Existing electronic report Screen3 uses PDF(Screen2,{ExpandContainers:true}) as Outlook attachment. That does not demonstrate persisted invoice PDF. A separate invoice layout must conditionally exclude unit-rate fields and underlying hidden content for registered active roster >=2. Preview and persisted PDF must be rendered from the same immutable invoice snapshot. Persist checksum, invoice key, tax and totals, then verify read-back and authorization before showing Saved. Reuse approved standard-license flows only after verification; do not assume POWER_AUTOMATE_FLOWS is configured. Status BLOCKED pending flow/storage permissions, license and iPhone PDF preview evidence.
