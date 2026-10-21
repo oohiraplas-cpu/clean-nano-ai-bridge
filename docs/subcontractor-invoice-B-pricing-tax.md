@@ -1,0 +1,3 @@
+# B: Partner pricing and tax (READ-only design)
+
+Verified inspected lists have no authoritative partner-specific tax-exclusive labor rate. Never substitute employee payroll or cost fields. Require effective-dated PartnerKey rate records, immutable invoice snapshot, verified applicable tax rate and rounding rule, decimal arithmetic and explicit exceptional line handling. Tax-exclusive subtotal = sum(confirmed labor * effective partner rate); tax and inclusive total are separate fields. For registered active roster count 1, render unit rate; count >=2 omit rate column entirely in PDF. Count is registered active workers, not invoice line count. Status BLOCKED pending price source, tax policy, and access controls.
