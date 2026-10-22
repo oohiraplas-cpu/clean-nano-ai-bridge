@@ -413,3 +413,20 @@ test('CRITICAL: same stateSessionId can be reused for 3+ screens in one session'
   assert.equal(compare.error, false);
   assert.equal(compare.data.correlationId, correlationId, 'correlation must be consistent');
 });
+
+
+test('run_powerapps_tests exposes guarded state context without weakening fail-closed', async t => {
+  const f = await fixture(t);
+  const schemaResponse = await fetch(f.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  const tools = (await schemaResponse.json()).result.tools;
+  const schema = tools.find(x => x.name === 'run_powerapps_tests').inputSchema;
+  assert.deepEqual(schema.properties.stateContext, STATE_CONTEXT_SCHEMA);
+  assert.ok(schema.required.includes('stateContext'));
+  assert.ok(schema.required.includes('stateSessionId'));
+  const denied = await f.rpc('run_powerapps_tests', { files: [{ relativePath: PATH, content: CONTENT }] });
+  assert.equal(denied.error, true);
+  const args = await f.chain();
+  const allowed = await f.rpc('run_powerapps_tests', { ...args, files: [{ relativePath: PATH, content: CONTENT }] });
+  assert.equal(allowed.error, false);
+  assert.ok(allowed.data);
+});
