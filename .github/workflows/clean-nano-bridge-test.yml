@@ -24,6 +24,8 @@ jobs:
       # ステップ 1: リポジトリをチェックアウト
       - name: "1. Checkout repository"
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # ステップ 2: Node.jsをセットアップ
       - name: "2. Setup Node.js"
@@ -43,6 +45,9 @@ jobs:
       # ステップ 5: npm install
       - name: "5. Install dependencies"
         run: npm ci
+
+      - name: "Performance: main vs PR startup baseline"
+        run: node --expose-gc benchmark/serverStartupCompare.js
 
       # ステップ 6: npm test (テスト実行)
       - name: "6. Run test suite"
