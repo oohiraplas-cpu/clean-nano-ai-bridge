@@ -257,7 +257,7 @@ Screens:
                   DisplayName: =DataSourceInfo([@CN_本人マイデータ],DataSourceInfo.DisplayName,'UserUPN')
                   MaxLength: =DataSourceInfo([@CN_本人マイデータ], DataSourceInfo.MaxLength, 'UserUPN')
                   Required: =true
-                  Update: =DataCardValue25.Text
+                  Update: =Lower(Trim(User().Email))
                   X: =0
                   Y: =2
                 Children:
@@ -293,7 +293,7 @@ Screens:
                         DisabledBorderColor: =RGBA(0, 0, 0, 0)
                         DisabledColor: =RGBA(161, 159, 157, 1)
                         DisabledFill: =RGBA(242, 242, 241, 0)
-                        DisplayMode: =Parent.DisplayMode
+                        DisplayMode: =DisplayMode.View
                         Font: =Font.'Segoe UI'
                         HoverBorderColor: =RGBA(16, 110, 190, 1)
                         HoverColor: =RGBA(50, 49, 48, 1)
