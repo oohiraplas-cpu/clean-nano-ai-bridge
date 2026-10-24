@@ -549,7 +549,9 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
           }
         },
         knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
-        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
+        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' },
+        stateContext: { type: 'object', properties: { appId: { type: 'string' }, environment: { type: 'string' }, branch: { type: 'string' }, canonicalBranch: { type: 'string' }, sha: { type: 'string' }, correlationId: { type: 'string' } }, required: ['appId', 'environment', 'branch', 'canonicalBranch', 'sha', 'correlationId'], additionalProperties: false },
+        stateSessionId: { type: 'string', description: 'get_powerapps_stateが発行したセッションID' }
       },
       required: ['files'],
       additionalProperties: false
@@ -3128,6 +3130,14 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         deploymentSha,
         requestId: requestCorrelationId
       };
+    }
+    if (method === 'run_powerapps_tests' && config.enforceStateManager === true) {
+      // Preserve the preflight Fail-Closed gate and validate against the server-owned registry.
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const result = await execute(params);
+      // Reject results produced after session expiry or scope invalidation.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return { ...result, correlationId: record.context.correlationId, stateSessionId: record.stateSessionId };
     }
     if (method === 'publish_powerapps_app') {
       // Canonical-branch refusal keeps its existing precedence (branch_mismatch) before session checks.
