@@ -2984,6 +2984,12 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
     const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
 
+    // Unified tools are READ-only until centralized WRITE approval and session validation are proven.
+    // Enforce at MCP dispatch too, including direct JSON-RPC legacy method routing.
+    if (platformManage.TOOL_NAMES.includes(method) &&
+        !platformManage.isReadOnlyOperation(method, params.operation)) {
+      throw requestError('Unified WRITE blocked: central approval and State Manager validation required', 403);
+    }
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
       // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
