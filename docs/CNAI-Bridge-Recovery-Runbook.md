@@ -156,5 +156,23 @@ CNAI（ChatGPT / Claude / Copilot）→ Clean Nano AI Bridge（`/mcp`、`MCP_API
 - 未確認項目は「未確認」と明記し、推測で埋めない。
 
 ## 12. 最終判定（2026-10-25 時点）
+
 - 判定: **PARTIAL**
-- 理由: Power Automate の `POWER_AUTOMATE_FLOWS` は値が確認できず BLOCKED（optional）。他の依存先（Power Apps / SharePoint / Git / Azure）の本番値は、このチャットから本番に到達できないため未確認。
+- main SHA: `686868b`（PR #183 のマージ commit）
+- PR #184（Runbook 検証更新）: CI `test` 2 件 SUCCESS、mergeable、競合なし、差分は Runbook 1 ファイル（+43 行）。Secret らしき文字列の検査で該当なし。**マージは未実施**（自動安全機構により拒否。人間の承認・操作待ち）。
+- CNAI 側の実測（CNAI からの報告値。本セッションからは本番未到達のため未再確認）:
+  - `health_check` = PASS、`get_bridge_capabilities` = PASS、`check_dependencies` = PASS（再実行後も PASS）
+  - Power Apps = OK、SharePoint = OK、Git = OK（branch: main）、Azure = dependency failure なし
+  - Power Automate = NOT_CONFIGURED（optional）
+- `POWER_AUTOMATE_FLOWS`: 未設定のまま。値は推測・生成していない。既存リポジトリに再利用可能な確定値なし。
+- PARTIAL の理由: Power Automate の HTTP トリガー実行設定が未構成（optional）。Power Automate の実環境での読取・更新・保存後再取得は本セッションから未確認。
+- 既存テスト: 1591 PASS / 0 FAIL（main `686868b` 相当の作業ツリーで確認済み）。
+
+## 13. 保存後再取得・rollback・Secret 保護
+- 変更は Git の commit として保存し、push 後に GitHub の差分・CI で再取得して確認する。
+- rollback: 問題があれば該当 PR を revert する（main への直接変更は行わない）。
+- Secret: 値・SAS・トークンは本文、ログ、PR、commit に含めない。検査は差分の正規表現で行う。
+
+## 14. 停止条件（再掲）
+- main へのマージ、本番公開、権限変更、追加課金、Premium 追加、物理削除、Secret の表示・保存、未確認値の推測。
+- 上記に該当する場合は、人間の承認を得てから実施する。
