@@ -210,3 +210,49 @@ DISCOVER → IDENTITY LOCK（repository / main SHA / branch / Environment / App 
 - 既存テスト 1591 PASS + 新規 Contract Test 4 PASS = 1595 PASS / 0 FAIL
 - Power Apps / Power Automate の実環境 E2E（save → re-read）: **未実施**（本番ホストに到達できないため BLOCKED）
 - POWER_AUTOMATE_FLOWS: 未設定（optional）。値は推測・生成していない
+
+## 16. 診断階層（責務の分離）
+
+誤った BLOCKED 判定と不要な再検査を避けるため、次の 5 段階を混同しない。
+
+| 段階 | 確認対象 | 目的 | 判定 |
+|---|---|---|---|
+| L1 Environment | Power Platform Environment | 操作対象の Environment ID を実取得する。過去値や名称から推測しない | 実取得値のみ |
+| L2 health_check | Bridge 本体 | Bridge が応答するか | PASS / FAIL |
+| L3 get_bridge_capabilities | Bridge の提供能力 | 利用可能 Tool、optional 依存、制約 | 一覧 |
+| L4 check_dependencies | Power Apps / SharePoint / Git / Azure / Power Automate | 依存先の個別判定 | ok / not_configured / error |
+| L5 対象サービス検証 | 実際の App / Flow | 解決した対象に対して実装工程へ進む | 工程ごと |
+
+- health_check が PASS でも、依存先が全部正常という意味にはしない。
+- optional 依存の not_configured は、Bridge 全体の FAIL にしない。
+- 最初の失敗境界を特定してから修復する。例: health_check PASS かつ Power Apps だけ error なら、Bridge は修復対象にせず Power Apps 依存のみを診断する。
+
+### 16.1 Environment Health Matrix（内部状態）
+同一変更内で、次の状態を 1 つの内部 State として保持する。
+
+- Environment: ID（実取得値）、confirmed
+- Bridge: health
+- Dependencies: powerApps / sharePoint / git / azure / powerAutomate、powerAutomateOptional
+- Target: appId / flowId、branch、sha
+
+再取得するのは、Environment 変更時、変更直前、Save 後、Merge 後、Publish 後、エラー修正後だけとする。
+
+### 16.2 自動マージ
+- 条件: CI PASS、conflict 0、Secret 0、unexpected changes 0、対象外変更 0、Identity Lock 一致、rollback 可能、branch protection 充足。
+- 条件を満たした PR のみ自動マージ対象とする。
+- マージ後は main を再取得し、新しい main SHA を正本として後続工程を続行する。
+
+### 16.3 Save → Re-read / Publish → Runtime Verify
+- Save 受付だけでは PASS にしない。Save 後の Re-read で期待内容と一致した場合のみ Save PASS。
+- Publish 要求だけでは DONE にしない。公開後の実環境を再取得し、公開状態と実装内容が一致した場合のみ成功。
+- Git = new / Runtime = old、Save = new / Publish = old などの矛盾があれば DONE にしない。
+
+### 16.4 自動復旧
+- 障害は Environment / Bridge / Dependency / Target / Source / Validation / Save / Merge / Publish / Runtime のどこで失敗したかを分類する。
+- 403 や proxy 拒否は、別の安全な既存経路（既存 Bridge → GitHub → Azure → PAC/Kudu → 既存 MCP）があれば続行する。
+- 人間操作として停止するのは、Secret の入力、追加課金、Premium 追加、重大な権限変更、物理削除、外部共有、復旧不能な変更の場合のみ。
+
+### 16.5 本セッション時点の状態（2026-10-25）
+- main: 936fd51（PR #187 マージ後）
+- Environment: 本セッションからは本番に到達できず、Environment ID を実取得していない（未確認）
+- 公開・有効化: 未実施（対象の App / Flow と変更内容が未指定）
