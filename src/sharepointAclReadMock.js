@@ -4,6 +4,7 @@
 const SITE = 'https://hisyoengineer.sharepoint.com/sites/cleannano';
 const LIST = '973f17d6-3566-4795-9712-2386bb7bf540';
 const PREFIX = "/_api/web/lists(guid'" + LIST + "')";
+const MAX_PAGES = 20;
 function requireGet(get) { if (typeof get !== 'function') throw new Error('read_transport_unavailable'); }
 function unwrap(x) { return x && x.d ? x.d : x; }
 async function collectAclEvidence({ get, siteUrl = SITE, listId = LIST, principalLogins = [] } = {}) {
@@ -13,10 +14,24 @@ async function collectAclEvidence({ get, siteUrl = SITE, listId = LIST, principa
   const base = PREFIX;
   // GET only. No POST, permission edits, credentials, or HTTP connector activation.
   const list = unwrap(await get(base + '?$select=Id,HasUniqueRoleAssignments,EffectiveBasePermissions'));
-  if (!list || typeof list.HasUniqueRoleAssignments !== 'boolean') throw new Error('inheritance_unverified');
-  const raw = unwrap(await get(base + '/roleassignments?$expand=Member,RoleDefinitionBindings'));
-  const assignments = Array.isArray(raw.value) ? raw.value : raw.results;
-  if (!Array.isArray(assignments)) throw new Error('role_assignments_unverified');
+  if (!list || String(list.Id || '').toLowerCase() !== LIST || typeof list.HasUniqueRoleAssignments !== 'boolean') throw new Error('inheritance_unverified');
+  const assignments = [];
+  const visited = new Set();
+  let next = base + '/roleassignments?$expand=Member,RoleDefinitionBindings';
+  for (let page = 0; next; page++) {
+    if (page >= MAX_PAGES) throw new Error('role_assignments_page_limit');
+    const key = next.startsWith('http') ? validateSameOriginNextLink(next) : next;
+    if (visited.has(key)) throw new Error('role_assignments_pagination_cycle');
+    visited.add(key);
+    const raw = unwrap(await get(key));
+    if (!raw || typeof raw !== 'object') throw new Error('role_assignments_unverified');
+    const items = Array.isArray(raw.value) ? raw.value : raw.results;
+    if (!Array.isArray(items)) throw new Error('role_assignments_unverified');
+    if (items.some(item => !item || typeof item !== 'object')) throw new Error('role_assignments_unverified');
+    assignments.push(...items);
+    const link = raw['@odata.nextLink'] || raw['odata.nextLink'] || raw.__next;
+    next = link ? validateSameOriginNextLink(link) : null;
+  }
   const effective = [];
   for (const login of principalLogins) {
     const p = unwrap(await get(base + '/getusereffectivepermissions(@u)?@u=' + encodeURIComponent("'"+login.replace(/'/g,"''")+"'")));
@@ -39,11 +54,13 @@ function validateSharePointTokenClaims(claims, expectedAudience = 'https://hisyo
   return {audienceVerified:true,readClaimVerified:true,principalType:delegated?'delegated':'application',liveAccessVerified:false};
 }
 function validateSameOriginNextLink(nextLink, siteUrl = SITE) {
+  if (siteUrl !== SITE) throw new Error('pagination_target_mismatch');
   if (typeof nextLink !== 'string' || !nextLink) throw new Error('pagination_link_missing');
   let url;
-  try { url = new URL(nextLink,siteUrl); } catch { throw new Error('pagination_link_invalid'); }
-  if (url.origin !== new URL(siteUrl).origin || !url.pathname.startsWith(new URL(siteUrl).pathname + '/_api/web/lists(guid')) throw new Error('pagination_target_mismatch');
-  if (!url.pathname.includes(LIST)) throw new Error('pagination_target_mismatch');
+  try { url = new URL(nextLink, siteUrl); } catch { throw new Error('pagination_link_invalid'); }
+  const allowed = new URL(SITE + PREFIX + '/roleassignments');
+  if (url.origin !== allowed.origin || url.pathname !== allowed.pathname || url.username || url.password || url.hash) throw new Error('pagination_target_mismatch');
+  if (![...url.searchParams.keys()].every(key => ['$skiptoken','$skip','$top','$expand'].includes(key))) throw new Error('pagination_query_invalid');
   return url.toString();
 }
 function canEditListItems(mask) {
