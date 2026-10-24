@@ -549,7 +549,9 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
           }
         },
         knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
-        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
+        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: 'get_powerapps_stateが返した実行単位ID' }
       },
       required: ['files'],
       additionalProperties: false
@@ -3240,6 +3242,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       return { ...result, correlationId: record.context.correlationId,
         stateContext: { ...record.context }, stateSessionId: record.stateSessionId,
         targetSha: record.context.sha, comparisonSources: method === 'compare_powerapps_with_git' ? result.data.comparisonSources : undefined };
+    }
+    if (method === 'run_powerapps_tests' && config.enforceStateManager === true) {
+      // Keep the existing Fail-Closed gate; additionally bind it to the actual
+      // observed, unexpired Registry session and authenticated transport scope.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
     }
     return execute(params);
   }
