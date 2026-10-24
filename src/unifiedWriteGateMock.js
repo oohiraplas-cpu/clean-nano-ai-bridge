@@ -42,6 +42,11 @@ async function evaluateStrictMockUnifiedWrite(input = {}) {
   let record;
   try { record = await input.fetchApprovalEvidence({ requestId: approval.requestId, stepIndex: approval.stepIndex }); }
   catch { return deny('approval_evidence_unreadable'); }
+  // Reject ambiguous/duplicate approval evidence even when one row is valid.
+  // A trusted adapter must return the complete matching candidate set, not the first row.
+  if (!Array.isArray(record)) return deny('approval_evidence_not_unique');
+  if (record.length !== 1) return deny(record.length === 0 ? 'approval_evidence_missing' : 'approval_evidence_ambiguous');
+  record = record[0];
   if (!record || typeof record !== 'object' || Array.isArray(record)) return deny('approval_evidence_missing');
   const expected = {
     requestId: approval.requestId, stepIndex: approval.stepIndex, tool, operation,
