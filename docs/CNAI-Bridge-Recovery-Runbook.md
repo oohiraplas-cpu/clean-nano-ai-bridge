@@ -176,3 +176,37 @@ CNAI（ChatGPT / Claude / Copilot）→ Clean Nano AI Bridge（`/mcp`、`MCP_API
 ## 14. 停止条件（再掲）
 - main へのマージ、本番公開、権限変更、追加課金、Premium 追加、物理削除、Secret の表示・保存、未確認値の推測。
 - 上記に該当する場合は、人間の承認を得てから実施する。
+
+## 15. Golden Path（標準実行経路）
+
+通常の Power Platform 変更は、この順序を正本とする。例外時のみ fallback を使う。
+
+DISCOVER → IDENTITY LOCK（repository / main SHA / branch / Environment / App ID or Flow ID / path を固定）→ SNAPSHOT → DEPENDENCY CHECK → PLAN → PRE-VALIDATE → CHANGE → VALIDATE → TEST → SAVE → RE-READ → DIFF → RECOVERABILITY CHECK → AUDIT → DONE
+
+- 古い SHA は拒否する。
+- Validate 前に変更しない。
+- Save 後は必ず Re-read し、期待値と実取得結果が一致した場合のみ DONE とする。Save 成功レスポンスだけでは DONE にしない。
+- Re-read 不一致は DONE にしない。
+
+### 15.1 Contract Test（CI で検出する契約）
+`test/goldenPathContract.test.js`（4 件）で次を検証する。
+- 不正な `POWER_AUTOMATE_FLOWS` で起動を落とさず、空として扱う
+- 未設定の flowKey は外部へ送信せず拒否する
+- エラー応答にトリガー URL（SAS）を含めない
+- 依存確認の出力にトリガー URL を含めない（optional 依存でも Secret を漏らさない）
+
+テストには実在しないダミー URL のみを使い、実値は使わない。
+
+### 15.2 能力判定の区別
+- PASS: 実経路と検証が成功
+- PARTIAL: コードの存在のみ、または実環境の検証が未実施
+- BLOCKED: 外部条件（本番到達不可、権限、Secret 入力が必要など）で実行不能
+- NOT_NEEDED: 今回の目的上不要
+
+コードの存在だけでは PASS にしない。
+
+### 15.3 本セッション時点の状態（2026-10-25）
+- main: `6588b55`（PR #184 マージ後）
+- 既存テスト 1591 PASS + 新規 Contract Test 4 PASS = 1595 PASS / 0 FAIL
+- Power Apps / Power Automate の実環境 E2E（save → re-read）: **未実施**（本番ホストに到達できないため BLOCKED）
+- POWER_AUTOMATE_FLOWS: 未設定（optional）。値は推測・生成していない
