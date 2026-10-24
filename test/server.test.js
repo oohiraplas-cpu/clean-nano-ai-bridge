@@ -1806,3 +1806,20 @@ test('SharePointの新規作成・編集ツールは人間承認なしでは書�
   }
   assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
 });
+
+test('unified tool operations fail closed for WRITE and unknown operations', async () => {
+  const platform = require('../src/platformManage');
+  for (const [tool, writeOp] of [
+    ['sharepoint_manage', 'item_update'],
+    ['powerapps_manage', 'publish'],
+    ['powerautomate_manage', 'create']
+  ]) {
+    assert.equal(platform.isReadOnlyOperation(tool, writeOp), false);
+    const result = await platform.run(tool, { operation: writeOp });
+    assert.equal(result.status, 'approval_required');
+    assert.equal(result.verified, false);
+  }
+  assert.equal(platform.isReadOnlyOperation('powerplatform_validate', 'premium_check'), true);
+  assert.equal(platform.isReadOnlyOperation('sharepoint_manage', 'search'), true);
+  assert.equal(platform.isReadOnlyOperation('sharepoint_manage', '__unknown__'), false);
+});
