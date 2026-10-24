@@ -65,20 +65,20 @@ function fakeGraph() {
 
 test('sharepoint item_create repairs field names and verifies; update verifies', async () => {
   const g = fakeGraph();
-  const r = await pm.run('sharepoint_manage', { operation: 'item_create', list: 'CN Test', fields: { Title: 'x', Status: 'A' } }, { env, graph: g });
+  const r = await I.sharepointManage({ operation: 'item_create', list: 'CN Test', fields: { Title: 'x', Status: 'A' } }, { env, graph: g });
   assert.strictEqual(r.verified, true, JSON.stringify(r));
   assert.deepStrictEqual(r.data.mappedFields, [{ from: 'Status', to: 'Status0' }]);
-  const u = await pm.run('sharepoint_manage', { operation: 'item_update', list: 'CN Test', itemId: r.data.itemId, fields: { Title: 'y' } }, { env, graph: g });
+  const u = await I.sharepointManage({ operation: 'item_update', list: 'CN Test', itemId: r.data.itemId, fields: { Title: 'y' } }, { env, graph: g });
   assert.strictEqual(u.verified, true, JSON.stringify(u));
 });
 
 test('choice_update and delete approval', async () => {
   const g = fakeGraph();
-  const r = await pm.run('sharepoint_manage', { operation: 'choice_update', list: 'CN Test', column: 'Status', choices: ['B'] }, { env, graph: g });
+  const r = await I.sharepointManage({ operation: 'choice_update', list: 'CN Test', column: 'Status', choices: ['B'] }, { env, graph: g });
   assert.deepStrictEqual(r.data.column.choices, ['A', 'B']);
   const d = await pm.run('sharepoint_manage', { operation: 'delete', list: 'CN Test', itemId: '1' }, { env, graph: g });
   assert.strictEqual(d.status, 'approval_required');
-  assert.strictEqual(d.approval, 'DELETE item 1');
+  assert.match(d.error, /verified human approval|approval/i);
 });
 
 test('flow trigger_edit saves + verifies; delete needs approval', async () => {
@@ -86,7 +86,7 @@ test('flow trigger_edit saves + verifies; delete needs approval', async () => {
   let stored = JSON.stringify(cd);
   const client = { async get() { return { name: 'f', statecode: 0, clientdata: stored }; }, async patch(p, b) { if (b.clientdata) stored = b.clientdata; }, async post() { return {}; } };
   const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-  const r = await pm.run('powerautomate_manage', { operation: 'trigger_edit', flowId: id, set: [{ path: 'R.recurrence.interval', value: 2 }] }, { env, flowClient: client });
+  const r = await I.powerautomateManage({ operation: 'trigger_edit', flowId: id, set: [{ path: 'R.recurrence.interval', value: 2 }] }, { env, flowClient: client });
   assert.strictEqual(r.verified, true, JSON.stringify(r));
   assert.strictEqual(JSON.parse(stored).properties.definition.triggers.R.recurrence.interval, 2);
   const del = await pm.run('powerautomate_manage', { operation: 'delete', flowId: id }, { env, flowClient: client });
@@ -122,8 +122,9 @@ test('premium guard: standard passes, HTTP / Dataverse / unknown blocked', () =>
 
 test('premium guard stops flow create before any API call', async () => {
   const r = await pm.run('powerautomate_manage', { operation: 'create', name: 'x', definition: { triggers: {}, actions: { h: { type: 'Http', inputs: {} } } } }, { env, flowClient: { get() { throw new Error('must not call'); }, post() { throw new Error('must not call'); } } });
-  assert.strictEqual(r.status, 'blocked_premium');
+  assert.strictEqual(r.status, 'approval_required');
   assert.strictEqual(r.verified, false);
+  assert.match(r.error, /human approval/);
 });
 
 test('chat-friendly: operation aliases, JSON-string params, helpful unknown op', async () => {
@@ -154,7 +155,7 @@ test('flow test never reports a pre-existing run as the new result', async () =>
   const runs = [{ name: 'old', status: 'Succeeded' }];
   const cd = JSON.stringify({ properties: { connectionReferences: {}, definition: { triggers: { r: { type: 'Recurrence' } }, actions: {} } } });
   const dv = { get: async (q) => (q.startsWith('flowruns') ? { value: runs } : { clientdata: cd, statecode: 1 }), patch: async () => ({}) };
-  const r = await pm.run('powerautomate_manage', { operation: 'test', flowId: '11111111-1111-1111-1111-111111111111', waitMs: 30 }, { env, flowClient: dv, pollMs: 5 });
+  const r = await I.powerautomateManage({ operation: 'test', flowId: '11111111-1111-1111-1111-111111111111', waitMs: 30 }, { env, flowClient: dv, pollMs: 5 });
   assert.strictEqual(r.verified, false);
   assert.strictEqual(r.data.status, 'no_new_run');
 });
@@ -237,4 +238,15 @@ test('app_get returns appId from canvasapps and binds an expected appId (Fail-Cl
 
   const multi = await P({ operation: 'app_get' }, { env, client: mkClient([{ canvasappid: APP }, { canvasappid: '11111111-1111-1111-1111-111111111111' }]) });
   assert.strictEqual(multi.data.appId, null);
+});
+
+// Direct handlers retain legacy functional behavior for isolated tests;
+// MCP-exposed platformManage.run remains WRITE-denied until approval is wired.
+test('unified WRITE remains denied before handler invocation even with client-supplied approval', async () => {
+  let called = false;
+  const graph = { post: async () => { called = true; throw Error('should never execute'); } };
+  const r = await pm.run('sharepoint_manage', { operation: 'item_create', list: 'CN Test', approvedByHuman: true }, { env, graph });
+  assert.strictEqual(r.status, 'approval_required');
+  assert.strictEqual(r.verified, false);
+  assert.strictEqual(called, false);
 });
