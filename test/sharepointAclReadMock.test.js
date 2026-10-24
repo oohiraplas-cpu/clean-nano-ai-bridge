@@ -65,3 +65,29 @@ test('SharePoint EditListItems permission bit uses Low bit 3 and rejects malform
   assert.throws(()=>check({Low:'not-a-number'}),/permission_mask_invalid/);
   assert.throws(()=>check({Low:'-1'}),/permission_mask_invalid/);
 });
+
+test('ACL evidence collects every role assignment page before reporting verified',async()=>{
+  const {collectAclEvidence}=require('../src/sharepointAclReadMock');
+  const base="https://hisyoengineer.sharepoint.com/sites/cleannano/_api/web/lists(guid'973f17d6-3566-4795-9712-2386bb7bf540')/roleassignments";
+  const seen=[];
+  const get=async p=>{
+    seen.push(p);
+    if(p.includes('?$select=')) return {Id:'973f17d6-3566-4795-9712-2386bb7bf540',HasUniqueRoleAssignments:false};
+    if(p.includes('$skiptoken=page2')) return {value:[{PrincipalId:2}]};
+    return {value:[{PrincipalId:1}],'@odata.nextLink':base+'?$skiptoken=page2'};
+  };
+  const result=await collectAclEvidence({get});
+  assert.equal(result.roleAssignments.length,2);
+  assert.equal(seen.length,3);
+});
+test('ACL evidence fails closed on list GUID mismatch and malformed paging',async()=>{
+  const {collectAclEvidence}=require('../src/sharepointAclReadMock');
+  await assert.rejects(collectAclEvidence({get:async()=>({Id:'wrong',HasUniqueRoleAssignments:true})}),/inheritance_unverified/);
+  const id='973f17d6-3566-4795-9712-2386bb7bf540';
+  const list={Id:id,HasUniqueRoleAssignments:true};
+  await assert.rejects(collectAclEvidence({get:async p=>p.includes('?$select=')?list:{value:[],'@odata.nextLink':'https://evil.example/'}}),/pagination_target_mismatch/);
+  const cycle="https://hisyoengineer.sharepoint.com/sites/cleannano/_api/web/lists(guid'"+id+"')/roleassignments?$skiptoken=same";
+  await assert.rejects(collectAclEvidence({get:async p=>p.includes('?$select=')?list:{value:[],'@odata.nextLink':cycle}}),/role_assignments_pagination_cycle/);
+  let counter=0;
+  await assert.rejects(collectAclEvidence({get:async p=>p.includes('?$select=')?list:{value:[],'@odata.nextLink':"https://hisyoengineer.sharepoint.com/sites/cleannano/_api/web/lists(guid'"+id+"')/roleassignments?$skiptoken="+'unique'+(counter++)}}),/role_assignments_page_limit/);
+});
