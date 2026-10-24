@@ -68,7 +68,7 @@ function strictFixture() {
     appId: input.stateContext.appId, sha: input.stateContext.sha,
     resourceKind: resource.kind, resourceId: resource.id
   };
-  return { ...f, input: { ...input, resource, fetchApprovalEvidence: async () => ({...record}) }, record };
+  return { ...f, input: { ...input, resource, fetchApprovalEvidence: async () => ([{...record}]) }, record };
 }
 test('strict mock approves exact human-ledger-backed operation and resource only without execution', async () => {
   const f = strictFixture();
@@ -82,7 +82,7 @@ test('strict mock rejects each independent approval evidence binding mismatch', 
     requestId:'other-request', stepIndex:2, tool:'sharepoint_manage'
   })) {
     const f = strictFixture();
-    const actual = await evaluateStrictMockUnifiedWrite({...f.input, fetchApprovalEvidence:async()=>({...f.record,[key]:value})});
+    const actual = await evaluateStrictMockUnifiedWrite({...f.input, fetchApprovalEvidence:async()=>([{...f.record,[key]:value}])});
     assert.equal(actual.reason,'approval_evidence_mismatch',key);
   }
 });
@@ -90,7 +90,7 @@ test('strict mock rejects missing or unreadable approval evidence and target', a
   const f = strictFixture();
   assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:null})).reason,'approval_evidence_unconfigured');
   assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>{throw Error('offline')}})).reason,'approval_evidence_unreadable');
-  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>null})).reason,'approval_evidence_missing');
+  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>[]})).reason,'approval_evidence_missing');
   assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,resource:null})).reason,'resource_missing');
 });
 test('strict mock still rejects expired registry, revoked approval and premium', async () => {
@@ -106,4 +106,22 @@ test('strict mock does not override actual unified WRITE denial', async () => {
   assert.equal((await evaluateStrictMockUnifiedWrite(f.input)).allowed,true);
   const result=await require('../src/platformManage').run('powerapps_manage',{operation:'screen_edit',approvedByHuman:true});
   assert.equal(result.status,'approval_required');
+});
+
+test('strict mock rejects duplicate and conflicting approval rows (no first-valid shortcut)', async () => {
+  const f = strictFixture();
+  for (const rows of [
+    [f.record, f.record],
+    [f.record, {...f.record, operation:'publish'}],
+    [{...f.record, operation:'publish'}, f.record]
+  ]) {
+    const result=await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>rows});
+    assert.equal(result.reason,'approval_evidence_ambiguous');
+    assert.equal(result.allowed,false);
+  }
+});
+test('strict mock rejects non-array approval evidence and keeps production WRITE disabled', async () => {
+  const f=strictFixture();
+  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>f.record})).reason,'approval_evidence_not_unique');
+  assert.equal((await require('../src/platformManage').run('sharepoint_manage',{operation:'item_update',approvedByHuman:true})).status,'approval_required');
 });
