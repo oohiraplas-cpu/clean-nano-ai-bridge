@@ -1144,6 +1144,20 @@ test('run_powerapps_tests: enforced mode rejects unregistered and mismatched ses
   assert.notEqual(result.structuredContent.status, 'passed');
 });
 
+test('run_powerapps_tests: scope mismatch and TTL are rejected by server-owned registry', () => {
+  const { StateContextRegistry } = require('../src/stateContext');
+  let now = 1000;
+  const registry = new StateContextRegistry({ ttlMs: 50, now: () => now });
+  const registered = registry.begin({
+    appId: 'test-app', environmentId: 'test-env', branch: 'main',
+    canonicalBranch: 'main', sha: 'a'.repeat(40)
+  }, 'authorized-scope');
+  const context = registered.stateContext;
+  assert.throws(() => registry.lookup(context.correlationId, registered.stateSessionId, 'other-scope'), /stateSessionId/);
+  now += 51;
+  assert.throws(() => registry.lookup(context.correlationId, registered.stateSessionId, 'authorized-scope'), /expired/);
+});
+
 // ---- verify_save_result ----
 
 test('verify_save_result: 正本ソースとアプリ状態が期待どおりならverified、保存未反映ならverified:false', async (t) => {
