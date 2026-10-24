@@ -221,3 +221,10 @@ test('State Manager - all write tools listed', () => {
     assert(FAIL_CLOSED_TOOLS.includes(op), `${op} should be in FAIL_CLOSED_TOOLS`);
   }
 });
+
+// Regression: static test tool remains protected by State Manager preflight.
+test('run_powerapps_tests remains fail-closed for absent state context', () => {
+  assert(FAIL_CLOSED_TOOLS.includes('run_powerapps_tests'));
+  const result = validateStateContext('run_powerapps_tests', { files: [{ relativePath: 'a.pa.yaml', content: '{}' }] }, null);
+  assert.equal(result.isValid, false);
+});
