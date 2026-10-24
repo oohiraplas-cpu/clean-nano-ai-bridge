@@ -1122,6 +1122,28 @@ test('run_powerapps_tests: 静的検査を実行し、未検証項目はskipped+
   assert.equal(viaLegacy.body.result.scope, 'static_analysis');
 });
 
+test('run_powerapps_tests: enforced mode rejects missing context before static analysis', async (t) => {
+  const server = await newServer(t, { enforceStateManager: true });
+  const result = await rpc(server, 'run_powerapps_tests', {
+    files: [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\n  Screen1:\n' }]
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.structuredContent.error, /State Manager検証エラー/);
+  assert.equal(result.structuredContent.failedClosedTool, true);
+});
+
+test('run_powerapps_tests: enforced mode rejects unregistered and mismatched sessions', async (t) => {
+  const server = await newServer(t, { enforceStateManager: true });
+  const args = {
+    files: [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\n  Screen1:\n' }],
+    ...CHANGE_CONTEXT
+  };
+  const result = await rpc(server, 'run_powerapps_tests', args);
+  assert.equal(result.isError, true);
+  assert.ok(result.structuredContent.error);
+  assert.notEqual(result.structuredContent.status, 'passed');
+});
+
 // ---- verify_save_result ----
 
 test('verify_save_result: 正本ソースとアプリ状態が期待どおりならverified、保存未反映ならverified:false', async (t) => {
