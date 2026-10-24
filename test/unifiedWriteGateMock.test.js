@@ -55,3 +55,55 @@ test('mock gate never enables production unified WRITE',async()=>{
   assert.equal(result.status,'approval_required');
   assert.equal((await evaluateMockUnifiedWrite(input)).allowed,true);
 });
+
+const { evaluateStrictMockUnifiedWrite } = require('../src/unifiedWriteGateMock');
+function strictFixture() {
+  const f = fixture();
+  const resource = { kind: 'powerapps-screen', id: 'S1_Home' };
+  const { input } = f;
+  const record = {
+    requestId: input.approval.requestId, stepIndex: input.approval.stepIndex,
+    tool: input.tool, operation: input.operation, paramsDigest: digest(input.params),
+    scope: input.scope, environment: input.stateContext.environment,
+    appId: input.stateContext.appId, sha: input.stateContext.sha,
+    resourceKind: resource.kind, resourceId: resource.id
+  };
+  return { ...f, input: { ...input, resource, fetchApprovalEvidence: async () => ({...record}) }, record };
+}
+test('strict mock approves exact human-ledger-backed operation and resource only without execution', async () => {
+  const f = strictFixture();
+  assert.deepEqual(await evaluateStrictMockUnifiedWrite(f.input), {allowed:true,reason:'strict_mock_only_no_execution'});
+});
+test('strict mock rejects each independent approval evidence binding mismatch', async () => {
+  for (const [key,value] of Object.entries({
+    operation:'publish', paramsDigest:'0'.repeat(64), scope:'different-credential',
+    environment:'other-env', appId:'other-app', sha:'f'.repeat(40),
+    resourceKind:'sharepoint-list', resourceId:'different-screen',
+    requestId:'other-request', stepIndex:2, tool:'sharepoint_manage'
+  })) {
+    const f = strictFixture();
+    const actual = await evaluateStrictMockUnifiedWrite({...f.input, fetchApprovalEvidence:async()=>({...f.record,[key]:value})});
+    assert.equal(actual.reason,'approval_evidence_mismatch',key);
+  }
+});
+test('strict mock rejects missing or unreadable approval evidence and target', async () => {
+  const f = strictFixture();
+  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:null})).reason,'approval_evidence_unconfigured');
+  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>{throw Error('offline')}})).reason,'approval_evidence_unreadable');
+  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,fetchApprovalEvidence:async()=>null})).reason,'approval_evidence_missing');
+  assert.equal((await evaluateStrictMockUnifiedWrite({...f.input,resource:null})).reason,'resource_missing');
+});
+test('strict mock still rejects expired registry, revoked approval and premium', async () => {
+  const expired = strictFixture();expired.expire();
+  assert.equal((await evaluateStrictMockUnifiedWrite(expired.input)).reason,'state_registry_rejected');
+  const revoked = strictFixture();revoked.revoke();
+  assert.equal((await evaluateStrictMockUnifiedWrite(revoked.input)).reason,'approval_rejected');
+  const premium = strictFixture();
+  assert.equal((await evaluateStrictMockUnifiedWrite({...premium.input,resolvedArtifact:{actions:{http:{type:'Http'}}}})).reason,'premium_or_unknown');
+});
+test('strict mock does not override actual unified WRITE denial', async () => {
+  const f = strictFixture();
+  assert.equal((await evaluateStrictMockUnifiedWrite(f.input)).allowed,true);
+  const result=await require('../src/platformManage').run('powerapps_manage',{operation:'screen_edit',approvedByHuman:true});
+  assert.equal(result.status,'approval_required');
+});
