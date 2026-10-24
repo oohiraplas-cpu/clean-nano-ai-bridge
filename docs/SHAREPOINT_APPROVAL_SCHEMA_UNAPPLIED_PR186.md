@@ -41,3 +41,26 @@ Before applying, verify SharePoint internal names, supported field types, unique
 
 ## Deployment decision
 BLOCKED until all schema/ACL/permission evidence and separate user authorization for production changes. Draft PR #186 only; no main merge, publish, premium usage or additional charges.
+
+## 2026-10-25 effective ACL READ audit — BLOCKED
+
+Live Microsoft SharePoint Graph get_site and list_site_lists confirmed CN_AI依頼台帳 is a genericList at list GUID 973f17d6-3566-4795-9712-2386bb7bf540, URL https://hisyoengineer.sharepoint.com/sites/cleannano/Lists/CN_AI.
+
+The available SharePoint connector list_item_permissions is **drive-item/file-only**, not a SharePoint list permission API. Its results cannot establish this genericList's inheritance, role assignments, item-level permissions or actor-specific effective rights. The Bridge MAX sharepoint_manage.get operation exposes list metadata and columns, not effective ACL. No list permission endpoint was called, and no write-based permission probe was attempted.
+
+Evidence still required:
+1. List HasUniqueRoleAssignments and parent web inheritance state (read-only).
+2. Complete role assignments including SharePoint groups, Entra security groups, nested membership, Limited Access, site owners and service principals; resolve effective rights rather than group names alone.
+3. Explicit **non-edit** proof for ordinary employee account(s), the Bridge/Azure managed identity, Copilot Studio connection identity, Power Automate run-only/owner identities and other AI execution principals; include their effective role, list permissions and any app-only Graph permission paths.
+4. Confirm authorized human approvers alone can create/modify approval evidence, and no ordinary user can self-approve by editing approval fields on CN_AI依頼台帳.
+5. Check item-level role inheritance, list form/flow mutation paths, audit/version history and whether approver identity comes from a trustworthy Entra claim.
+6. Collect sanitized evidence with observation time, principal IDs (redacted where appropriate), site/list GUID, inheritance flags and permissions; do not expose secrets or modify ACL.
+
+Decision: approval tamper prevention BLOCKED; central WRITE remains fail-closed. If approval fields on CN_AI依頼台帳 can be modified by ordinary requesters, the ledger MUST NOT treat them as an independent human approval source. Prefer a separately protected approval list or segregated immutable approval records only after human-authorized ACL design; no automatic creation.
+
+## ApprovalLedger alignment (source review)
+- Existing required fieldMap keys: requestId, stepIndex, tool, status, approver, approvedAt, revoked.
+- CN_AI依頼台帳 currently has Title (request ID candidate), approval status, approver, approval datetime; **no verified dedicated stepIndex, tool, revoked or strict target/digest binding columns**.
+- Existing ApprovalLedger.check accepts the first valid record among multiple rows. Before production strict approval, reject ambiguous/conflicting duplicate approvals and bind evidence to one immutable row/version/ETag.
+- Strict mock additionally checks operation, params SHA-256, credential scope, environment, appId, source SHA and resource kind/id, but it is NOT connected to live SharePoint and is NOT an authorization gate.
+- Never treat `approvedByHuman`, client-supplied `binding`, client-supplied `scope` or an unverified fetch callback as sufficient authorization.
