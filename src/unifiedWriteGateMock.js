@@ -29,4 +29,31 @@ async function evaluateMockUnifiedWrite({ tool, operation, params = {}, stateCon
   // Design-only result; does NOT call handlers, enable WRITE, or mutate data.
   return { allowed: true, reason: 'mock_gate_only_no_execution' };
 }
-module.exports = { evaluateMockUnifiedWrite, digest };
+// Strict v2 mock: evidence is loaded from a separate trusted READ callback, never from caller arguments.
+// The legacy ledger check alone does not bind operation, resource or parameter digest.
+async function evaluateStrictMockUnifiedWrite(input = {}) {
+  const deny = (reason) => ({ allowed: false, reason });
+  const first = await evaluateMockUnifiedWrite(input);
+  if (!first.allowed) return first;
+  if (typeof input.fetchApprovalEvidence !== 'function') return deny('approval_evidence_unconfigured');
+  const { approval, tool, operation, params, scope, stateContext, resource } = input;
+  if (!resource || typeof resource.kind !== 'string' || !resource.kind ||
+      typeof resource.id !== 'string' || !resource.id) return deny('resource_missing');
+  let record;
+  try { record = await input.fetchApprovalEvidence({ requestId: approval.requestId, stepIndex: approval.stepIndex }); }
+  catch { return deny('approval_evidence_unreadable'); }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return deny('approval_evidence_missing');
+  const expected = {
+    requestId: approval.requestId, stepIndex: approval.stepIndex, tool, operation,
+    paramsDigest: digest(params), scope, environment: stateContext.environment,
+    appId: stateContext.appId, sha: stateContext.sha,
+    resourceKind: resource.kind, resourceId: resource.id
+  };
+  for (const [field, value] of Object.entries(expected)) {
+    if (typeof value === 'string' && !value) return deny('approval_evidence_incomplete');
+    if (record[field] !== value) return deny('approval_evidence_mismatch');
+  }
+  // Mock-only acceptance: production handler dispatch remains hard-denied.
+  return { allowed: true, reason: 'strict_mock_only_no_execution' };
+}
+module.exports = { evaluateMockUnifiedWrite, evaluateStrictMockUnifiedWrite, digest };
