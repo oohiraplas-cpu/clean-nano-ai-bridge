@@ -64,7 +64,7 @@ class StateContextRegistry {
     // Store full context including extended AuthorityContext fields
     // Internal schema: appId, environment (for backward compat), plus all AuthorityContext fields
     const context = { ...state, appId, environment, correlationId };
-    this.records.set(correlationId, { context, scope, stateSessionId, expiresAt: this.now() + this.ttlMs, source: null });
+    this.records.set(correlationId, { context, scope, stateSessionId, expiresAt: this.now() + this.ttlMs, source: null, sources: new Map() });
     return this.response(this.records.get(correlationId));
   }
 
@@ -125,6 +125,7 @@ class StateContextRegistry {
     }
     record.context = context;
     record.source = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
+    record.sources.set(source.path, record.source);
     return this.response(record);
   }
 
@@ -148,12 +149,19 @@ class StateContextRegistry {
     if (blobSha(source.content) !== source.sha) failures.push('sha: observed content does not match blob SHA');
     if (failures.length) throw contextError(failures);
 
-    // Allow rebinding to different paths (targetNames scenario with multiple files)
-    // Only reject if trying to bind the SAME path with different SHA
-    if (record.source && record.source.path === source.path && record.source.sha !== source.sha) {
+    // Keep every observed canonical path, including files bound by the legacy API.
+    if (source.path.startsWith('/') || source.path.includes('\\') ||
+        source.path.split('/').some(part => !part || part === '.' || part === '..')) {
+      throw contextError(['path: canonical relative path required']);
+    }
+    const previous = record.sources.get(source.path) ||
+      (record.source?.path === source.path ? record.source : null);
+    if (previous && previous.sha !== source.sha) {
       throw contextError(['path: already bound with different SHA']);
     }
-    record.source = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
+    const observation = { ...source, requestedPath: relativePath, contentHash: hash(source.content) };
+    record.sources.set(source.path, observation);
+    record.source = observation;
     return this.response(record);
   }
 

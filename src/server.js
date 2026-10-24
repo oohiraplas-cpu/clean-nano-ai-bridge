@@ -1613,7 +1613,7 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, authenticatedScope) {
   if (method === 'get_powerapps_media_asset') {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
     if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
@@ -1680,134 +1680,95 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
 
-    // targetNames 指定時: 複数ファイルを個別展開→SourceObservation検証→bindSourceObservation
-    if (params.targetNames && params.targetNames.length > 0) {
-      const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(params.targetNames);
-
-      if (errors.length > 0 && results.length === 0) {
-        // すべて失敗した場合、最初のエラーを返す
-        const err = errors[0];
-        const statusMap = {
-          'AUTH_CONFIGURATION': 503,
-          'FILE_NOT_FOUND': 404,
-          'AMBIGUOUS_PATH': 400,
-          'BRANCH_MISMATCH': 409,
-          'GITHUB_API_ERROR': 502
-        };
-        const error = new Error(err.reason);
-        error.status = statusMap[err.error] || 400;
-        error.payload = {
-          status: err.error,
-          targetNames: params.targetNames,
-          failedCount: errors.length
-        };
-        throw error;
+    // Authenticate the session before resolving or binding a multi-file batch.
+    if (params.targetNames !== undefined) {
+      if (typeof authenticatedScope !== 'string' || !authenticatedScope) {
+        throw contextError(['authenticated scope unavailable']);
       }
-
-      // Phase 6: 各resultについてSourceObservation検証→bindSourceObservation
-      // Fail-Closed: stateSessionId必須（Phase 6 Architecture）
+      const record = stateRegistry.lookup(params.correlationId, params.stateSessionId, authenticatedScope);
       const sourceObservations = [];
       const bindErrors = [];
+      try {
+        const names = params.targetNames;
+        if (!Array.isArray(names) || !names.length || names.length > 50 ||
+            names.some(name => typeof name !== 'string' || !name.trim()) ||
+            new Set(names).size !== names.length) {
+          throw contextError(['targetNames: non-empty unique names required'], 400);
+        }
+        const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(names);
+        if (!Array.isArray(results) || !Array.isArray(errors)) {
+          throw contextError(['targetNames: invalid resolution result']);
+        }
+        bindErrors.push(...errors.map(error => ({ screenName: error.name, reason: error.reason || error.error })));
+        const resolvedNames = results.map(result => result.name);
+        if (errors.length || results.length !== names.length ||
+            new Set(resolvedNames).size !== names.length ||
+            resolvedNames.some(name => !names.includes(name))) {
+          throw contextError(['targetNames: incomplete or duplicate resolution']);
+        }
 
-      if (!params.stateSessionId && results.length > 0) {
-        // Fail-Closed: stateSessionId missing
-        const error = new Error('Phase 6: stateSessionId required for targetNames SourceObservation binding');
-        error.status = 400;
-        error.payload = {
-          status: 'state_context_invalid',
-          reason: 'stateSessionId required for targetNames binding',
-          targetNames: params.targetNames
-        };
-        throw error;
-      }
-
-      if (params.stateSessionId && results.length > 0) {
+        const pending = [];
+        const paths = new Set();
         for (const result of results) {
           try {
-            // Phase 6: Retrieve source first, then validate SourceObservation fields
-            if (!result.path || typeof result.path !== 'string') {
-              bindErrors.push({
-                screenName: result.name,
-                reason: 'Missing path in resolved result'
-              });
-              continue;
-            }
-
-            // FileContent取得（content検証用）
+            if (typeof result.path !== 'string' || !result.path) throw contextError(['path: missing from resolved source']);
             const fileData = await powerAppsGitStore.getSourceFile(result.path);
-            if (!fileData.content || typeof fileData.content !== 'string') {
-              bindErrors.push({
-                screenName: result.name,
-                reason: 'Failed to retrieve file content'
-              });
-              continue;
+            const root = record.context.gitRoot;
+            const canonicalPath = fileData.path;
+            if (typeof root !== 'string' || !root ||
+                (canonicalPath !== `${root}/${result.path}` &&
+                 !(result.path.startsWith(`${root}/`) && canonicalPath === result.path))) {
+              throw contextError(['path: retrieved source does not match resolved canonical path']);
             }
-
-            // SourceObservation検証: sha/path/content が必須（source取得後に検証）
-            // ROOT CAUSE FIX: Use fileData.sha (retrieved actual SHA) instead of result.sha (resolution-time SHA)
-            // to ensure SHA matches actual fetched content, preventing data-integrity loss
-            const actualSha = fileData.sha || blobSha(fileData.content);
-            if (!actualSha || !/^[a-f0-9]{40}$/.test(actualSha)) {
-              bindErrors.push({
-                screenName: result.name,
-                reason: `Failed to compute/retrieve valid blob SHA for content`
-              });
-              continue;
+            if (paths.has(canonicalPath)) throw contextError(['path: duplicate resolved source']);
+            paths.add(canonicalPath);
+            if (typeof fileData.content !== 'string' || !/^[a-f0-9]{40}$/.test(fileData.sha || '') ||
+                blobSha(fileData.content) !== fileData.sha ||
+                !/^[a-f0-9]{40}$/.test(result.sha || '') || result.sha !== fileData.sha) {
+              throw contextError(['sha: resolved and retrieved content must match verified blob SHA']);
             }
-
-            // Verify that resolved SHA matches actual retrieved content (fail-closed)
-            if (result.sha && result.sha !== actualSha) {
-              bindErrors.push({
-                screenName: result.name,
-                reason: `SHA mismatch: resolved=${result.sha.substring(0, 8)}..., actual=${actualSha.substring(0, 8)}...`
-              });
-              continue;
+            if (fileData.branch !== record.context.branch ||
+                fileData.canonicalBranch !== record.context.canonicalBranch ||
+                (result.branch !== undefined && result.branch !== record.context.branch)) {
+              throw contextError(['branch: retrieved source differs from registered authority']);
             }
-
-            // SourceObservation: {sha, path, content} - use actualSha from retrieved file
-            const source = {
-              sha: actualSha,
-              path: result.path,
-              content: fileData.content
-            };
-
-            // StateRegistry.bindSourceObservation()で原子的bind
-            const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-            const bindResult = stateRegistry.bindSourceObservation(
-              params.correlationId,
-              params.stateSessionId,
-              scope,
-              source,
-              result.path
-            );
-
-            sourceObservations.push({
-              screenName: result.name,
-              relativePath: result.path,
-              fileSha: result.sha,
-              stateSessionId: bindResult.stateSessionId,
-              sourceObservationComplete: bindResult.sourceObservationComplete
-            });
-          } catch (e) {
-            bindErrors.push({
-              screenName: result.name,
-              reason: `bindSourceObservation failed: ${e.message}`
-            });
+            pending.push({ result, source: { path: canonicalPath, sha: fileData.sha, content: fileData.content } });
+          } catch (error) {
+            bindErrors.push({ screenName: result.name, reason: error.message });
           }
         }
-      }
-
-      return {
-        status: 'ok',
-        method: 'get_powerapps_source',
-        result: {
-          sourceObservations,
-          bindErrors,
-          totalRequested: params.targetNames.length,
-          successCount: sourceObservations.length,
-          errorCount: bindErrors.length
+        if (bindErrors.length || pending.length !== names.length) {
+          throw contextError(['targetNames: source verification incomplete']);
         }
-      };
+        // All asynchronous reads and hash checks finish before the synchronous binds.
+        for (const { result, source } of pending) {
+          const bound = stateRegistry.bindSourceObservation(
+            params.correlationId, params.stateSessionId, authenticatedScope, source, result.path
+          );
+          sourceObservations.push({
+            screenName: result.name,
+            relativePath: result.path,
+            fileSha: source.sha,
+            stateSessionId: bound.stateSessionId,
+            sourceObservationComplete: bound.sourceObservationComplete
+          });
+        }
+        return {
+          status: 'ok', method: 'get_powerapps_source',
+          result: { sourceObservations, bindErrors, totalRequested: names.length,
+            successCount: sourceObservations.length, errorCount: 0 }
+        };
+      } catch (error) {
+        // Only this authenticated session can be invalidated, including old observations.
+        stateRegistry.invalidateBySessionId(params.stateSessionId, 'source_observation_batch_failed');
+        if (!bindErrors.length) bindErrors.push({ reason: error.message });
+        const failure = contextError(['targetNames: batch failed; acquire a new state session']);
+        failure.payload = { ...failure.payload,
+          method: 'get_powerapps_source', sourceObservationComplete: false, stateContextComplete: false,
+          result: { sourceObservations: [], bindErrors, totalRequested: Array.isArray(params.targetNames) ? params.targetNames.length : 0,
+            successCount: 0, errorCount: bindErrors.length } };
+        throw failure;
+      }
     }
 
     // relativePath または screenName 指定時: 単一ファイル取得
@@ -1834,32 +1795,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
 
     const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
 
-    // Phase 6: StateContext へ単一ファイルを SourceObservation として保存
-    if (params.stateSessionId && params.correlationId) {
-      const scope = 'POWERAPPS_SOURCE_RESOLUTION';
-      try {
-        // Compute blob SHA for content validation
-        const blobShaFunc = require('./stateContext').blobSha;
-        const fileSha = blobShaFunc(fileResult.content);
-
-        const source = {
-          sha: fileSha,
-          path: resolvedPath,
-          content: fileResult.content
-        };
-
-        stateRegistry.bindSourceObservation(
-          params.correlationId,
-          params.stateSessionId,
-          scope,
-          source,
-          resolvedPath
-        );
-      } catch (e) {
-        console.warn('Failed to save source to StateContext:', e.message);
-      }
-    }
-
+    // The transport wrapper binds single-file observations using its authenticated scope.
     return fileResult;
   }
   if (method === 'get_powerapps_app') {
@@ -3044,7 +2980,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     // random stateSessionId also scopes stateless Copilot/legacy requests.
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
-    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry);
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);
@@ -3155,7 +3091,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       // Step 6: Preserve pre-enforcement standalone reads, but never grant unbound context
       // Pre-enforcement readers may accept upstream diagnostic SHAs, but cannot
       // establish registered executable State Context without full hydration.
-      if (config.enforceStateManager !== true && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
+      if (config.enforceStateManager !== true && !params.targetNames && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
         return { ...source, requestId: requestCorrelationId };
       }
 
