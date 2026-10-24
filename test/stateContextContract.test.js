@@ -366,7 +366,7 @@ test('CRITICAL: incomplete context (missing sha) must NOT issue stateSessionId',
   assert.equal(state.data.status, 'state_context_invalid', 'error must indicate state context invalid');
 });
 
-test('CRITICAL: same stateSessionId can be reused for 3+ screens in one session', async t => {
+test('CRITICAL: failed multi-screen resolution invalidates the previously bound session', async t => {
   const f = await fixture(t);
 
   // Get initial state
@@ -390,8 +390,8 @@ test('CRITICAL: same stateSessionId can be reused for 3+ screens in one session'
     correlationId,
     stateSessionId
   });
-  // Even if S2_Screen doesn't exist, the stateSessionId should be reused
-  // (Implementation handles missing screens gracefully)
+  assert.equal(source2.error, true);
+  assert.equal(source2.data.stateContextComplete, false);
 
   // Validate with same session
   const validate = await f.rpc('validate_powerapps_source', {
@@ -400,8 +400,8 @@ test('CRITICAL: same stateSessionId can be reused for 3+ screens in one session'
     sourceContent: CONTENT,
     relativePath: PATH
   });
-  assert.equal(validate.error, false);
-  assert.equal(validate.data.correlationId, correlationId, 'correlation must be consistent');
+  assert.equal(validate.error, true);
+  assert.match(validate.data.error, /not registered/);
 
   // Compare with same session
   const compare = await f.rpc('compare_powerapps_with_git', {
@@ -410,6 +410,6 @@ test('CRITICAL: same stateSessionId can be reused for 3+ screens in one session'
     targetFile: PATH,
     targetApp: APP
   });
-  assert.equal(compare.error, false);
-  assert.equal(compare.data.correlationId, correlationId, 'correlation must be consistent');
+  assert.equal(compare.error, true);
+  assert.match(compare.data.error, /not registered/);
 });
