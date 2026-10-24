@@ -767,6 +767,18 @@ async function powerplatformValidate(p, deps = {}) {
   }
 }
 
+// READ-only allowlist for the unified tools. Unknown operations fail closed.
+const READ_ONLY_OPERATIONS = Object.freeze({
+  sharepoint_manage: ['get', 'search', 'schema_validate'],
+  powerapps_manage: ['app_get', 'state_get', 'source_get', 'screen_get', 'control_get', 'powerfx_get', 'app_checker', 'reread', 'publish_verify'],
+  powerautomate_manage: ['list', 'get', 'runs', 'failures', 'connection_check'],
+  powerplatform_validate: ['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']
+});
+function isReadOnlyOperation(tool, operation) {
+  return Object.prototype.hasOwnProperty.call(READ_ONLY_OPERATIONS, tool) &&
+    READ_ONLY_OPERATIONS[tool].includes(operation);
+}
+
 const HANDLERS = { sharepoint_manage: sharepointManage, powerapps_manage: powerappsManage, powerautomate_manage: powerautomateManage, powerplatform_validate: powerplatformValidate };
 
 async function run(tool, params = {}, deps = {}) {
@@ -778,6 +790,9 @@ async function run(tool, params = {}, deps = {}) {
     params = normalizeParams(tool, params);
     if (!params.operation) throw new OpError(`operation is required. valid: ${validOps(tool).join(', ')}`, 'invalid_input');
     if (!validOps(tool).includes(params.operation)) throw new OpError(`unknown operation "${params.operation}". valid: ${validOps(tool).join(', ')}`, 'invalid_input');
+    // Unified WRITE paths do not yet have proven central approval + State Manager enforcement.
+    // Keep implementation intact but refuse execution until an audited gate is introduced.
+    if (!isReadOnlyOperation(tool, params.operation)) throw new OpError('Unified WRITE requires verified human approval and State Manager gate', 'approval_required');
     const r = await HANDLERS[tool](params, deps);
     const res = { status: r.verified ? 'ok' : 'partial', verified: !!r.verified, operationId: opId, tool, operation: params.operation, data: r.data, repair: r.attempts && r.attempts.length ? r.attempts : undefined, elapsedMs: Date.now() - t0 };
     audit(env, { opId, tool, operation: params.operation, status: res.status, verified: res.verified, elapsedMs: res.elapsedMs });
@@ -799,4 +814,4 @@ const TOOL_DEFS = [
   { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): premium_check(アプリ/フローのプレミアム該当検出)/environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
 ];
 
-module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { pickApp, internalNameOf, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
+module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), isReadOnlyOperation, _internal: { pickApp, internalNameOf, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
