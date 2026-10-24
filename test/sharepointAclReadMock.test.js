@@ -41,3 +41,27 @@ test('ACL evidence adapter does not enable public unified WRITE',async()=>{
   assert.equal(pm.isReadOnlyOperation('powerplatform_validate','premium_check'),true);
   assert.equal(pm.isReadOnlyOperation('powerplatform_validate','unrecognized_write'),false);
 });
+
+test('SharePoint REST token audience and minimum read claims are fail-closed',()=>{
+  const {validateSharePointTokenClaims:check}=require('../src/sharepointAclReadMock');
+  assert.equal(check({aud:'https://hisyoengineer.sharepoint.com',roles:['Sites.Read.All']}).readClaimVerified,true);
+  assert.equal(check({aud:'https://hisyoengineer.sharepoint.com',scp:'AllSites.Read'}).principalType,'delegated');
+  assert.throws(()=>check({aud:'https://graph.microsoft.com',roles:['Sites.Read.All']}),/token_audience_mismatch/);
+  assert.throws(()=>check({aud:'https://hisyoengineer.sharepoint.com',roles:['Sites.ReadWrite.All']}),/token_read_permission_unverified/);
+  assert.throws(()=>check({}),/token_audience_mismatch/);
+});
+test('SharePoint ACL paging must remain on the exact fixed list and origin',()=>{
+  const {validateSameOriginNextLink:check}=require('../src/sharepointAclReadMock');
+  const valid="https://hisyoengineer.sharepoint.com/sites/cleannano/_api/web/lists(guid'973f17d6-3566-4795-9712-2386bb7bf540')/roleassignments?$skiptoken=abc";
+  assert.equal(check(valid),valid);
+  assert.throws(()=>check(valid.replace('hisyoengineer.sharepoint.com','evil.example')),/pagination_target_mismatch/);
+  assert.throws(()=>check(valid.replace('973f17d6-3566-4795-9712-2386bb7bf540','11111111-1111-1111-1111-111111111111')),/pagination_target_mismatch/);
+});
+test('SharePoint EditListItems permission bit uses Low bit 3 and rejects malformed masks',()=>{
+  const {canEditListItems:check}=require('../src/sharepointAclReadMock');
+  assert.equal(check({Low:'8',High:'0'}),true);
+  assert.equal(check({Low:'4',High:'0'}),false);
+  assert.equal(check({Low:'0',High:'0'}),false);
+  assert.throws(()=>check({Low:'not-a-number'}),/permission_mask_invalid/);
+  assert.throws(()=>check({Low:'-1'}),/permission_mask_invalid/);
+});
