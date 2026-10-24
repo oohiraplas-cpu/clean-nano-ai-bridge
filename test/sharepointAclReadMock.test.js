@@ -29,8 +29,15 @@ test('ACL evidence mock refuses missing inheritance, role assignments and permis
 });
 test('ACL evidence adapter does not enable public unified WRITE',async()=>{
   const pm=require('../src/platformManage');
-  for(const tool of ['sharepoint_manage','powerapps_manage','powerautomate_manage','powerplatform_validate']){
-    const result=await pm.run(tool,{operation:'item_update',approvedByHuman:true});
+  for(const [tool,operation] of [
+    ['sharepoint_manage','item_update'],
+    ['powerapps_manage','screen_edit'],
+    ['powerautomate_manage','edit']
+  ]){
+    const result=await pm.run(tool,{operation,approvedByHuman:true});
     assert.equal(result.status,'approval_required',tool);
   }
+  // powerplatform_validate currently exposes READ validation operations only.
+  assert.equal(pm.isReadOnlyOperation('powerplatform_validate','premium_check'),true);
+  assert.equal(pm.isReadOnlyOperation('powerplatform_validate','unrecognized_write'),false);
 });
