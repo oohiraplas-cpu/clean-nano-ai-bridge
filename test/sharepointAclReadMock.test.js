@@ -23,9 +23,10 @@ test('ACL evidence mock fails closed for missing transport, changed target and i
   await assert.rejects(collectAclEvidence({get:mock,principalLogins:[5]}),/principal_login_invalid/);
 });
 test('ACL evidence mock refuses missing inheritance, role assignments and permissions',async()=>{
+  const list={Id:'973f17d6-3566-4795-9712-2386bb7bf540',HasUniqueRoleAssignments:false};
   await assert.rejects(collectAclEvidence({get:async()=>({})}),/inheritance_unverified/);
-  await assert.rejects(collectAclEvidence({get:async p=>p.includes('roleassignments')?{}:{HasUniqueRoleAssignments:false}}),/role_assignments_unverified/);
-  await assert.rejects(collectAclEvidence({get:async p=>p.includes('getusereffectivepermissions')?{}:p.includes('roleassignments')?{value:[]}:{HasUniqueRoleAssignments:true},principalLogins:['employee']}),/effective_permissions_unverified/);
+  await assert.rejects(collectAclEvidence({get:async p=>p.includes('roleassignments')?{}:list}),/role_assignments_unverified/);
+  await assert.rejects(collectAclEvidence({get:async p=>p.includes('getusereffectivepermissions')?{}:p.includes('roleassignments')?{value:[]}:list,principalLogins:['employee']}),/effective_permissions_unverified/);
 });
 test('ACL evidence adapter does not enable public unified WRITE',async()=>{
   const pm=require('../src/platformManage');
