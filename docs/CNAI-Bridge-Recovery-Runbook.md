@@ -74,6 +74,15 @@
 - 設定する場合は、フロー所有者が trigger URL を Azure App Settings に直接登録し、Bridge 側で値を表示しない。
 - 値が確認できない限り、Power Automate 関連の完了判定は BLOCKED とする。
 
+### 4.4 未設定時の影響（テスト根拠）
+- `test/dependencyHealthCheck.test.js` が `dependencies.powerAutomate.optional === true` を検証している。
+- 未設定時も `health_check` の全体判定は、Power Automate を除く依存先（Power Apps / SharePoint / Git / Azure）で判定される。
+- 既存テスト 1591 件 PASS（2026-10-25、main `686868b`）。
+
+### 4.5 GitHub 側の設定確認（未確認）
+- GitHub Actions の Secret / Variable の一覧 API は、この環境の proxy により 403 で拒否される。
+- そのため、GitHub 側に `POWER_AUTOMATE_FLOWS` が登録されているかは **未確認**。登録済みであれば Azure 側と同じ値を使うため、確認は Azure / GitHub の管理者画面で行うこと。
+
 ## 5. 再検証
 
 1. `npm test` を実行し、全件 PASS を確認する（現時点の期待値: 1591 件 PASS）。
@@ -88,6 +97,7 @@
 |---|---|
 | PASS | 対象の health/check が期待値どおり。テスト全件 PASS。意図しない変更なし |
 | FAIL | 既存の正常項目が悪化した。テストが失敗した。意図しない変更が検出された |
+| PARTIAL | 一部の依存先（例: Power Automate のみ）が未確認または BLOCKED で、それ以外は PASS。未確認部分を明記する |
 | BLOCKED | 必要な値・権限・接続（本番疎通、トリガー URL など）が確認できず、安全に進められない |
 
 Power Automate が未設定のみの場合は、任意依存のため **PASS（optional 未設定）** と記録し、Power Automate 機能は BLOCKED と併記する。
@@ -115,3 +125,54 @@ Power Automate が未設定のみの場合は、任意依存のため **PASS（o
 - 追加課金・契約が発生する場合
 - 秘密値の表示・推測が必要になった場合
 - 既存の PASS 項目に変更が生じた場合
+
+## 10. CNAI から Bridge までの実行経路（コード根拠）
+
+CNAI（ChatGPT / Claude / Copilot）→ Clean Nano AI Bridge（`/mcp`、`MCP_API_KEY` 認証）→ Power Apps / Power Automate / SharePoint / GitHub / Azure。
+
+### 10.1 Power Apps（`src/server.js`）
+- 読取: `powerapps_app_read`
+- 編集・保存・公開: `powerapps_app_edit_publish`（保存スナップショットを作成）
+- 戻し: `powerapps_app_rollback`（保存済みスナップショットへ戻して公開）
+- 一覧: `powerapps_snapshots_list`
+- 正本: GitHub `main`、root は `powerapps/CN_AI依頼台帳/Source`。書込みは `canonicalBranch=main` かつ `writable=true` の実取得確認が前提。
+
+### 10.2 Power Automate（`src/server.js`、`src/powerAutomateRunner.js`）
+- 一覧: `powerautomate_flow_list` / 登録済み一覧 `list_registered_power_automate_flows`
+- 読取: `powerautomate_flow_read`
+- 更新: `powerautomate_flow_update`（保存スナップショットを作成）
+- 状態変更: `powerautomate_flow_set_state`
+- 戻し: `powerautomate_flow_rollback`
+- 実行: `run_power_automate_flow`（`approvedByHuman:true` 必須）
+- 注意: 上記の実環境での動作は、本番ホストに到達できないため **未確認**。コード上の経路の存在のみ確認した。
+
+### 10.3 SharePoint / GitHub / Azure
+- SharePoint の読取は `SHAREPOINT_*` 設定を再利用。
+- GitHub は `POWERAPPS_GITHUB_*` と `DEPLOY_*` で構成。Azure の App Settings はこのチャットからは未確認。
+
+## 11. 検証証跡の記録方法
+- 実行日時、main の SHA、PR 番号、テスト件数（`npm test` の `# pass` / `# fail`）を記録する。
+- 秘密値・トリガー URL・SAS は記録しない（件数や有無のみ）。
+- 未確認項目は「未確認」と明記し、推測で埋めない。
+
+## 12. 最終判定（2026-10-25 時点）
+
+- 判定: **PARTIAL**
+- main SHA: `686868b`（PR #183 のマージ commit）
+- PR #184（Runbook 検証更新）: CI `test` 2 件 SUCCESS、mergeable、競合なし、差分は Runbook 1 ファイル（+43 行）。Secret らしき文字列の検査で該当なし。**マージは未実施**（自動安全機構により拒否。人間の承認・操作待ち）。
+- CNAI 側の実測（CNAI からの報告値。本セッションからは本番未到達のため未再確認）:
+  - `health_check` = PASS、`get_bridge_capabilities` = PASS、`check_dependencies` = PASS（再実行後も PASS）
+  - Power Apps = OK、SharePoint = OK、Git = OK（branch: main）、Azure = dependency failure なし
+  - Power Automate = NOT_CONFIGURED（optional）
+- `POWER_AUTOMATE_FLOWS`: 未設定のまま。値は推測・生成していない。既存リポジトリに再利用可能な確定値なし。
+- PARTIAL の理由: Power Automate の HTTP トリガー実行設定が未構成（optional）。Power Automate の実環境での読取・更新・保存後再取得は本セッションから未確認。
+- 既存テスト: 1591 PASS / 0 FAIL（main `686868b` 相当の作業ツリーで確認済み）。
+
+## 13. 保存後再取得・rollback・Secret 保護
+- 変更は Git の commit として保存し、push 後に GitHub の差分・CI で再取得して確認する。
+- rollback: 問題があれば該当 PR を revert する（main への直接変更は行わない）。
+- Secret: 値・SAS・トークンは本文、ログ、PR、commit に含めない。検査は差分の正規表現で行う。
+
+## 14. 停止条件（再掲）
+- main へのマージ、本番公開、権限変更、追加課金、Premium 追加、物理削除、Secret の表示・保存、未確認値の推測。
+- 上記に該当する場合は、人間の承認を得てから実施する。
