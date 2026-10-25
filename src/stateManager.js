@@ -32,8 +32,7 @@ const FAIL_CLOSED_TOOLS = [
   'update_permissions',              // Changes RBAC permissions
   'lock_user_info',                  // Locks user information
   'validate_powerapps_source',       // Validates source (may log changes)
-  'compare_powerapps_with_git',      // Compares state (may trigger sync)
-  'run_powerapps_tests'              // Runs tests (side effects possible)
+  'compare_powerapps_with_git'       // Compares state (may trigger sync)
 ];
 
 /**
