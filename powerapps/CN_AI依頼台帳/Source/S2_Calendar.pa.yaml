@@ -166,6 +166,7 @@ Screens:
                         Size: =14
                         Text: =If(gblCalType = "運営", "今月 延べ稼働 " & CountRows(colOps) & " 人日　早出 " & CountRows(Filter(colOps, 勤務区分.Value = "早出")) & " 件　残業 " & CountRows(Filter(colOps, 勤務区分.Value = "残業")) & " 件　売上・経費：未連携", "今月の出勤（" & gblCalType & "）：" & CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & " 日")
                         Width: =Parent.Width - 32
+                        X: =16
                         Y: =909
                   - 解体カレンダー:
                       Control: Classic/Button@2.2.0
@@ -239,6 +240,7 @@ Screens:
                         Size: =13
                         Text: ="日報入力"
                         Width: =Parent.Width - 32
+                        X: =16
                         Y: =840
                   - 請負カレンダー:
                       Control: Classic/Button@2.2.0
