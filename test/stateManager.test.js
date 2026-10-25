@@ -11,7 +11,7 @@ const {
 
 test('State Manager - FAIL_CLOSED_TOOLS list', () => {
   assert(Array.isArray(FAIL_CLOSED_TOOLS));
-  assert(FAIL_CLOSED_TOOLS.length === 17);
+  assert(FAIL_CLOSED_TOOLS.length === 16);
   assert(FAIL_CLOSED_TOOLS.includes('update_powerapps_image'));
   assert(FAIL_CLOSED_TOOLS.includes('update_powerapps_app'));
   assert(FAIL_CLOSED_TOOLS.includes('publish_powerapps_app'));
@@ -214,7 +214,6 @@ test('State Manager - all write tools listed', () => {
     'lock_user_info',
     'validate_powerapps_source',
     'compare_powerapps_with_git',
-    'run_powerapps_tests'
   ];
 
   for (const op of writeOps) {
