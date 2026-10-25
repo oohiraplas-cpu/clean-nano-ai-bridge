@@ -21,8 +21,8 @@ Screens:
                 Properties:
                   DropShadow: =DropShadow.None
                   FillPortions: =0
-                  Height: =Max(640, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128)
-                  LayoutMinHeight: =Max(640, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128)
+                  Height: =Max(1350, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128)
+                  LayoutMinHeight: =Max(1350, Parent.Height, カレンダー日にち.Y + カレンダー日にち.Height + 128)
                   LayoutMinWidth: =0
                   Width: =Parent.Width
                 Children:
@@ -165,7 +165,7 @@ Screens:
                         Height: =373
                         Size: =14
                         Text: =If(gblCalType = "運営", "今月 延べ稼働 " & CountRows(colOps) & " 人日　早出 " & CountRows(Filter(colOps, 勤務区分.Value = "早出")) & " 件　残業 " & CountRows(Filter(colOps, 勤務区分.Value = "残業")) & " 件　売上・経費：未連携", "今月の出勤（" & gblCalType & "）：" & CountRows(Distinct(colAttend, Text(開始日時, "yyyymmdd"))) & " 日")
-                        Width: =768
+                        Width: =Parent.Width - 32
                         Y: =909
                   - 解体カレンダー:
                       Control: Classic/Button@2.2.0
@@ -238,7 +238,7 @@ Screens:
                         PressedFill: =RGBA(255, 255, 255, 0.3)
                         Size: =13
                         Text: ="日報入力"
-                        Width: =768
+                        Width: =Parent.Width - 32
                         Y: =840
                   - 請負カレンダー:
                       Control: Classic/Button@2.2.0
