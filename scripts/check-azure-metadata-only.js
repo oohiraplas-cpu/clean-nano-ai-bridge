@@ -7,12 +7,14 @@ const az = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors',
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000
 }));
 function collect() {
-  const apps = az(['webapp', 'list', '--query',
-    "[?name=='clean-nano-ai-bridge'].{name:name,id:id,resourceGroup:resourceGroup,state:state}"]);
-  if (!Array.isArray(apps) || apps.length !== 1) throw new Error('azure_target_unverified');
+  let apps;
+  try { apps = az(['webapp', 'list', '--query',
+    "[?name=='clean-nano-ai-bridge'].{name:name,id:id,resourceGroup:resourceGroup,state:state}"]); }
+  catch { return { status: 'blocked', reason: 'azure_cli_or_auth_unavailable', resourceIdMatched: false, deploymentMetadataAccessible: false, deploymentEntries: [] }; }
+  if (!Array.isArray(apps) || apps.length !== 1) return { status: 'blocked', reason: 'azure_target_unverified', resourceIdMatched: false, deploymentMetadataAccessible: false, deploymentEntries: [] };
   const app = apps[0];
   const expected = /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.Web\/sites\/clean-nano-ai-bridge$/i;
-  if (!expected.test(app.id || '')) throw new Error('azure_resource_id_unverified');
+  if (!expected.test(app.id || '')) return { status: 'blocked', reason: 'azure_resource_id_unverified', resourceIdMatched: false, deploymentMetadataAccessible: false, deploymentEntries: [] };
   const args = ['--name', app.name, '--resource-group', app.resourceGroup];
   let managedIdentityAssigned = false;
   try {
@@ -21,6 +23,7 @@ function collect() {
       && /^[a-f0-9-]{36}$/i.test(identity?.principalId || '');
   } catch { /* unverified */ }
   let deploymentMetadataAccessible = false;
+  let deploymentFailure = false;
   let deploymentEntries = [];
   try {
     const deployments = az(['webapp', 'log', 'deployment', 'list', ...args,
@@ -32,7 +35,7 @@ function collect() {
       status: Number.isInteger(entry.status) ? entry.status : null,
       receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
     }));
-  } catch { /* unverified */ }
+  } catch { deploymentFailure = true; }
   const readiness = assessAzureReadiness({
     resourceIdMatched: true, managedIdentityAssigned,
     deploymentShaMatched: false, rbacReadVerified: false,
@@ -40,6 +43,8 @@ function collect() {
     sourceMapVerified: false, healthVerified: false
   });
   return Object.freeze({ resourceIdMatched: true,
+    status: deploymentFailure ? 'blocked' : 'observed_not_verified',
+    reason: deploymentFailure ? 'azure_deployment_history_unavailable' : null,
     armResourceId: app.id, armObservedIndependently: true,
     managedIdentityAssigned, managedIdentityObservedIndependently: managedIdentityAssigned,
     deploymentMetadataAccessible, deploymentEntries, deploymentShaMatched: false,
