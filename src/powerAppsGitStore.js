@@ -311,7 +311,7 @@ class PowerAppsGitStore {
         };
       } catch (error) {
         // Do not leak response bodies, tokens or request URLs in diagnostics.
-        const status = Number(error?.status) || Number(String(error?.message || '').match(/GitHub API エラー \\((\\d{3})\\)/)?.[1]) || 0;
+        const status = Number(error?.status) || Number(String(error?.message || '').match(/GitHub API エラー \((\d{3})\)/)?.[1]) || 0;
         const reason = status === 401 ? 'authentication_failed'
           : status === 403 ? 'access_forbidden'
           : status === 404 ? 'ref_not_found'
