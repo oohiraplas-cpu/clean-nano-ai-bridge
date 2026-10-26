@@ -285,6 +285,7 @@ class PowerAppsGitStore {
     this._assertGitHubConfig();
     const branches = [...new Set([this.githubBranch, ...this.githubFallbackBranches].filter(Boolean))];
 
+    const failures = [];
     for (const branch of branches) {
       try {
         // Get the commit SHA for the HEAD of this branch
@@ -309,8 +310,16 @@ class PowerAppsGitStore {
           sha: commitSha  // Commit SHA: the definitive snapshot for StateContext
         };
       } catch (error) {
-        // Silently continue to next branch
-        continue;
+        // Do not leak response bodies, tokens or request URLs in diagnostics.
+        const status = Number(error?.status) || Number(String(error?.message || '').match(/GitHub API エラー \\((\\d{3})\\)/)?.[1]) || 0;
+        const reason = status === 401 ? 'authentication_failed'
+          : status === 403 ? 'access_forbidden'
+          : status === 404 ? 'ref_not_found'
+          : status === 429 ? 'rate_limited'
+          : status >= 500 ? 'upstream_unavailable' : 'transport_or_unknown';
+        failures.push({ branch, reason });
+        // Authentication and authorization failures cannot be repaired by branch fallback.
+        if (status === 401 || status === 403) break;
       }
     }
 
@@ -319,7 +328,8 @@ class PowerAppsGitStore {
     error.status = 502;
     error.payload = {
       status: 'state_context_invalid',
-      reason: 'Cannot retrieve commit SHA from any configured branch for StateContext authority'
+      reason: 'Cannot retrieve commit SHA from configured branches for StateContext authority',
+      diagnostics: failures
     };
     throw error;
   }
