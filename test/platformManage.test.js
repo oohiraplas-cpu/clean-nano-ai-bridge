@@ -44,6 +44,18 @@ test('applyRules / readRules', () => {
   assert.throws(() => I.applyRules(inner, [{ control: 'Nope', property: 'Image', script: 'x' }]), /not found/);
 });
 
+test('applyRules expectBefore / screen guards', () => {
+  const inner = [ctrlEntry()];
+  const cur = I.readRules(inner, 'Image1')[0];
+  const screen = cur.screen;
+  assert.throws(() => I.applyRules(inner, [{ control: 'Image1', property: 'Image', script: 'x', expectBefore: '__stale__' }]), /expectBefore/);
+  assert.strictEqual(I.readRules(inner, 'Image1')[0].rules.find((x) => x.property === 'Image').script, cur.rules.find((x) => x.property === 'Image').script);
+  const before = cur.rules.find((x) => x.property === 'Image').script;
+  I.applyRules(inner, [{ control: 'Image1', screen, property: 'Image', script: 'logo2', expectBefore: before }]);
+  assert.strictEqual(I.readRules(inner, 'Image1')[0].rules.find((x) => x.property === 'Image').script, 'logo2');
+  assert.throws(() => I.applyRules(inner, [{ control: 'Image1', screen: 'OtherScreen', property: 'Image', script: 'y' }]), /not found/);
+});
+
 test('appChecker flags problems', () => {
   const res = { name: 'References\\Resources.json', data: Buffer.from(JSON.stringify({ Resources: [{ Name: 'logo', Content: 'Image', ResourceKind: 'LocalFile', Path: 'Assets\\Images\\a.png' }] })) };
   const c = I.appChecker([ctrlEntry(), res]);
