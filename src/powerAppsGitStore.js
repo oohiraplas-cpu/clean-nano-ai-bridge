@@ -279,49 +279,53 @@ class PowerAppsGitStore {
    * @returns {Promise<{branch: string, canonicalBranch: string, sha: string}>}
    */
   async getSourceFileMetadata(gitRoot) {
-    // CRITICAL: StateContext requires branch commit SHA (not tree SHA or directory SHA).
-    // commit SHA = HEAD of the branch, the authoritative snapshot for all files in that commit.
-    // Do NOT use tree SHA (directory listing) or file blob SHA as Context state identifier.
+    // Authority is always the configured canonical branch, never a fallback branch.
+    // A failure must preserve its class rather than becoming an opaque metadata error.
     this._assertGitHubConfig();
-    const branches = [...new Set([this.githubBranch, ...this.githubFallbackBranches].filter(Boolean))];
-
-    for (const branch of branches) {
-      try {
-        // Get the commit SHA for the HEAD of this branch
-        // This is the StateContext authority: what exactly was committed at this point in time
-        const refResponse = await this._githubRequest(
-          `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}/git/refs/heads/${encodeURIComponent(branch)}`
-        );
-
-        if (!refResponse || !refResponse.object || !refResponse.object.sha) {
-          continue;
-        }
-
-        // Verify the SHA is a valid commit hash (40 hex chars)
-        const commitSha = refResponse.object.sha;
-        if (!/^[a-f0-9]{40}$/.test(commitSha)) {
-          continue;
-        }
-
-        return {
-          branch,
-          canonicalBranch: this.canonicalBranch,
-          sha: commitSha  // Commit SHA: the definitive snapshot for StateContext
-        };
-      } catch (error) {
-        // Silently continue to next branch
-        continue;
-      }
+    if (!gitRoot || gitRoot !== this.githubRoot) {
+      const error = new Error('Git metadata root mismatch');
+      error.status = 409;
+      error.payload = { status: 'git_root_mismatch' };
+      throw error;
     }
-
-    // Fail-Closed: if no branch provides valid commit SHA, cannot issue StateContext
-    const error = new Error('Failed to get Git metadata for StateContext hydration: no valid commit SHA retrieved');
-    error.status = 502;
-    error.payload = {
-      status: 'state_context_invalid',
-      reason: 'Cannot retrieve commit SHA from any configured branch for StateContext authority'
-    };
-    throw error;
+    const branch = this.canonicalBranch;
+    const prefix = `/repos/${encodeURIComponent(this.githubOwner)}/${encodeURIComponent(this.githubRepo)}`;
+    let refResponse;
+    try {
+      refResponse = await this._githubRequest(
+        `${prefix}/git/ref/heads/${encodeURIComponent(branch)}`
+      );
+    } catch (cause) {
+      const match = String(cause.message || '').match(/GitHub API エラー \\((\\d{3})\\)/);
+      const code = match ? Number(match[1]) : null;
+      const category = code === 401 || code === 403 ? 'git_auth_or_permission'
+        : code === 404 ? 'git_ref_not_found'
+        : code === 429 ? 'git_rate_limited'
+        : code && code >= 500 ? 'git_upstream_failure' : 'git_network_or_unknown';
+      const error = new Error(`Git metadata unavailable: ${category}`);
+      error.status = code || 502;
+      error.payload = { status: category, branch, retryable: code === 429 || (code !== null && code >= 500) || code === null };
+      throw error;
+    }
+    const commitSha = refResponse?.object?.sha;
+    if (refResponse?.object?.type !== 'commit' || !/^[a-f0-9]{40}$/.test(commitSha || '')) {
+      const error = new Error('Git metadata invalid: canonical ref is not a commit');
+      error.status = 502;
+      error.payload = { status: 'git_metadata_invalid', branch };
+      throw error;
+    }
+    // Validate the configured root against the same immutable commit.
+    const rootPath = gitRoot.split('/').map(encodeURIComponent).join('/');
+    try {
+      const root = await this._githubRequest(`${prefix}/contents/${rootPath}?ref=${commitSha}`);
+      if (!Array.isArray(root)) throw new Error('Git root is not a directory');
+    } catch (cause) {
+      const error = new Error('Git metadata root unavailable at canonical commit');
+      error.status = 409;
+      error.payload = { status: 'git_root_unavailable', branch, root: gitRoot };
+      throw error;
+    }
+    return { branch, canonicalBranch: branch, sha: commitSha };
   }
 
   async getSourceFile(relativePath) {
