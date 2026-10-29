@@ -296,7 +296,7 @@ class PowerAppsGitStore {
         `${prefix}/git/ref/heads/${encodeURIComponent(branch)}`
       );
     } catch (cause) {
-      const match = String(cause.message || '').match(/GitHub API エラー \\((\\d{3})\\)/);
+      const match = String(cause.message || '').match(/GitHub API エラー \((\d{3})\)/);
       const code = match ? Number(match[1]) : null;
       const category = code === 401 || code === 403 ? 'git_auth_or_permission'
         : code === 404 ? 'git_ref_not_found'
