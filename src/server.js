@@ -23,6 +23,7 @@ const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
 const { createAzureMetadataReader } = require('./azureMetadataReader');
+const { createGithubReadTools } = require('./githubReadTools');
 const { PermissionsService } = require('./permissionsService');
 const { DoneEngine } = require('./doneEngine');
 const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
@@ -170,7 +171,7 @@ const MCP_METHODS = Object.freeze([
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback', ...platformManage.TOOL_NAMES,
+  'list_power_apps', 'list_environments', 'list_git_branches', 'list_github_commits', 'get_github_file', 'list_github_pull_requests', 'list_github_workflow_runs', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback', ...platformManage.TOOL_NAMES,
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
@@ -976,6 +977,59 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'list_github_commits',
+    description: '設定済みリポジトリの正本（または指定）branchのコミット一覧を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: '省略時は正本branch' },
+        perPage: { type: 'integer', minimum: 1, maximum: 50 }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_github_file',
+    description: '設定済みリポジトリのファイル内容を取得します（200KB以下のテキスト）。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'リポジトリ相対パス' },
+        ref: { type: 'string', description: '省略時は正本branch' }
+      },
+      required: ['path'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_github_pull_requests',
+    description: '設定済みリポジトリのPull Request一覧を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        state: { type: 'string', enum: ['open', 'closed', 'all'] },
+        perPage: { type: 'integer', minimum: 1, maximum: 50 }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_github_workflow_runs',
+    description: '設定済みリポジトリのGitHub Actions workflow run一覧を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string' },
+        perPage: { type: 'integer', minimum: 1, maximum: 50 }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
     name: 'list_git_branches',
     description: 'GitHub上の実在Branch一覧と、書き込み対象の正本Branch（構成値）を返します。読み取り専用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
@@ -1566,6 +1620,20 @@ async function getTaskResultPayload(store, taskId) {
   return tasks.find((task) => task.id === taskId) || null;
 }
 
+// Read-only GitHub tools. Owner and repo come from configuration only.
+const GITHUB_READ_METHODS = new Set(['list_github_commits', 'get_github_file', 'list_github_pull_requests', 'list_github_workflow_runs']);
+
+/** Read-only GitHub tool set bound to the configured canonical repository, or null when not configured. */
+function githubReadToolsFor(gitStore) {
+  if (!gitStore || !gitStore.githubToken || !gitStore.githubOwner || !gitStore.githubRepo) return null;
+  return createGithubReadTools({
+    request: (path) => gitStore.githubRequest(path),
+    owner: gitStore.githubOwner,
+    repo: gitStore.githubRepo,
+    canonicalBranch: gitStore.canonicalBranch
+  });
+}
+
 function requestError(message, status = 400) {
   const error = new Error(message);
   error.status = status;
@@ -2141,6 +2209,28 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const r = getResolver(powerAppsStore, powerAppsGitStore);
     const br = await r.listBranches();
     return createCommonResponse({ status: br.verified ? 'ok' : 'error', verified: br.verified, data: br, warnings: br.warnings, summary: `Branch${br.branches.length}件（正本: ${br.canonicalBranch}）` });
+  }
+  if (GITHUB_READ_METHODS.has(method)) {
+    const tools = githubReadToolsFor(powerAppsGitStore);
+    if (!tools) {
+      throw notConfiguredError('GitHub読み取り', ['POWERAPPS_GITHUB_TOKEN', 'POWERAPPS_GITHUB_OWNER', 'POWERAPPS_GITHUB_REPO']);
+    }
+    const handler = {
+      list_github_commits: () => tools.listCommits(params),
+      get_github_file: () => tools.getFile(params),
+      list_github_pull_requests: () => tools.listPullRequests(params),
+      list_github_workflow_runs: () => tools.listWorkflowRuns(params)
+    }[method];
+    let data;
+    try {
+      data = await handler();
+    } catch (err) {
+      if (err && typeof err.code === 'string' && /^(invalid_|not_a_file|file_too_large|unsupported_encoding|github_)/.test(err.code)) {
+        throw requestError(`入力または対象が不正です（${err.code}）`, err.code.startsWith('invalid_') ? 400 : 422);
+      }
+      throw err;
+    }
+    return createCommonResponse({ status: 'ok', verified: true, data, warnings: [], summary: `${method} 取得完了（読み取りのみ）` });
   }
   if (method === 'get_application_rules') {
     const r = getResolver(powerAppsStore, powerAppsGitStore);
