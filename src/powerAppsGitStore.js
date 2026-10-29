@@ -111,7 +111,10 @@ class PowerAppsGitStore {
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      throw new Error(`GitHub API エラー (${response.status}): ${detail.slice(0, 300)}`);
+      const error = new Error(`GitHub API request failed (${response.status})`);
+      error.status = response.status;
+      // Do not expose GitHub response bodies: they may contain sensitive metadata.
+      throw error;
     }
     return response.status === 204 ? null : response.json();
   }
