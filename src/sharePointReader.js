@@ -177,6 +177,8 @@ class SharePointReader {
         required: column.required === true,
         readOnly: column.readOnly === true,
         hidden: column.hidden === true,
+        // Preserve unknown rather than treating absent Graph metadata as disabled.
+        unique: typeof column.enforceUniqueValues === 'boolean' ? column.enforceUniqueValues : null,
         ...(column.choice ? { choices: column.choice.choices || [], allowTextEntry: column.choice.allowTextEntry === true } : {}),
         ...(column.text ? { allowMultipleLines: column.text.allowMultipleLines === true } : {}),
         ...(column.dateTime ? { dateTimeFormat: column.dateTime.format || null } : {})
