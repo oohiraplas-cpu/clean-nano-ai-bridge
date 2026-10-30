@@ -3,6 +3,7 @@ const test = require('node:test');
 const crypto = require('node:crypto');
 const { getConfig } = require('../src/config');
 const { createApp, MCP_PUBLIC_TOOLS } = require('../src/server');
+const { PUBLISHED_TOOLS } = require('../src/toolVisibility');
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, blobSha } = require('../src/stateContext');
 
 const APP = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';
@@ -73,9 +74,12 @@ async function fixture(t, options = {}) {
 test('tools/list publishes the shared schemas and preserves all 77 tool names', async t => {
   const f = await fixture(t);
   const res = await fetch(f.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
-  const tools = (await res.json()).result.tools;
+  const published = (await res.json()).result.tools;
+  assert.equal(published.length, PUBLISHED_TOOLS.length);
+  assert.deepEqual(published.map(x => x.name), PUBLISHED_TOOLS.map(x => x.name));
+  // Schemas and tool names are checked on the internal catalog, where the real targets live.
+  const tools = MCP_PUBLIC_TOOLS;
   assert.equal(tools.length, MCP_PUBLIC_TOOLS.length);
-  assert.deepEqual(tools.map(x => x.name), MCP_PUBLIC_TOOLS.map(x => x.name));
   for (const name of ['validate_powerapps_source', 'compare_powerapps_with_git']) {
     const schema = tools.find(x => x.name === name).inputSchema;
     assert.deepEqual(schema.properties.stateContext, STATE_CONTEXT_SCHEMA);

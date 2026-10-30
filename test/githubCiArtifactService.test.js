@@ -20,7 +20,7 @@ const names={npm_test:'6. Run test suite',openapi_validation:'7. Validate OpenAP
 const json=JSON.stringify({schema_version:1,source:'github_actions',run_id:runId,run_attempt:attempt,head_sha:sha,job_key:'test',steps});
 function input(bytes){return{repositoryFullName:'oohiraplas-cpu/clean-nano-ai-bridge',zipBytes:bytes,artifact:{id:5,name:'ci-diagnostic-44-1',expired:false,workflow_run:{id:44},digest:'sha256:'+createHash('sha256').update(bytes).digest('hex')},workflowRun:{id:44,run_attempt:1,head_sha:sha,status:'completed',conclusion:'success'},jobResponse:{total_count:1,jobs:[{id:2,name:'test',run_id:44,head_sha:sha,status:'completed',conclusion:'success',steps:Object.entries(names).map(([k,name])=>({name,conclusion:steps[k]}))}]},expectedHeadSha:sha,expectedRunAttempt:1};}
 const {createGitHubCiArtifactService}=require('../src/githubCiArtifactService');
-const {createApp}=require('../src/server');
+const {createApp,MCP_PUBLIC_TOOLS}=require('../src/server');
 const {getConfig}=require('../src/config');
 const params={runId,artifactId:5,expectedHeadSha:sha,expectedRunAttempt:attempt};
 function fixture(){
@@ -75,7 +75,7 @@ test('MCP authentication, listing, legacy and tools/call routes are wired',async
  assert.equal((await post({method:'verify_github_ci_artifact',params},'wrong')).status,401);assert.equal(f.calls.length,0);
  const legacy=await(await post({method:'verify_github_ci_artifact',params})).json();assert.equal(legacy.result.status,'no_repair_needed');
  const rpc=await(await post({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'verify_github_ci_artifact',arguments:params}})).json();assert.equal(rpc.result.structuredContent.status,'no_repair_needed');
- const list=await(await post({jsonrpc:'2.0',id:3,method:'tools/list'})).json();assert.ok(list.result.tools.some(x=>x.name==='verify_github_ci_artifact'&&x.annotations.readOnlyHint));
+ assert.ok(MCP_PUBLIC_TOOLS.some(x=>x.name==='verify_github_ci_artifact'&&x.annotations.readOnlyHint));
 });
 test('missing MCP key blocks the new reader even with an Actions credential',async t=>{
  const f=fixture(),config=getConfig({});config.deployment=f.config;

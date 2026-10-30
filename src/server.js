@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
+const { PUBLISHED_TOOLS, resolveVisibleCall } = require('./toolVisibility');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -2957,7 +2958,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
   // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
   app.get('/mcp/tools/list', mcpAuth, (req, res) => {
-    res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
+    res.status(200).json({ tools: PUBLISHED_TOOLS });
   });
   app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
@@ -3392,7 +3393,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         }));
       }
       if (body.method === 'tools/list') {
-        return res.status(200).json(jsonRpcResult(id, { tools: MCP_PUBLIC_TOOLS }));
+        return res.status(200).json(jsonRpcResult(id, { tools: PUBLISHED_TOOLS }));
       }
       // Standard MCP tool methods (health_check, get_tasks, etc.) via tools/call
       // Map legacy method names to tools/call format for JSON-RPC 2.0 compatibility
@@ -3410,12 +3411,15 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       }
 
       if (body.method === 'tools/call') {
-        const name = params.name;
-        const toolParams = params.arguments || {};
-        if (typeof name !== 'string') {
+        if (typeof params.name !== 'string') {
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
+        let name;
+        let toolParams;
         try {
+          // Published consolidated tools resolve to the internal tool first, so the
+          // state-context and approval gates below apply to the real target.
+          ({ name, args: toolParams } = resolveVisibleCall(params.name, params.arguments || {}));
           // Phase 6: State Manager Enforcement (Fail-Closed)
           // Before executing write operations, validate that required state context is provided
           // Controlled by BRIDGE_STATE_MANAGER_ENFORCE env var (set in production)
