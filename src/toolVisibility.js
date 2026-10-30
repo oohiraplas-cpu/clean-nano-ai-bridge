@@ -265,7 +265,25 @@ function buildPublishedTools() {
   }));
 }
 
-const PUBLISHED_TOOLS = Object.freeze(buildPublishedTools());
+/** Canvas core tools also published under their own names (same internal definition). */
+const DIRECT_TOOL_NAMES = Object.freeze([
+  'health_check',
+  'resolve_app_target',
+  'get_powerapps_app',
+  'get_powerapps_state',
+  'get_powerapps_source',
+]);
+
+/** tools/list for external clients: consolidated tools + direct Canvas core tools. */
+function publishedToolsFor(catalog) {
+  const byName = new Map(catalog.map((tool) => [tool.name, tool]));
+  const direct = DIRECT_TOOL_NAMES.map((name) => {
+    const tool = byName.get(name);
+    if (!tool) throw new Error(`direct tool missing from catalog: ${name}`);
+    return tool;
+  });
+  return Object.freeze([...buildPublishedTools(), ...direct]);
+}
 
 /**
  * Resolves a published facade call to the internal tool and arguments.
@@ -288,4 +306,4 @@ function resolveVisibleCall(name, args) {
   return { name: target.tool, args: { ...rest, ...(target.fixed || {}) } };
 }
 
-module.exports = { FACADES, PUBLISHED_TOOLS, resolveVisibleCall };
+module.exports = { FACADES, DIRECT_TOOL_NAMES, publishedToolsFor, resolveVisibleCall };

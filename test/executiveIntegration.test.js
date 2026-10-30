@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createApp, MCP_PUBLIC_TOOLS } = require('../src/server');
-const { PUBLISHED_TOOLS } = require('../src/toolVisibility');
+const { createApp, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS } = require('../src/server');
+
 
 test('Executive MCP tools are authenticated, discoverable and executable through the actual HTTP handler', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cnai-executive-'));

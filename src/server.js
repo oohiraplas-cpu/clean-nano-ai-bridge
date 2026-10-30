@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
-const { PUBLISHED_TOOLS, resolveVisibleCall } = require('./toolVisibility');
+const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -1607,6 +1607,9 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     }, required: ['operation', 'relativePath', 'screenName', 'controlName', 'branch', 'stateContext', 'stateSessionId'], additionalProperties: false }
   },
 ]);
+
+// External tools/list (CNAI and other MCP clients). Internal catalog stays in MCP_PUBLIC_TOOLS.
+const PUBLISHED_TOOLS = publishedToolsFor(MCP_PUBLIC_TOOLS);
 
 async function tasksPayload(store) {
   const tasks = await store.list();
@@ -3513,4 +3516,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS };
+module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS };

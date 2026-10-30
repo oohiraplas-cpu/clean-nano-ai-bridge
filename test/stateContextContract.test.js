@@ -2,8 +2,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const crypto = require('node:crypto');
 const { getConfig } = require('../src/config');
-const { createApp, MCP_PUBLIC_TOOLS } = require('../src/server');
-const { PUBLISHED_TOOLS } = require('../src/toolVisibility');
+const { createApp, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS } = require('../src/server');
+
 const { STATE_CONTEXT_SCHEMA, StateContextRegistry, blobSha } = require('../src/stateContext');
 
 const APP = 'f42a9b03-59b9-49d3-a33b-0a210cd3d51e';

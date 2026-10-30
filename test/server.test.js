@@ -3,8 +3,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createApp, MCP_METHODS, MCP_PUBLIC_TOOLS } = require('../src/server');
-const { PUBLISHED_TOOLS } = require('../src/toolVisibility');
+const { createApp, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS } = require('../src/server');
+
 
 async function createTestServer(tasks, options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'clean-nano-ai-bridge-'));

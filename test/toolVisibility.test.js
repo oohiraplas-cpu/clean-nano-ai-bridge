@@ -1,8 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { MCP_PUBLIC_TOOLS, MCP_METHODS } = require('../src/server');
-const { FACADES, PUBLISHED_TOOLS, resolveVisibleCall } = require('../src/toolVisibility');
+const { MCP_PUBLIC_TOOLS, MCP_METHODS, PUBLISHED_TOOLS } = require('../src/server');
+const { FACADES, resolveVisibleCall } = require('../src/toolVisibility');
 
 const targetsOf = (facade) => Object.values(facade.ops).map((op) => op.tool);
 
@@ -11,10 +11,12 @@ test('published tools/list is under the CNAI limit (70) and within the recommend
   assert.ok(PUBLISHED_TOOLS.length <= 50, `published ${PUBLISHED_TOOLS.length}`);
 });
 
-test('published tool names are unique and each has a strict object schema', () => {
+test('published tool names are unique and each consolidated tool has a strict operation schema', () => {
   const names = PUBLISHED_TOOLS.map((tool) => tool.name);
   assert.equal(new Set(names).size, names.length);
-  for (const tool of PUBLISHED_TOOLS) {
+  const consolidated = PUBLISHED_TOOLS.filter((tool) => FACADES.some((f) => f.name === tool.name));
+  assert.equal(consolidated.length, FACADES.length);
+  for (const tool of consolidated) {
     assert.equal(tool.inputSchema.type, 'object');
     assert.deepEqual(tool.inputSchema.required, ['operation']);
     assert.equal(tool.inputSchema.properties.operation.type, 'string');
@@ -50,6 +52,15 @@ test('Canvas required capabilities are all reachable from the published surface'
     const facade = FACADES.find((f) => f.name === facadeName);
     assert.ok(facade, facadeName);
     for (const op of operations) assert.ok(facade.ops[op], `${facadeName}.${op}`);
+  }
+});
+
+test('direct Canvas core tools are published under their own names with their internal schema', () => {
+  const names = PUBLISHED_TOOLS.map((tool) => tool.name);
+  for (const name of ['health_check', 'resolve_app_target', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source']) {
+    assert.ok(names.includes(name), name);
+    const internal = MCP_PUBLIC_TOOLS.find((tool) => tool.name === name);
+    assert.deepEqual(PUBLISHED_TOOLS.find((tool) => tool.name === name), internal);
   }
 });
 
