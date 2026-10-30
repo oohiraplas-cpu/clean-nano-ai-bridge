@@ -19,7 +19,10 @@ function createAzureMetadataReader({ collectMetadata = collect } = {}) {
       if (!observed || observed.resourceIdMatched !== true ||
           observed.deploymentMetadataAccessible !== true ||
           !Array.isArray(observed.deploymentEntries)) {
-        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unverified', resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
+        const allowed = new Set(['cli_missing', 'cli_timeout', 'authentication_required', 'access_denied', 'resource_not_found', 'network_unavailable', 'cli_failure_unclassified']);
+        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unverified',
+          ...(allowed.has(observed?.deploymentFailureCategory) ? { failureCategory: observed.deploymentFailureCategory } : {}),
+          resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
       }
       return Object.freeze({ resourceIdMatched: true, deploymentEntries: observed.deploymentEntries.slice(0, 30).map(entry => ({
         deploymentId: typeof entry?.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
