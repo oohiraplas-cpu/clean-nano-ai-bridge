@@ -116,7 +116,7 @@ function validateValidatePowerAppsChangeParams(params) {
 
 function validateRunPowerAppsTestsParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources']);
+  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources', 'stateContext', 'stateSessionId']);
   if (unknown) return unknown;
   if (!Array.isArray(params.files) || params.files.length < 1) return 'filesは1件以上の配列が必要です';
   if (params.files.length > 50) return 'filesは50件以内である必要があります';
@@ -132,6 +132,8 @@ function validateRunPowerAppsTestsParams(params) {
     if (isDelete && file.content !== undefined) return 'files[]でdelete:trueとcontentは同時に指定できません';
     if (!isDelete && file.content === undefined) return 'files[]にはcontent（文字列）またはdelete:trueが必要です';
   }
+  if (params.stateContext !== undefined && !isPlainObject(params.stateContext)) return 'stateContextはオブジェクトである必要があります';
+  if (params.stateSessionId !== undefined && (typeof params.stateSessionId !== 'string' || !params.stateSessionId.trim())) return 'stateSessionIdは空でない文字列が必要です';
   for (const key of ['knownScreens', 'knownDataSources']) {
     const list = params[key];
     if (list === undefined) continue;

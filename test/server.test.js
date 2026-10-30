@@ -1129,6 +1129,42 @@ test('run_powerapps_tests: 静的検査を実行し、未検証項目はskipped+
   assert.equal(viaLegacy.body.result.scope, 'static_analysis');
 });
 
+test('run_powerapps_tests: enforced mode rejects missing context before static analysis', async (t) => {
+  const server = await newServer(t, { enforceStateManager: true });
+  const result = await rpc(server, 'run_powerapps_tests', {
+    files: [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\n  Screen1:\n' }]
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.structuredContent.error, /State Manager検証エラー/);
+  assert.equal(result.structuredContent.failedClosedTool, true);
+});
+
+test('run_powerapps_tests: enforced mode rejects unregistered and mismatched sessions', async (t) => {
+  const server = await newServer(t, { enforceStateManager: true });
+  const args = {
+    files: [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\n  Screen1:\n' }],
+    ...CHANGE_CONTEXT
+  };
+  const result = await rpc(server, 'run_powerapps_tests', args);
+  assert.equal(result.isError, true);
+  assert.ok(result.structuredContent.error);
+  assert.notEqual(result.structuredContent.status, 'passed');
+});
+
+test('run_powerapps_tests: scope mismatch and TTL are rejected by server-owned registry', () => {
+  const { StateContextRegistry } = require('../src/stateContext');
+  let now = 1000;
+  const registry = new StateContextRegistry({ ttlMs: 50, now: () => now });
+  const registered = registry.begin({
+    appId: 'test-app', environmentId: 'test-env', branch: 'main',
+    canonicalBranch: 'main', sha: 'a'.repeat(40)
+  }, 'authorized-scope');
+  const context = registered.stateContext;
+  assert.throws(() => registry.lookup(context.correlationId, registered.stateSessionId, 'other-scope'), /stateSessionId/);
+  now += 51;
+  assert.throws(() => registry.lookup(context.correlationId, registered.stateSessionId, 'authorized-scope'), /expired/);
+});
+
 // ---- verify_save_result ----
 
 test('verify_save_result: 正本ソースとアプリ状態が期待どおりならverified、保存未反映ならverified:false', async (t) => {
@@ -1775,4 +1811,21 @@ test('SharePointの新規作成・編集ツールは人間承認なしでは書�
     assert.equal(body.result.isError, true, `${name} should reject missing human approval`);
   }
   assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
+});
+
+test('unified tool operations fail closed for WRITE and unknown operations', async () => {
+  const platform = require('../src/platformManage');
+  for (const [tool, writeOp] of [
+    ['sharepoint_manage', 'item_update'],
+    ['powerapps_manage', 'publish'],
+    ['powerautomate_manage', 'create']
+  ]) {
+    assert.equal(platform.isReadOnlyOperation(tool, writeOp), false);
+    const result = await platform.run(tool, { operation: writeOp });
+    assert.equal(result.status, 'approval_required');
+    assert.equal(result.verified, false);
+  }
+  assert.equal(platform.isReadOnlyOperation('powerplatform_validate', 'premium_check'), true);
+  assert.equal(platform.isReadOnlyOperation('sharepoint_manage', 'search'), true);
+  assert.equal(platform.isReadOnlyOperation('sharepoint_manage', '__unknown__'), false);
 });
