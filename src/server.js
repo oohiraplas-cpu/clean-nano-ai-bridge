@@ -2095,7 +2095,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
   }
   if (method === 'get_bridge_capabilities') {
-    return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18' });
+    return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18', deploymentSha: config.deploymentSha || null });
   }
   if (method === 'check_dependencies') {
     return checkDependencies({
