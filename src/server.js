@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
-const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
+// Power Automate flow writer is loaded only when a flow tool is invoked.
 const platformManage = require('./platformManage');
 const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
 const express = require('express');
@@ -216,6 +216,9 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   hireDate: { type: 'string', description: '入社日（YYYY-MM-DD）' },
   remarks: { type: 'string', description: '備考' }
 });
+
+// Shared membership index: avoid allocating a Set on every JSON-RPC request.
+const MCP_METHOD_SET = new Set(MCP_METHODS);
 
 const MCP_PUBLIC_TOOLS = Object.freeze([
   {
@@ -1540,7 +1543,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     description: '実行依頼1件の状態（ステップごとの状態、承認状況を含む）を返します。読み取り専用。',
     inputSchema: {
       type: 'object',
-      properties: { requestId: { type: 'string', description: '実行依頼ID' } },
+      properties: { requestId: { type: 'string', description: '実行依頼ID' }, waitForTerminal: { type: 'boolean', description: '完了・停止・承認待ちまで待機し、途中経過を返さない（最大25秒）' }, timeoutMs: { type: 'integer', minimum: 0, maximum: 25000, description: '待機上限（ミリ秒、既定20000）' } },
       required: ['requestId'],
       additionalProperties: false
     },
@@ -2197,7 +2200,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       const p = params || {};
       const fn = { powerautomate_flow_list: 'listFlows', powerautomate_flow_read: 'readFlow', powerautomate_flow_update: 'updateFlow', powerautomate_flow_set_state: 'setFlowState', powerautomate_flow_rollback: 'rollbackFlow' }[method];
       if (!fn) throw new Error('unknown tool');
-      const d = await powerAutomateFlowWriter[fn](p);
+      const d = await require('./powerAutomateFlowWriter')[fn](p);
       const bad = typeof d.status === 'string' && d.status.endsWith('verify_failed');
       return createCommonResponse({ status: bad ? 'partial' : 'ok', verified: !bad, data: d, warnings: [], summary: `${method} ${d.status || 'ok'}` });
     } catch (err) {
@@ -2810,6 +2813,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
   if (method === 'get_execution_status') {
     if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    if (params.waitForTerminal === true) {
+      return require('./executionFinalResponse').waitForExecutionResult(executionQueue, params.requestId, {
+        timeoutMs: params.timeoutMs === undefined ? 20000 : params.timeoutMs
+      });
+    }
     return executionQueue.getStatus(params.requestId);
   }
   if (method === 'get_checkpoint') {
@@ -3402,8 +3410,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       }
       // Standard MCP tool methods (health_check, get_tasks, etc.) via tools/call
       // Map legacy method names to tools/call format for JSON-RPC 2.0 compatibility
-      const standardMethods = new Set(MCP_METHODS);
-      if (standardMethods.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
+      if (MCP_METHOD_SET.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
         // Convert standard method call to tools/call format
         return res.status(200).json(await (async () => {
           try {
