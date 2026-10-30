@@ -111,7 +111,10 @@ class PowerAppsGitStore {
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      throw new Error(`GitHub API エラー (${response.status}): ${detail.slice(0, 300)}`);
+      const error = new Error(`GitHub API エラー (${response.status})`);
+      error.status = response.status;
+      // Do not expose GitHub response bodies: they may contain sensitive metadata.
+      throw error;
     }
     return response.status === 204 ? null : response.json();
   }
@@ -285,6 +288,7 @@ class PowerAppsGitStore {
     this._assertGitHubConfig();
     const branches = [...new Set([this.githubBranch, ...this.githubFallbackBranches].filter(Boolean))];
 
+    const failures = [];
     for (const branch of branches) {
       try {
         // Get the commit SHA for the HEAD of this branch
@@ -309,7 +313,10 @@ class PowerAppsGitStore {
           sha: commitSha  // Commit SHA: the definitive snapshot for StateContext
         };
       } catch (error) {
-        // Silently continue to next branch
+        // Preserve non-secret diagnostic categories; never log credentials or response bodies.
+        const status = Number(error.status || error.statusCode || error.response?.status);
+        const category = status === 401 ? 'authentication' : status === 403 ? 'permission_or_rate_limit' : status === 404 ? 'branch_not_found' : status === 429 ? 'rate_limit' : status >= 500 ? 'upstream' : status >= 400 ? 'request_error' : 'transport_or_config';
+        failures.push({ branch, category, status: Number.isInteger(status) ? status : null });
         continue;
       }
     }
@@ -319,7 +326,8 @@ class PowerAppsGitStore {
     error.status = 502;
     error.payload = {
       status: 'state_context_invalid',
-      reason: 'Cannot retrieve commit SHA from any configured branch for StateContext authority'
+      reason: 'Cannot retrieve commit SHA from any configured branch for StateContext authority',
+      failures
     };
     throw error;
   }
