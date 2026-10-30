@@ -24,6 +24,7 @@ const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
 const { DeploymentService } = require('./deploymentService');
 const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
 const { createAzureMetadataReader } = require('./azureMetadataReader');
+const { sanitizeMetadataFailures } = require('./azureMetadataFailures');
 const { createGithubReadTools } = require('./githubReadTools');
 const { createAzureReadTools } = require('./azureReadTools');
 const { PermissionsService } = require('./permissionsService');
@@ -1732,10 +1733,18 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (params && Object.keys(params).length) throw requestError('parameters_not_allowed');
     const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
     if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_metadata_reader_unavailable' };
-    const result = await reader();
-    if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
-      return { status: 'blocked', reason: 'azure_metadata_unverified' };
+    let result;
+    try { result = await reader(); }
+    catch {
+      return { status: 'blocked', reason: 'azure_metadata_unavailable',
+        metadataFailures: [{ stage: 'metadata_reader', reason: 'reader_failed' }] };
+    }
+    const metadataFailures = sanitizeMetadataFailures(result?.metadataFailures);
+    if (!result || result.status === 'blocked' || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
+      return { status: 'blocked', reason: result?.reason === 'azure_metadata_unavailable' ? 'azure_metadata_unavailable' : 'azure_metadata_unverified',
+        resourceIdMatched: result?.resourceIdMatched === true, metadataFailures };
     return { status: 'observed_not_verified', resourceIdMatched: true,
+      metadataFailures,
       // Only the trusted adapter's already assessed diagnostic is forwarded.
       // Missing or malformed diagnostic must remain blocked.
       // Untrusted adapter results are observational only. Never accept a
