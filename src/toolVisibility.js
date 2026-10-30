@@ -250,7 +250,7 @@ const FACADES = Object.freeze([
 const FACADE_BY_NAME = new Map(FACADES.map((f) => [f.name, f]));
 
 /** Published tools/list entries for CNAI and other external clients. */
-function buildPublishedTools() {
+function buildPublishedTools(byName = new Map()) {
   return FACADES.map((f) => ({
     name: f.name,
     description: f.description,
@@ -258,11 +258,29 @@ function buildPublishedTools() {
       type: 'object',
       properties: {
         operation: { type: 'string', enum: Object.keys(f.ops) },
+        ...targetProperties(f, byName),
       },
       required: ['operation'],
       additionalProperties: true,
     },
   }));
+}
+
+/**
+ * Optional parameters accepted by the facade's target tools, so clients can see which
+ * arguments (appId, relativePath, stateSessionId, ...) to send. Never required: which ones
+ * apply depends on `operation`, and each target still validates its own input.
+ */
+function targetProperties(facade, byName) {
+  const merged = {};
+  for (const op of Object.values(facade.ops)) {
+    const properties = byName.get(op.tool)?.inputSchema?.properties || {};
+    for (const [key, schema] of Object.entries(properties)) {
+      if (key === 'operation' || (op.fixed && key in op.fixed) || key in merged) continue;
+      merged[key] = schema;
+    }
+  }
+  return merged;
 }
 
 /** Canvas core tools also published under their own names (same internal definition). */
@@ -282,7 +300,7 @@ function publishedToolsFor(catalog) {
     if (!tool) throw new Error(`direct tool missing from catalog: ${name}`);
     return tool;
   });
-  return Object.freeze([...buildPublishedTools(), ...direct]);
+  return Object.freeze([...buildPublishedTools(byName), ...direct]);
 }
 
 /**

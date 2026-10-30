@@ -94,3 +94,23 @@ test('non-facade names pass through unchanged for existing and internal callers'
   const args = { relativePath: 'x', stateContext: {} };
   assert.deepEqual(resolveVisibleCall('update_powerapps_image', args), { name: 'update_powerapps_image', args });
 });
+
+test('consolidated tools advertise their targets\' arguments as optional, so clients know what to send', () => {
+  const byName = new Map(MCP_PUBLIC_TOOLS.map((tool) => [tool.name, tool]));
+  const canvasRead = PUBLISHED_TOOLS.find((tool) => tool.name === 'canvas_read');
+  const props = canvasRead.inputSchema.properties;
+  for (const key of ['relativePath', 'screenName', 'targetNames', 'stateSessionId', 'appId']) {
+    assert.ok(props[key], `canvas_read should advertise ${key}`);
+  }
+  assert.deepEqual(canvasRead.inputSchema.required, ['operation']);
+  assert.equal(props.operation.enum.length, Object.keys(FACADES.find((f) => f.name === 'canvas_read').ops).length);
+  assert.deepEqual(props.relativePath, byName.get('get_powerapps_source').inputSchema.properties.relativePath);
+});
+
+test('facade schemas never make a target argument required and keep operation as the only required field', () => {
+  for (const facade of FACADES) {
+    const tool = PUBLISHED_TOOLS.find((t) => t.name === facade.name);
+    assert.deepEqual(tool.inputSchema.required, ['operation'], facade.name);
+    assert.equal(tool.inputSchema.properties.operation.type, 'string', facade.name);
+  }
+});
