@@ -120,7 +120,7 @@ class PowerAppsGitStore {
         : status === 429 ? 'GITHUB_RATE_LIMIT'
         : status >= 500 ? 'GITHUB_UPSTREAM_UNAVAILABLE'
         : 'GITHUB_REQUEST_FAILED';
-      const error = new Error(`GitHub request failed: ${code} (HTTP ${status})`);
+      const error = new Error(`GitHub API エラー (${status}): ${code}`);
       error.status = status;
       error.code = code;
       error.retryable = status === 429 || status >= 500 || (status === 403 && remaining === '0');
