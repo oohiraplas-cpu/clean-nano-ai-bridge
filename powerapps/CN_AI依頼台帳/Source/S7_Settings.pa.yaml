@@ -67,21 +67,6 @@ Screens:
             Width: =Parent.Width - 64
             X: =32
             Y: =170
-      - S7_GoMembers:
-          Control: Classic/Button@2.2.0
-          Properties:
-            BorderThickness: =0
-            Color: =RGBA(10, 10, 10, 1)
-            Fill: =RGBA(0, 204, 102, 1)
-            FontWeight: =FontWeight.Bold
-            Height: =52
-            HoverFill: =RGBA(0, 230, 115, 1)
-            OnSelect: =Navigate(S6_Members, ScreenTransition.None)
-            PressedFill: =RGBA(0, 160, 80, 1)
-            Text: ="作業員を切り替える（メンバー一覧）"
-            Width: =Parent.Width - 32
-            X: =16
-            Y: =236
       - S7_Reload:
           Control: Classic/Button@2.2.0
           Properties:
