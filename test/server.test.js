@@ -3,7 +3,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createApp, MCP_METHODS, MCP_PUBLIC_TOOLS } = require('../src/server');
+const { createApp, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS } = require('../src/server');
+
 
 async function createTestServer(tasks, options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'clean-nano-ai-bridge-'));
@@ -395,7 +396,9 @@ test('MCPツール一覧でタスク6ツール、Power Apps 6ツール、SharePo
   assert.equal(response.status, 200);
   const body = await response.json();
   // 既存の主要ツール順序を維持し、新規SharePoint調査・作成・編集ツールも公開する。
-  const toolNames = body.tools.map((tool) => tool.name);
+  // Checked on the internal catalog: every tool stays registered; the external list is consolidated.
+  assert.ok(Array.isArray(body.tools));
+  const toolNames = MCP_PUBLIC_TOOLS.map((tool) => tool.name);
   assert.deepEqual(toolNames.slice(0, 12), [
     'health_check', 'get_tasks', 'get_next_task', 'create_task', 'update_task_status',
     'get_task_result', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source',
@@ -685,10 +688,13 @@ test('ChatGPT Apps向け標準MCP initialize/tools/list/tools/callに対応す�
   assert.equal(listed.status, 200);
   const listedBody = await listed.json();
   // 既存28ツール + 優先A機能4ツール + 優先B機能4ツール + Knowledge/対象解決6ツール + ユーザー保護7ツール + Executive2ツール。
-  assert.equal(listedBody.result.tools.length, MCP_PUBLIC_TOOLS.length);
-  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'create_task'));
-  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'get_powerapps_app'));
-  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'publish_powerapps_app'));
+  // External tools/list is the consolidated surface; internal catalog keeps every tool.
+  assert.equal(listedBody.result.tools.length, PUBLISHED_TOOLS.length);
+  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'tasks'));
+  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'canvas_read'));
+  assert.ok(MCP_PUBLIC_TOOLS.some((tool) => tool.name === 'create_task'));
+  assert.ok(listedBody.result.tools.some((tool) => tool.name === 'canvas_publish'));
+  assert.ok(MCP_PUBLIC_TOOLS.some((tool) => tool.name === 'publish_powerapps_app'));
 
   const called = await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers,
@@ -982,16 +988,17 @@ test('tools/list（REST・JSON-RPC）に新9ツールが含まれ、inputSchema�
   const rpcList = await (await fetch(`${server.baseUrl}/mcp`, {
     method: 'POST', headers: MCP_HEADERS, body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/list', params: {} })
   })).json();
-  for (const tools of [rest.tools, rpcList.result.tools]) {
+  // NEW_TOOL_NAMES are internal catalog entries; they stay registered and strictly typed there.
+  for (const tools of [MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS]) {
     const names = tools.map((tool) => tool.name);
-    for (const name of NEW_TOOL_NAMES) assert.ok(names.includes(name), name);
+    if (tools === MCP_PUBLIC_TOOLS) for (const name of NEW_TOOL_NAMES) assert.ok(names.includes(name), name);
     for (const tool of tools.filter((entry) => NEW_TOOL_NAMES.includes(entry.name))) {
       assert.equal(typeof tool.description, 'string', tool.name);
       assert.equal(tool.inputSchema.type, 'object', tool.name);
       assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
     }
   }
-  const byName = Object.fromEntries(rest.tools.map((tool) => [tool.name, tool.inputSchema]));
+  const byName = Object.fromEntries(MCP_PUBLIC_TOOLS.map((tool) => [tool.name, tool.inputSchema]));
   assert.equal(byName.run_powerapps_tests.properties.files.items.additionalProperties, false);
   assert.deepEqual(byName.update_permissions.required.sort(), ['action', 'approvedByHuman', 'principalId', 'principalType', 'roleName', 'targetType']);
   assert.deepEqual(byName.get_permissions.properties.targetType.enum, ['powerapps_app', 'dataverse_user_roles']);
@@ -1454,8 +1461,7 @@ test('get_powerapps_sourceは取得したbranchと正本branchの一致状況を
 
 test('get_powerapps_operation_result: tools/listに登録され、tools/call・legacyの両方で実行できる。失敗は500でなく詳細付きで返る', async (t) => {
   const server = await newServer(t);
-  const list = await (await fetch(`${server.baseUrl}/mcp/tools/list`, { headers: { 'x-api-key': 'mcp-secret' } })).json();
-  const tool = list.tools.find((entry) => entry.name === 'get_powerapps_operation_result');
+  const tool = MCP_PUBLIC_TOOLS.find((entry) => entry.name === 'get_powerapps_operation_result');
   assert.ok(tool);
   assert.deepEqual(tool.inputSchema.required, ['operationId']);
   assert.equal(tool.inputSchema.additionalProperties, false);

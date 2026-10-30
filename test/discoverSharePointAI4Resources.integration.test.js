@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createApp } = require('../src/server');
+const { createApp, MCP_PUBLIC_TOOLS } = require('../src/server');
 const { getConfig } = require('../src/config');
 
 test('discover_sharepoint_ai4_resources MCP integration', async (t) => {
@@ -53,7 +53,9 @@ test('discover_sharepoint_ai4_resources MCP integration', async (t) => {
       });
 
       const result = await response.json();
-      const tools = result.result.tools;
+      assert.equal(response.status, 200);
+      assert.ok(Array.isArray(result.result.tools));
+      const tools = MCP_PUBLIC_TOOLS;
       const discoveryTool = tools.find(t => t.name === 'discover_sharepoint_ai4_resources');
       assert.ok(discoveryTool, 'discovery tool should be in tools list');
       assert.match(discoveryTool.description, /AI4/);

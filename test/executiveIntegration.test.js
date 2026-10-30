@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createApp, MCP_PUBLIC_TOOLS } = require('../src/server');
+const { createApp, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS } = require('../src/server');
+
 
 test('Executive MCP tools are authenticated, discoverable and executable through the actual HTTP handler', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cnai-executive-'));
@@ -17,7 +18,7 @@ test('Executive MCP tools are authenticated, discoverable and executable through
   };
   assert.equal((await call('tools/list', {}, false)).status, 401);
   const listed = await call('tools/list', {});
-  assert.equal(listed.body.result.tools.length, MCP_PUBLIC_TOOLS.length);
+  assert.equal(listed.body.result.tools.length, PUBLISHED_TOOLS.length);
   for (const name of ['get_executive_policy', 'get_executive_brief']) {
     assert.equal(MCP_PUBLIC_TOOLS.find(x => x.name === name).annotations.readOnlyHint, true);
     const result = (await call('tools/call', { name, arguments: {} })).body.result;
