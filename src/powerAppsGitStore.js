@@ -110,8 +110,21 @@ class PowerAppsGitStore {
     });
 
     if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(`GitHub API エラー (${response.status}): ${detail.slice(0, 300)}`);
+      // Do not include upstream response bodies: they may contain sensitive metadata.
+      const status = response.status;
+      const remaining = response.headers?.get?.('x-ratelimit-remaining');
+      const code = status === 401 ? 'GITHUB_AUTH_INVALID'
+        : status === 403 && remaining === '0' ? 'GITHUB_RATE_LIMIT'
+        : status === 403 ? 'GITHUB_PERMISSION_DENIED'
+        : status === 404 ? 'GITHUB_RESOURCE_NOT_FOUND'
+        : status === 429 ? 'GITHUB_RATE_LIMIT'
+        : status >= 500 ? 'GITHUB_UPSTREAM_UNAVAILABLE'
+        : 'GITHUB_REQUEST_FAILED';
+      const error = new Error(`GitHub API エラー (${status}): ${code}`);
+      error.status = status;
+      error.code = code;
+      error.retryable = status === 429 || status >= 500 || (status === 403 && remaining === '0');
+      throw error;
     }
     return response.status === 204 ? null : response.json();
   }
