@@ -127,7 +127,7 @@ async function getSharePointListSchema(options = {}) {
           lookupFieldName: col.lookupFieldName 
         } : {}),
         // 一意制約の有無
-        unique: col.unique || false
+        unique: typeof col.unique === 'boolean' ? col.unique : null
       }))
     };
 
