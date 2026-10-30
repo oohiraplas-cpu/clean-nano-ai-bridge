@@ -217,3 +217,33 @@ test('Azure CLI metadata collector emits only read-only ARM and identity observa
   assert.match(script, /managedIdentityObservedIndependently: managedIdentityAssigned/);
   assert.doesNotMatch(script, /appsettings|list-secrets|access-token|role', 'assignment'/);
 });
+
+test('Azure CLI failures use bounded categories without leaking stderr', async () => {
+  const { classifyAzureCliFailure } = require('../src/azureCliFailure');
+  assert.equal(classifyAzureCliFailure({ code: 'ENOENT' }), 'cli_missing');
+  assert.equal(classifyAzureCliFailure({ code: 'ETIMEDOUT' }), 'cli_timeout');
+  assert.equal(classifyAzureCliFailure({ stderr: 'Please run az login; secret=hidden' }), 'authentication_required');
+  assert.equal(classifyAzureCliFailure({ stderr: 'AuthorizationFailed; secret=hidden' }), 'access_denied');
+  assert.equal(classifyAzureCliFailure({ stderr: 'unrecognized secret=hidden' }), 'cli_failure_unclassified');
+  const { createAzureMetadataReader } = require('../src/azureMetadataReader');
+  const reader = createAzureMetadataReader({ collectMetadata: () => { const error = new Error('private'); error.code = 'ENOENT'; throw error; } });
+  const result = await reader.readDeploymentMetadata();
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.failureCategory, 'cli_missing');
+  assert.equal(JSON.stringify(result).includes('private'), false);
+});
+
+test('deployment probe failures remain blocked with a safe category', async () => {
+  const { createAzureMetadataReader } = require('../src/azureMetadataReader');
+  const reader = createAzureMetadataReader({ collectMetadata: () => ({
+    resourceIdMatched: true, deploymentMetadataAccessible: false,
+    deploymentFailureCategory: 'access_denied', deploymentEntries: [],
+    privateDetail: 'do-not-expose'
+  }) });
+  const result = await reader.readDeploymentMetadata();
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.failureCategory, 'access_denied');
+  assert.equal(JSON.stringify(result).includes('do-not-expose'), false);
+  const collector = fs.readFileSync(path.join(__dirname, '../scripts/check-azure-metadata-only.js'), 'utf8');
+  assert.match(collector, /deploymentFailureCategory = classifyAzureCliFailure\(error\)/);
+});

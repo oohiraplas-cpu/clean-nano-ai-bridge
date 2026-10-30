@@ -1733,8 +1733,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
     if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_metadata_reader_unavailable' };
     const result = await reader();
-    if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
-      return { status: 'blocked', reason: 'azure_metadata_unverified' };
+    if (!result || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries)) {
+      const allowed = new Set(['cli_missing', 'cli_timeout', 'authentication_required', 'access_denied', 'resource_not_found', 'network_unavailable', 'cli_failure_unclassified']);
+      return { status: 'blocked', reason: 'azure_metadata_unverified',
+        ...(allowed.has(result?.failureCategory) ? { failureCategory: result.failureCategory } : {}) };
+    }
     return { status: 'observed_not_verified', resourceIdMatched: true,
       // Only the trusted adapter's already assessed diagnostic is forwarded.
       // Missing or malformed diagnostic must remain blocked.

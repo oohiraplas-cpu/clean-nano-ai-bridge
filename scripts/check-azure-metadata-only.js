@@ -3,6 +3,7 @@
 // tokens, role assignments or PAC profiles. No deployment SHA inference.
 const { execFileSync } = require('node:child_process');
 const { assessAzureReadiness } = require('../src/azureReadiness');
+const { classifyAzureCliFailure } = require('../src/azureCliFailure');
 const az = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors', '--output', 'json'], {
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000
 }));
@@ -22,6 +23,7 @@ function collect() {
   } catch { /* unverified */ }
   let deploymentMetadataAccessible = false;
   let deploymentEntries = [];
+  let deploymentFailureCategory = null;
   try {
     const deployments = az(['webapp', 'log', 'deployment', 'list', ...args,
       '--query', '[].{deploymentId:id,active:active,status:status,receivedTime:received_time}']);
@@ -32,7 +34,7 @@ function collect() {
       status: Number.isInteger(entry.status) ? entry.status : null,
       receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
     }));
-  } catch { /* unverified */ }
+  } catch (error) { deploymentFailureCategory = classifyAzureCliFailure(error); }
   const readiness = assessAzureReadiness({
     resourceIdMatched: true, managedIdentityAssigned,
     deploymentShaMatched: false, rbacReadVerified: false,
@@ -42,7 +44,7 @@ function collect() {
   return Object.freeze({ resourceIdMatched: true,
     armResourceId: app.id, armObservedIndependently: true,
     managedIdentityAssigned, managedIdentityObservedIndependently: managedIdentityAssigned,
-    deploymentMetadataAccessible, deploymentEntries, deploymentShaMatched: false,
+    deploymentMetadataAccessible, deploymentEntries, deploymentFailureCategory, deploymentShaMatched: false,
     effectiveRbacVerified: false, pacRuntimeVerified: false, readiness });
 }
 if (require.main === module) {

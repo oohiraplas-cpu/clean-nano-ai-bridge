@@ -4,6 +4,7 @@
 // Caller must deliberately inject this adapter into createApp's bridgeServices.
 const { collect } = require('../scripts/check-azure-metadata-only');
 const { assessAzureDiagnostic } = require('./azureDiagnostic');
+const { classifyAzureCliFailure } = require('./azureCliFailure');
 function createAzureMetadataReader({ collectMetadata = collect } = {}) {
   if (typeof collectMetadata !== 'function') throw new TypeError('invalid_metadata_collector');
   return Object.freeze({
@@ -11,15 +12,17 @@ function createAzureMetadataReader({ collectMetadata = collect } = {}) {
       let observed;
       try {
         observed = await collectMetadata();
-      } catch {
-        // Missing Azure CLI, authentication, or metadata access remains an explicit
-        // read-only blocker; never leak upstream errors or turn it into an HTTP 500.
-        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unavailable', resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
+      } catch (error) {
+        // Return only a bounded non-sensitive failure category; never leak CLI output.
+        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unavailable', failureCategory: classifyAzureCliFailure(error), resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
       }
       if (!observed || observed.resourceIdMatched !== true ||
           observed.deploymentMetadataAccessible !== true ||
           !Array.isArray(observed.deploymentEntries)) {
-        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unverified', resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
+        const allowed = new Set(['cli_missing', 'cli_timeout', 'authentication_required', 'access_denied', 'resource_not_found', 'network_unavailable', 'cli_failure_unclassified']);
+        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unverified',
+          ...(allowed.has(observed?.deploymentFailureCategory) ? { failureCategory: observed.deploymentFailureCategory } : {}),
+          resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
       }
       return Object.freeze({ resourceIdMatched: true, deploymentEntries: observed.deploymentEntries.slice(0, 30).map(entry => ({
         deploymentId: typeof entry?.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
