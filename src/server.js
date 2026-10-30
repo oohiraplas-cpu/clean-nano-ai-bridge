@@ -540,6 +540,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       properties: {
         files: {
           type: 'array',
+          minItems: 1,
+          maxItems: 50,
           description: '検査する変更ファイル（1〜50件）',
           items: {
             type: 'object',
@@ -552,6 +554,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
             additionalProperties: false
           }
         },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 1, description: 'get_powerapps_sourceが返した同一実行単位のstateSessionId。State Manager有効時は必須' },
         knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
         knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
       },
@@ -3123,6 +3127,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
     const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
     const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
+
+    if (method === 'run_powerapps_tests' && (config.enforceStateManager === true || params.stateContext !== undefined || params.stateSessionId !== undefined)) {
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+    }
 
     if (method === 'get_powerapps_state') {
       const state = await execute(params);

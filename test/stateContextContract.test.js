@@ -417,3 +417,28 @@ test('CRITICAL: failed multi-screen resolution invalidates the previously bound 
   assert.equal(compare.error, true);
   assert.match(compare.data.error, /not registered/);
 });
+
+test('static tests accept the published context contract and enforce registered session, scope and TTL', async t => {
+  const f = await fixture(t);
+  const args = await f.chain();
+  const files = [{ relativePath: 'S1_Home.pa.yaml', content: CONTENT }];
+  const schema = MCP_PUBLIC_TOOLS.find(x => x.name === 'run_powerapps_tests').inputSchema;
+  assert.deepEqual(schema.properties.stateContext, STATE_CONTEXT_SCHEMA);
+  assert.ok(schema.properties.stateSessionId);
+  assert.equal(schema.properties.files.minItems, 1);
+  assert.equal(schema.properties.files.maxItems, 50);
+  const result = await f.rpc('run_powerapps_tests', { ...args, files });
+  assert.equal(result.error, false);
+  assert.equal(result.data.scope, 'static_analysis');
+  assert.equal(result.data.status, 'incomplete');
+  for (const bad of [
+    { files },
+    { ...args, files, stateSessionId: 'invented-session' },
+    { ...args, files, stateContext: { ...args.stateContext, sha: 'b'.repeat(40) } },
+    { ...args, files, stateContext: { ...args.stateContext, appId: 'wrong-app' } },
+    { ...args, files, stateContext: { ...args.stateContext, environment: 'wrong-env' } }
+  ]) assert.equal((await f.rpc('run_powerapps_tests', bad)).error, true);
+  assert.equal((await f.rpc('run_powerapps_tests', { ...args, files }, 'other-session')).error, true);
+  f.expire();
+  assert.equal((await f.rpc('run_powerapps_tests', { ...args, files })).error, true);
+});
