@@ -91,3 +91,9 @@ test('live target resolution treats GitHub main existing source as canonical rep
   assert.equal(result.data.writesAllowed, true);
   assert.equal(result.data.sourceControl.provider, 'GitHub');
 });
+
+test('schema uniqueness is tri-state: enabled, disabled, unknown', async () => {
+  const columns = [{ name: 'Enabled', unique: true }, { name: 'Disabled', unique: false }, { name: 'Unknown' }];
+  const response = await getSharePointListSchema({ sharePointReader: { async listColumns() { return { columns }; } }, siteId: 'site', listId: 'list' });
+  assert.deepEqual(response.data.schema.columns.map(c => c.unique), [true, false, null]);
+});
