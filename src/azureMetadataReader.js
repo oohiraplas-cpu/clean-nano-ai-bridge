@@ -4,6 +4,7 @@
 // Caller must deliberately inject this adapter into createApp's bridgeServices.
 const { collect } = require('../scripts/check-azure-metadata-only');
 const { assessAzureDiagnostic } = require('./azureDiagnostic');
+const { classifyAzureCliFailure } = require('./azureCliFailure');
 function createAzureMetadataReader({ collectMetadata = collect } = {}) {
   if (typeof collectMetadata !== 'function') throw new TypeError('invalid_metadata_collector');
   return Object.freeze({
@@ -11,10 +12,9 @@ function createAzureMetadataReader({ collectMetadata = collect } = {}) {
       let observed;
       try {
         observed = await collectMetadata();
-      } catch {
-        // Missing Azure CLI, authentication, or metadata access remains an explicit
-        // read-only blocker; never leak upstream errors or turn it into an HTTP 500.
-        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unavailable', resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
+      } catch (error) {
+        // Return only a bounded non-sensitive failure category; never leak CLI output.
+        return Object.freeze({ status: 'blocked', reason: 'azure_metadata_unavailable', failureCategory: classifyAzureCliFailure(error), resourceIdMatched: false, deploymentEntries: [], diagnostic: assessAzureDiagnostic() });
       }
       if (!observed || observed.resourceIdMatched !== true ||
           observed.deploymentMetadataAccessible !== true ||
