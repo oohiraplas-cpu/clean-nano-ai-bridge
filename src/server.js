@@ -3386,7 +3386,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const id = body.id;
       const params = body.params || {};
 
-      if (body.method === 'notifications/initialized') return res.status(202).end();
+      // MCP: a notification (no id, e.g. notifications/initialized or notifications/cancelled)
+      // is acknowledged with 202 and no body, never a JSON-RPC error.
+      if (typeof body.method === 'string' && body.method.startsWith('notifications/') && id === undefined) return res.status(202).end();
       if (body.method === 'ping') return res.status(200).json(jsonRpcResult(id, {}));
       if (body.method === 'initialize') {
         return res.status(200).json(jsonRpcResult(id, {
@@ -3497,6 +3499,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
+    if (req.path === '/mcp' && error.type === 'entity.parse.failed') {
+      return res.status(400).json(jsonRpcError(null, -32700, 'Parse error: リクエストがJSONとして不正です'));
+    }
     console.error('request_failed', { method: req.method, path: req.path, message: error.message });
     return res.status(500).json({ error: '内部エラーが発生しました' });
   });
