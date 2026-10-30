@@ -67,14 +67,22 @@ async function main() {
     if (actual.some(t => t.name === 'get_executive_policy')) await call('get_executive_policy', { query: '利益・未入金・銀行融資' });
     if (actual.some(t => t.name === 'get_executive_brief')) await call('get_executive_brief', { sources: [] });
     await call('get_powerapps_app');
-    await call('get_powerapps_state');
-    const source = await call('get_powerapps_source', { relativePath: 'App.pa.yaml' });
+    const state = await call('get_powerapps_state');
+    const source = state?.authorityContextComplete && state?.stateSessionId
+      ? await call('get_powerapps_source', { relativePath: 'App.pa.yaml', correlationId: state.correlationId, stateSessionId: state.stateSessionId })
+      : null;
+    if (!source) report.smoke.get_powerapps_source = { status: 'blocked', reason: 'registered_state_unavailable' };
     if (actual.some(t => t.name === 'inspect_powerapps_structure')) await call('inspect_powerapps_structure', { branch: sourceBranch });
     if (actual.some(t => t.name === 'analyze_change_impact')) {
       if (source?.content && source.branch === sourceBranch) await call('analyze_change_impact', { branch: sourceBranch, changes: [{ relativePath: 'App.pa.yaml', content: source.content }] });
       else report.smoke.analyze_change_impact = { status: 'blocked', reason: 'canonical_source_unavailable' };
     }
-    if (source?.content) await call('run_powerapps_tests', { files: [{ relativePath: 'App.pa.yaml', content: source.content }] });
+    if (source?.content && source.stateContextComplete && source.stateContext && source.stateSessionId) {
+      await call('run_powerapps_tests', {
+        files: [{ relativePath: 'App.pa.yaml', content: source.content }],
+        stateContext: source.stateContext, stateSessionId: source.stateSessionId
+      });
+    }
     else report.smoke.run_powerapps_tests = { status: 'blocked', reason: 'source_unavailable' };
     await call('get_permissions', { targetType: 'powerapps_app' });
     if (actual.some(t => t.name === 'create_change_snapshot')) {

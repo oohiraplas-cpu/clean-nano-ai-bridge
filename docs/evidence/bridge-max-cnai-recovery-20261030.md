@@ -33,3 +33,15 @@ Regression covers successful acquisition -> source -> static analysis, missing c
 Dedicated branch/PR only. Production merge, deploy and publish require explicit approval after CI and review. main_clean-nano-ai-bridge.yml deploys on main push: approving merge can trigger production deployment; do not merge without deployment approval.
 
 Rollback code by reverting this PR through another reviewed PR. Base SHA above is a source reference, not a verified Azure rollback artifact. Before production approval, establish the actual previous deployment artifact and restoration procedure, inspect CI, then deploy; refresh the existing CNAI tool schema and repeat live acquisition/static tests, approval rejection checks and read checks. Do not set approvedByHuman from an AI decision.
+
+## Follow-up: existing connection authentication failure
+
+User reports existing CNAI Bridge connection is registered but fails during connection/authentication; connection display name not supplied. This is user-reported CNAI evidence, not an independently observed CNAI trace.
+
+Connector health comparison: legacy `bridge` returns HTTP 401 / UNAUTHORIZED at the documented App Service /mcp endpoint; MAX and recovery connectors both return ok. This isolates a per-connection authentication problem; it does not establish whether the CNAI connector has the same stored credential or the exact credential mismatch cause. Do not weaken server authentication, rotate the server key, disclose credentials, or create duplicate connections to work around it.
+
+Operator next action: open the existing CNAI M365 agent's Tools tab, open its existing Bridge tool and connection details, and repair/re-authenticate that same connection using its existing authorized connection owner and API-key header X-API-Key. If current UI offers only connection replacement, pause and inspect dependencies first. Obtain the currently configured MCP_API_KEY through authorized secret-management UI only; never paste it into chat or logs. Successful MAX authentication does not prove CNAI authentication. Recheck initialize/tool discovery and health from CNAI after repair, then after approved deployment run the registered state/source/static-test sequence.
+
+Additional release evidence: successful Azure deployment workflow run 41067154074 is linked to base commit bea8745270ae96501ec52bce455cea42a2879770. Its deploy, restart and health steps succeeded. Existing unexpired node-app artifact ID 12982049873 has digest sha256:5e3d257f8e9b5a51ec32b468375885c5d76b51b5bae99deb92d77205260fe531 and expiry 2027-01-28. This is a candidate restoration artifact; download integrity, content and restoration execution remain unverified. Azure resource-level attestation remains BLOCKED.
+
+Updated read-only verification scripts pass state/correlation/session from acquisition into source and static-test calls. Contract probe no longer assumes exactly 51 published tools and distinguishes commit SHA from file SHA. These scripts require authorized runtime access; syntax is checked locally, live execution remains BLOCKED here.
