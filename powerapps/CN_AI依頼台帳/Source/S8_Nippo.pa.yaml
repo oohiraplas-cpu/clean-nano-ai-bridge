@@ -1,0 +1,339 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S8_Nippo:
+    Properties:
+      Fill: =RGBA(10, 10, 10, 1)
+      OnVisible: =Set(gblPdfReady, false)
+    Children:
+      - S8_Nippo_MobileScroll:
+          Control: GroupContainer@1.5.0
+          Variant: AutoLayout
+          Properties:
+            DropShadow: =DropShadow.None
+            Height: =Parent.Height
+            LayoutAlignItems: =LayoutAlignItems.Stretch
+            LayoutDirection: =LayoutDirection.Vertical
+            LayoutOverflowY: =LayoutOverflow.Scroll
+            Width: =Parent.Width
+          Children:
+            - S8_Nippo_MobileBody:
+                Control: GroupContainer@1.5.0
+                Variant: ManualLayout
+                Properties:
+                  DropShadow: =DropShadow.None
+                  FillPortions: =0
+                  Height: =Max(1130, Parent.Height + 1)
+                  LayoutMinHeight: =Self.Height
+                  LayoutMinWidth: =0
+                  Width: =Parent.Width
+                Children:
+                  - S8_Title:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(0, 204, 102, 1)
+                        FontWeight: =FontWeight.Bold
+                        Height: =44
+                        Size: =22
+                        Text: ="電子日報作成"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =16
+                  - S8_Info:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(255, 255, 255, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =190
+                        PaddingLeft: =12
+                        PaddingTop: =8
+                        Text: |-
+                          ="作業日：" & Text(gblNippoSrc.作業日, "yyyy/mm/dd") & Char(10) &
+                          "社員名：" & gblNippoSrc.社員名 & Char(10) &
+                          "人数：" & Coalesce(S8_Count.Text, "1") & " 名" & Char(10) &
+                          "職種：" & gblNippoSrc.職種 & Char(10) &
+                          "元請会社：" & gblNippoSrc.元請会社 & Char(10) &
+                          "作業時間：" & Text(gblNippoSrc.開始, "hh:mm") & "〜" & Text(gblNippoSrc.終了, "hh:mm") & Char(10) &
+                          "労働時間（合計）：" & Text(gblNippoSrc.労働時間 * Coalesce(Value(S8_Count.Text), 1), "0.0") & " 時間"
+                        VerticalAlign: =VerticalAlign.Top
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =68
+                  - S8_WorkCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(120, 120, 120, 1)
+                        Height: =24
+                        Size: =11
+                        Text: ="作業内容（必須）"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =270
+                  - S8_Work:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Default: =Coalesce(gblNippoEx.作業内容, "")
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =140
+                        HintText: ="本日の作業内容（必須）キーボードのマイクを押して話すと音声で入力できます"
+                        Mode: =TextMode.MultiLine
+                        Size: =14
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =294
+                  - S8_ManCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(120, 120, 120, 1)
+                        Height: =24
+                        Size: =11
+                        Text: ="人工"
+                        Width: =(Parent.Width - 44) / 2
+                        X: =16
+                        Y: =446
+                  - S8_Man:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Default: =Text(Coalesce(gblNippoEx.人工, 1))
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Format: =TextFormat.Number
+                        Height: =44
+                        Size: =14
+                        Width: =(Parent.Width - 44) / 2
+                        X: =16
+                        Y: =470
+                  - S8_CountCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(120, 120, 120, 1)
+                        Height: =24
+                        Size: =11
+                        Text: ="人数"
+                        Width: =(Parent.Width - 44) / 2
+                        X: =28 + (Parent.Width - 44) / 2
+                        Y: =446
+                  - S8_Count:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Default: =Text(Coalesce(gblNippoEx.人数, 1))
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Format: =TextFormat.Number
+                        Height: =44
+                        Size: =14
+                        Width: =(Parent.Width - 44) / 2
+                        X: =28 + (Parent.Width - 44) / 2
+                        Y: =470
+                  - S8_ContactCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(120, 120, 120, 1)
+                        Height: =24
+                        Size: =11
+                        Text: ="元請担当者名"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =526
+                  - S8_Contact:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Default: =Coalesce(gblNippoEx.元請担当者名, "")
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =44
+                        HintText: ="任意"
+                        Size: =14
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =550
+                  - S8_Save:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderThickness: =0
+                        Color: =RGBA(10, 10, 10, 1)
+                        DisabledFill: =RGBA(120, 120, 120, 1)
+                        DisplayMode: =If(gblSaving, DisplayMode.Disabled, DisplayMode.Edit)
+                        Fill: =RGBA(0, 204, 102, 1)
+                        FontWeight: =FontWeight.Bold
+                        Height: =52
+                        HoverFill: =RGBA(0, 230, 115, 1)
+                        OnSelect: |-
+                          =If(
+                              IsBlank(Trim(S8_Work.Text)), Notify("本日の作業内容を入力してください（キーボードのマイクで音声入力できます）", NotificationType.Error),
+                              IsBlank(gblNippoSrc.勤怠キー), Notify("出勤登録画面から開いてください", NotificationType.Error),
+                              Set(gblSaving, true);
+                              With({
+                                  d: gblNippoSrc.作業日,
+                                  n: Coalesce(Value(S8_Count.Text), 1),
+                                  w: Substitute(Substitute(Substitute(Substitute(S8_Work.Text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), Char(10), "<br>"),
+                                  contact: Substitute(Substitute(S8_Contact.Text, "<", "&lt;"), ">", "&gt;"),
+                                  signer: Substitute(Substitute(S8_Signer.Text, "<", "&lt;"), ">", "&gt;"),
+                                  sig: Substitute(JSON(S8_Sign.Image, JSONFormat.IncludeBinaryData), """", "")
+                              },
+                              With({h:
+                                  "<html><head><style>body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:20px;font-size:13px}table{border-collapse:collapse;width:100%;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style></head><body>" &
+                                  "<table><tr><td style='border:none;font-size:24px;letter-spacing:6px'><u>作 業 日 報</u></td><td style='border:none;font-size:14px'>R" & (Year(d) - 2018) & "年" & Month(d) & "月" & Day(d) & "日（" & Text(d, "ddd", "ja-JP") & "）</td><td style='border:none;text-align:right'>No.</td></tr></table>" &
+                                  "<table><tr><td class='l'>部課<br>(現場)</td><td class='v'>" & gblNippoSrc.現場名 & "</td><td class='l'>記入者<br>氏名</td><td class='v' style='width:110px'>" & gblNippoSrc.社員名 & "</td><td class='l' style='width:24px'>所属長印</td><td style='width:60px'></td></tr></table>" &
+                                  "<table><tr><td class='l'>作業<br>者名</td><td class='v'>" & gblNippoSrc.社員名 & "</td><td style='width:60px'>計 <span class='v'>" & n & "</span> 人</td><td style='width:180px'>（ <span class='v'>" & Text(gblNippoSrc.開始, "hh:mm") & " 〜 " & Text(gblNippoSrc.終了, "hh:mm") & "</span> ）<br>労働時間（合計） <span class='v'>" & Text(gblNippoSrc.労働時間 * n, "0.0") & "</span> 時間</td></tr>" &
+                                  "<tr><td class='l'>早出<br>者名</td><td></td><td>計　　人</td><td>（　：　〜　：　）</td></tr>" &
+                                  "<tr><td class='l'>残業<br>者名</td><td></td><td>計　　人</td><td>（　：　〜　：　）</td></tr></table>" &
+                                  "<table class='ln'><tr><td style='width:110px' class='v'>" & gblNippoSrc.職種 & "</td><td class='v'>" & w & "</td></tr>" &
+                                  "<tr><td>元請会社</td><td class='v'>" & gblNippoSrc.元請会社 & "</td></tr>" &
+                                  "<tr><td>人工</td><td class='v'>" & S8_Man.Text & "</td></tr>" &
+                                  "<tr><td>元請担当者</td><td class='v'>" & contact & "</td></tr>" &
+                                  "<tr><td>&nbsp;</td><td></td></tr><tr><td>&nbsp;</td><td></td></tr><tr><td>&nbsp;</td><td></td></tr></table>" &
+                                  "<table><tr><td style='width:55%;height:120px;vertical-align:top'>元請 確認サイン<br>" & If(IsBlank(Trim(S8_Signer.Text)), "", "<img src='@@SIG@@' style='height:70px'>") & "<br>署名者：<span class='v'>" & signer & "</span>　署名日時：" & If(IsBlank(Trim(S8_Signer.Text)), "", Text(Now(), "yyyy/mm/dd hh:mm")) & "</td><td style='vertical-align:top'>〒135-0002<br>東京都江東区住吉2-14-6 1F<br>株式会社 <b style='font-size:16px'>飛将エンジニア</b></td></tr></table></body></html>"
+                              },
+                              With({hx: Substitute(Concat(ForAll(Sequence(Len(h)), With({c: Mid(h, Value, 1)}, With({e: Upper(EncodeUrl(c))}, If(Len(e) <= 3, c, With({x: "0123456789ABCDEF"}, With({b1: (Find(Mid(e, 2, 1), x) - 1) * 16 + Find(Mid(e, 3, 1), x) - 1, b2: (Find(Mid(e, 5, 1), x) - 1) * 16 + Find(Mid(e, 6, 1), x) - 1, b3: If(Len(e) >= 9, (Find(Mid(e, 8, 1), x) - 1) * 16 + Find(Mid(e, 9, 1), x) - 1, 0)}, "&#" & If(Len(e) = 6, Mod(b1, 32) * 64 + Mod(b2, 64), Mod(b1, 16) * 4096 + Mod(b2, 64) * 64 + Mod(b3, 64)) & ";")))))), Value), "@@SIG@@", sig)},
+                                  Set(gblPdfLink, Blank());
+                                  IfError(
+                                      Set(gblPdfLink, CN_日報PDF作成.Run("日報_" & gblNippoSrc.勤怠キー & "_" & Text(Now(), "yyyymmddhhmmss"), hx).link),
+                                      Set(gblPdfLink, Blank());
+                                      Notify("PDFの作成に失敗しました：" & FirstError.Message, NotificationType.Error)
+                                  );
+                                  If(!IsBlank(gblPdfLink), Set(gblPdfReady, true); Launch(gblPdfLink))
+                              )));
+                              Set(gblSaving, false)
+                          )
+                        Text: =If(gblSaving, "PDF作成中…", "PDFを確認")
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =926
+                  - S8_Back:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        BorderThickness: =1
+                        Color: =RGBA(0, 204, 102, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =44
+                        HoverFill: =RGBA(36, 78, 56, 1)
+                        OnSelect: =Back()
+                        Text: ="出勤登録に戻る"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =1054
+                  - S8_SignCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(0, 204, 102, 1)
+                        FontWeight: =FontWeight.Bold
+                        Height: =28
+                        Text: ="元請 確認サイン"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =610
+                  - S8_Sign:
+                      Control: PenInput@2.3.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        BorderThickness: =1
+                        Fill: =RGBA(255, 255, 255, 1)
+                        Height: =160
+                        ShowControls: =false
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =640
+                  - S8_SignClear:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        BorderThickness: =1
+                        Color: =RGBA(0, 204, 102, 1)
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =32
+                        OnSelect: =Reset(S8_Sign)
+                        Size: =11
+                        Text: ="書き直し"
+                        Width: =90
+                        X: =Parent.Width - 106
+                        Y: =806
+                  - S8_SignerCap:
+                      Control: Label@2.5.1
+                      Properties:
+                        Color: =RGBA(120, 120, 120, 1)
+                        Height: =24
+                        Size: =11
+                        Text: ="署名者氏名"
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =842
+                  - S8_Signer:
+                      Control: Classic/TextInput@2.3.2
+                      Properties:
+                        BorderColor: =RGBA(0, 204, 102, 1)
+                        Color: =RGBA(255, 255, 255, 1)
+                        Default: =Coalesce(gblNippoEx.元請署名者, "")
+                        Fill: =RGBA(26, 58, 42, 1)
+                        Height: =44
+                        HintText: ="元請の署名者名を入力"
+                        Size: =14
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =866
+                  - S8_Share:
+                      Control: Classic/Button@2.2.0
+                      Properties:
+                        BorderThickness: =0
+                        Color: =RGBA(10, 10, 10, 1)
+                        DisabledFill: =RGBA(120, 120, 120, 1)
+                        DisplayMode: =If(gblSaving, DisplayMode.Disabled, DisplayMode.Edit)
+                        Fill: =RGBA(0, 204, 102, 1)
+                        FontWeight: =FontWeight.Bold
+                        Height: =52
+                        HoverFill: =RGBA(0, 230, 115, 1)
+                        OnSelect: |-
+                          =If(
+                              IsBlank(Trim(S8_Work.Text)), Notify("作業内容を入力してください", NotificationType.Error),
+                              IsBlank(gblNippoSrc.勤怠キー), Notify("出勤登録画面から開いてください", NotificationType.Error),
+                              Set(gblSaving, true);
+                              IfError(
+                                  With({r: Patch(CN_電子日報台帳,
+                                          If(IsBlank(gblNippoEx), Defaults(CN_電子日報台帳), gblNippoEx),
+                                          {
+                                              日報ID: "NP_" & gblNippoSrc.勤怠キー,
+                                              作業日: gblNippoSrc.作業日,
+                                              社員名: gblNippoSrc.社員名,
+                                              現場名: gblNippoSrc.現場名,
+                                              元請会社: gblNippoSrc.元請会社,
+                                              職種: gblNippoSrc.職種,
+                                              作業開始時刻: gblNippoSrc.開始,
+                                              作業終了時刻: gblNippoSrc.終了,
+                                              労働時間: gblNippoSrc.労働時間 * Coalesce(Value(S8_Count.Text), 1),
+                                              作業内容: S8_Work.Text,
+                                              人工: Value(S8_Man.Text),
+                                              人数: Value(S8_Count.Text),
+                                              元請担当者名: S8_Contact.Text,
+                                              提出状態: {Value: "提出済"},
+                                              元請電子サイン: S8_Sign.Image,
+                                              元請署名者: S8_Signer.Text,
+                                              元請署名日時: If(IsBlank(Trim(S8_Signer.Text)), Blank(), Now()),
+                                              元請署名状態: {Value: If(IsBlank(Trim(S8_Signer.Text)), "未署名", "署名済")}
+                                          })},
+                                      Patch(CN_勤怠明細台帳, LookUp(CN_勤怠明細台帳, 勤怠キー = gblNippoSrc.勤怠キー), {日報キー: r.日報ID});
+                                      Set(gblNippoEx, r)
+                                  );
+                                  Set(gblSaving, false);
+                                  Notify("日報を保存しました。開いたPDFの共有からメールやLINEで送れます", NotificationType.Success);
+                                  Launch(gblPdfLink),
+                                  Set(gblSaving, false);
+                                  Notify("日報の保存に失敗しました：" & FirstError.Message, NotificationType.Error)
+                              )
+                          )
+                        Text: =If(gblSaving, "保存中…", "保存して共有")
+                        Visible: =gblPdfReady
+                        Width: =Parent.Width - 32
+                        X: =16
+                        Y: =990
