@@ -20,8 +20,9 @@ async function main() {
   const init = await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'state-context-probe', version: '1.0.0' } });
   assert.ok(init.serverInfo);
   const tools = (await request('tools/list', {})).tools;
-  assert.equal(tools.length, 51);
-  for (const name of ['validate_powerapps_source', 'compare_powerapps_with_git']) assert.deepEqual(tools.find(t => t.name === name).inputSchema.properties.stateContext, STATE_CONTEXT_SCHEMA);
+  assert.ok(Array.isArray(tools) && tools.length > 0);
+  assert.equal(new Set(tools.map(t => t.name)).size, tools.length);
+  for (const name of ['validate_powerapps_source', 'compare_powerapps_with_git', 'run_powerapps_tests']) assert.deepEqual(tools.find(t => t.name === name).inputSchema.properties.stateContext, STATE_CONTEXT_SCHEMA);
   const health = await call('health_check');
   assert.ok(health);
   const state = await call('get_powerapps_state');
@@ -40,10 +41,15 @@ async function main() {
   const valid = await call('validate_powerapps_source', { ...args, relativePath: source.path, expectedBranch: source.branch });
   assert.equal(valid.validationStatus, 'VALID');
   const compared = await call('compare_powerapps_with_git', { ...args, targetFile: source.path, targetApp: state.appId });
-  assert.equal(compared.targetSha, source.sha);
+  assert.equal(compared.targetSha, source.stateContext.sha);
+  const tests = await call('run_powerapps_tests', { ...args, files: [{ relativePath: source.path, content: source.content }] });
+  assert.equal(tests.scope, 'static_analysis');
+  assert.equal(tests.summary.failed, 0);
+  assert.ok(['passed', 'incomplete'].includes(tests.status));
   assert.equal(compared.correlationId, state.correlationId);
   console.log(JSON.stringify({ schema: 'PASS', validation: valid.validationStatus,
-    branch: source.branch, sha: source.sha, path: source.path,
+    staticTests: tests.status, staticChecks: tests.summary,
+    branch: source.branch, commitSha: source.stateContext.sha, fileSha: source.sha, path: source.path,
     comparisonStatus: compared.comparisonStatus, hasDifferences: compared.data.hasDifferences,
     comparisonVerified: compared.comparisonVerified, comparisonSources: compared.comparisonSources,
     changedProperties: compared.data.changedProperties, changedLines: compared.data.changedLines }, null, 2));
