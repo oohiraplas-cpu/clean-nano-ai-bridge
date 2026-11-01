@@ -538,6 +538,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: {
       type: 'object',
       properties: {
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_sourceで取得したstateSessionId（任意）' },
         files: {
           type: 'array',
           description: '検査する変更ファイル（1〜50件）',
@@ -555,7 +557,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
         knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
       },
-      required: ['files'],
+      required: ['files', 'stateContext'],
       additionalProperties: false
     }
   },
