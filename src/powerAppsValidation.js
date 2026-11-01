@@ -116,8 +116,10 @@ function validateValidatePowerAppsChangeParams(params) {
 
 function validateRunPowerAppsTestsParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources']);
+  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources', 'stateContext', 'stateSessionId']);
   if (unknown) return unknown;
+  if (params.stateContext !== undefined && !isPlainObject(params.stateContext)) return 'stateContextはJSONオブジェクトである必要があります';
+  if (params.stateSessionId !== undefined && (typeof params.stateSessionId !== 'string' || params.stateSessionId.trim().length < 8)) return 'stateSessionIdは8文字以上の文字列である必要があります';
   if (!Array.isArray(params.files) || params.files.length < 1) return 'filesは1件以上の配列が必要です';
   if (params.files.length > 50) return 'filesは50件以内である必要があります';
   for (const file of params.files) {
