@@ -427,7 +427,11 @@ test('run_powerapps_tests publishes context inputs and accepts a state/source ch
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
   });
   const catalog = (await res.json()).result.tools;
-  const schema = catalog.find(tool => tool.name === 'run_powerapps_tests').inputSchema;
+  const schema = MCP_PUBLIC_TOOLS.find(tool => tool.name === 'run_powerapps_tests').inputSchema;
+  const facade = catalog.find(tool => tool.name === 'canvas_verify').inputSchema;
+  assert.deepEqual(facade.properties.stateContext, STATE_CONTEXT_SCHEMA);
+  assert.ok(facade.properties.files);
+  assert.ok(facade.properties.stateSessionId);
   assert.deepEqual(schema.properties.stateContext, STATE_CONTEXT_SCHEMA);
   assert.ok(schema.required.includes('stateContext'));
   assert.equal(schema.properties.stateSessionId.type, 'string');
@@ -439,6 +443,8 @@ test('run_powerapps_tests publishes context inputs and accepts a state/source ch
   const args = await f.chain();
   const success = await f.rpc('run_powerapps_tests', { files, ...args });
   assert.equal(success.error, false);
+  const facadeResult = await f.rpc('canvas_verify', { operation: 'tests', files, ...args });
+  assert.equal(facadeResult.error, false);
   const mismatched = await f.rpc('run_powerapps_tests', {
     files, ...args,
     stateContext: { ...args.stateContext, branch: 'other' }
