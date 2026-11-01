@@ -116,7 +116,7 @@ function validateValidatePowerAppsChangeParams(params) {
 
 function validateRunPowerAppsTestsParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources']);
+  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources', 'stateContext', 'stateSessionId']);
   if (unknown) return unknown;
   if (!Array.isArray(params.files) || params.files.length < 1) return 'filesは1件以上の配列が必要です';
   if (params.files.length > 50) return 'filesは50件以内である必要があります';
