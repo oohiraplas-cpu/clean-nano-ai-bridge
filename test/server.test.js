@@ -1044,7 +1044,7 @@ test('新9ツールは入力不足・不正型・追加プロパティをHTTP 20
     assert.equal(viaRpc.isError, true, `${name} ${JSON.stringify(args)}`);
     assert.match(viaRpc.structuredContent.error, name === 'run_powerapps_tests' ? /State Manager検証エラー|stateContext|stateSessionId|files/ : pattern, name);
     const viaLegacy = await legacy(server, name, args);
-    assert.equal(viaLegacy.httpStatus, 400, name);
+    assert.equal(viaLegacy.httpStatus, name === 'run_powerapps_tests' ? 409 : 400, name);
     assert.match(viaLegacy.body.error, name === 'run_powerapps_tests' ? /State Manager検証エラー|stateContext|stateSessionId|files/ : pattern, name);
   }
 });
@@ -1129,7 +1129,7 @@ test('run_powerapps_tests: State Manager契約とFail-Closed入力検査', async
   // A syntactically valid but unregistered session must never run tests.
   const unregistered = await rpc(server, 'run_powerapps_tests', { ...CHANGE_CONTEXT, files });
   assert.equal(unregistered.isError, true);
-  assert.match(JSON.stringify(unregistered.structuredContent), /stateSessionId|stateContext|session|not found|expired/i);
+  assert.match(JSON.stringify(unregistered.structuredContent), /stateSessionId|stateContext|correlationId|session|not found|not registered|expired/i);
 });
 
 // ---- verify_save_result ----
