@@ -1000,6 +1000,7 @@ test('tools/list（REST・JSON-RPC）に新9ツールが含まれ、inputSchema�
   }
   const byName = Object.fromEntries(MCP_PUBLIC_TOOLS.map((tool) => [tool.name, tool.inputSchema]));
   assert.equal(byName.run_powerapps_tests.properties.files.items.additionalProperties, false);
+  assert.deepEqual(byName.run_powerapps_tests.required.sort(), ['files', 'stateContext', 'stateSessionId'].sort());
   assert.deepEqual(byName.update_permissions.required.sort(), ['action', 'approvedByHuman', 'principalId', 'principalType', 'roleName', 'targetType']);
   assert.deepEqual(byName.get_permissions.properties.targetType.enum, ['powerapps_app', 'dataverse_user_roles']);
 });
@@ -1011,10 +1012,10 @@ test('新9ツールは入力不足・不正型・追加プロパティをHTTP 20
     ['validate_powerapps_change', { branch: 1, relativePath: 'a.pa.yaml' }, /branchが必要/],
     ['validate_powerapps_change', { ...CHANGE_CONTEXT, branch: 'main', relativePath: 'a.pa.yaml', content: 5 }, /contentは文字列/],
     ['validate_powerapps_change', { branch: 'main', relativePath: 'a.pa.yaml', unexpected: true }, /未対応のプロパティ/],
-    ['run_powerapps_tests', {}, /filesは1件以上/],
-    ['run_powerapps_tests', { files: [{ relativePath: 'a.pa.yaml' }] }, /content.*delete:true/],
-    ['run_powerapps_tests', { files: [{ relativePath: 'a.pa.yaml', content: 'x', extra: 1 }] }, /未対応のプロパティ/],
-    ['run_powerapps_tests', { files: 'a' }, /filesは1件以上/],
+    ['run_powerapps_tests', {}, /stateContextはJSONオブジェクト/],
+    ['run_powerapps_tests', { ...CHANGE_CONTEXT, files: [{ relativePath: 'a.pa.yaml' }] }, /content.*delete:true/],
+    ['run_powerapps_tests', { ...CHANGE_CONTEXT, files: [{ relativePath: 'a.pa.yaml', content: 'x', extra: 1 }] }, /未対応のプロパティ/],
+    ['run_powerapps_tests', { ...CHANGE_CONTEXT, files: 'a' }, /filesは1件以上/],
     ['verify_save_result', { relativePath: 'a.pa.yaml' }, /expectedShaまたはexpectedContent/],
     ['verify_save_result', { relativePath: 'a.pa.yaml', expectedSha: 'short' }, /40桁/],
     ['verify_save_result', { expectedContent: 'x' }, /relativePathが必要/],
@@ -1109,24 +1110,26 @@ test('validate_powerapps_change: 上流500は502相当のエラー（isError:tru
   assert.match(failed.structuredContent.error, /GitHub API エラー \(500\)/);
 });
 
-test('run_powerapps_tests: 静的検査を実行し、未検証項目はskipped+reasonで返す（成功扱いにしない）', async (t) => {
+test('run_powerapps_tests: State Manager契約とFail-Closed入力検査', async (t) => {
   const server = await newServer(t);
-  const files = [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\n  Screen1:\n    Properties:\n      OnVisible: =Navigate(Screen9)\n      Fill: =If(true, RGBA(0, 0, 0, 1)\n' }];
-  const failing = await rpc(server, 'run_powerapps_tests', { files, knownScreens: ['Screen1'] });
-  assert.equal(failing.isError, false);
-  assert.equal(failing.structuredContent.status, 'failed');
-  assert.equal(failing.structuredContent.checks.find((c) => c.id === 'brackets').status, 'failed');
-  assert.equal(failing.structuredContent.checks.find((c) => c.id === 'screen_transitions').status, 'failed');
-
-  const clean = await rpc(server, 'run_powerapps_tests', { files: [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\n  Screen1:\n    Properties:\n      Fill: =RGBA(0, 0, 0, 1)\n' }] });
-  assert.equal(clean.structuredContent.status, 'incomplete');
-  const engine = clean.structuredContent.checks.find((c) => c.id === 'power_apps_test_engine');
-  assert.equal(engine.status, 'skipped');
-  assert.ok(engine.reason);
-
-  const viaLegacy = await legacy(server, 'run_powerapps_tests', { files: [{ relativePath: 'a.json', content: '{}' }] });
-  assert.equal(viaLegacy.httpStatus, 200);
-  assert.equal(viaLegacy.body.result.scope, 'static_analysis');
+  const files = [{ relativePath: 'Screen1.pa.yaml', content: 'Screens:\\n  Screen1:\\n    Properties:\\n      Fill: =RGBA(0,0,0,1)\\n' }];
+  const cases = [
+    [{ files }, /stateContextはJSONオブジェクト/],
+    [{ files, stateContext: CHANGE_CONTEXT.stateContext }, /stateSessionId/],
+    [{ files, stateContext: { ...CHANGE_CONTEXT.stateContext, sha: 'invalid' }, stateSessionId: CHANGE_CONTEXT.stateSessionId }, /40桁/],
+    [{ files, stateContext: { ...CHANGE_CONTEXT.stateContext, appId: '' }, stateSessionId: CHANGE_CONTEXT.stateSessionId }, /appId/],
+    [{ files, stateContext: { ...CHANGE_CONTEXT.stateContext, environment: '' }, stateSessionId: CHANGE_CONTEXT.stateSessionId }, /environment/],
+    [{ files, stateContext: { ...CHANGE_CONTEXT.stateContext, unexpected: 'x' }, stateSessionId: CHANGE_CONTEXT.stateSessionId }, /未対応のプロパティ/]
+  ];
+  for (const [args, expected] of cases) {
+    const result = await rpc(server, 'run_powerapps_tests', args);
+    assert.equal(result.isError, true);
+    assert.match(result.structuredContent.error, expected);
+  }
+  // A syntactically valid but unregistered session must never run tests.
+  const unregistered = await rpc(server, 'run_powerapps_tests', { ...CHANGE_CONTEXT, files });
+  assert.equal(unregistered.isError, true);
+  assert.match(JSON.stringify(unregistered.structuredContent), /stateSessionId|stateContext|session|not found|expired/i);
 });
 
 // ---- verify_save_result ----
