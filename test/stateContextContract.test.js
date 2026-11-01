@@ -417,3 +417,31 @@ test('CRITICAL: failed multi-screen resolution invalidates the previously bound 
   assert.equal(compare.error, true);
   assert.match(compare.data.error, /not registered/);
 });
+
+
+test('run_powerapps_tests publishes context inputs and accepts a state/source chain', async t => {
+  const f = await fixture(t);
+  const res = await fetch(f.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+  });
+  const catalog = (await res.json()).result.tools;
+  const schema = catalog.find(tool => tool.name === 'run_powerapps_tests').inputSchema;
+  assert.deepEqual(schema.properties.stateContext, STATE_CONTEXT_SCHEMA);
+  assert.ok(schema.required.includes('stateContext'));
+  assert.equal(schema.properties.stateSessionId.type, 'string');
+  assert.equal(schema.additionalProperties, false);
+
+  const files = [{ relativePath: PATH, content: CONTENT }];
+  const missing = await f.rpc('run_powerapps_tests', { files });
+  assert.equal(missing.error, true);
+  const args = await f.chain();
+  const success = await f.rpc('run_powerapps_tests', { files, ...args });
+  assert.equal(success.error, false);
+  const mismatched = await f.rpc('run_powerapps_tests', {
+    files, ...args,
+    stateContext: { ...args.stateContext, branch: 'other' }
+  });
+  assert.equal(mismatched.error, true);
+});
