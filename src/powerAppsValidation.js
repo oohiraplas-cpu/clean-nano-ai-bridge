@@ -116,8 +116,19 @@ function validateValidatePowerAppsChangeParams(params) {
 
 function validateRunPowerAppsTestsParams(params) {
   if (!isPlainObject(params)) return plain(params);
-  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources']);
+  const unknown = unknownProperty(params, ['files', 'knownScreens', 'knownDataSources', 'stateContext', 'stateSessionId']);
   if (unknown) return unknown;
+  if (!isPlainObject(params.stateContext)) return 'stateContextはJSONオブジェクトで必須です';
+  for (const field of REQUIRED_STATE_FIELDS) {
+    const error = stringOrError(params.stateContext[field], `stateContext.${field}`);
+    if (error) return error;
+  }
+  if (!/^[a-f0-9]{40}$/.test(params.stateContext.sha)) return 'stateContext.shaは40桁のGit SHAである必要があります';
+  for (const key of Object.keys(params.stateContext)) {
+    if (!REQUIRED_STATE_FIELDS.includes(key)) return `stateContextに未対応のプロパティです: ${key}`;
+  }
+  const sessionError = stringOrError(params.stateSessionId, 'stateSessionId');
+  if (sessionError) return sessionError;
   if (!Array.isArray(params.files) || params.files.length < 1) return 'filesは1件以上の配列が必要です';
   if (params.files.length > 50) return 'filesは50件以内である必要があります';
   for (const file of params.files) {

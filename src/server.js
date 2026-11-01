@@ -553,9 +553,11 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
           }
         },
         knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
-        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
+        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_sourceの観測セッションID' }
       },
-      required: ['files'],
+      required: ['files', 'stateContext', 'stateSessionId'],
       additionalProperties: false
     }
   },
@@ -3093,6 +3095,27 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   }
 
   async function executeWithStateInternal(method, params, req) {
+    if (method === 'run_powerapps_tests') {
+      // Validate the observed session and the live app/Git state before running tests.
+      const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+      const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const currentState = await powerAppsStore.getAppState();
+      const canonical = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      const failures = [];
+      if (currentState.appId !== record.context.appId) failures.push('appId: observed app changed');
+      if (currentState.environmentId !== record.context.environment) failures.push('environment: observed environment changed');
+      if (canonical.sha !== record.context.sha || canonical.branch !== record.context.branch) failures.push('sha/branch: canonical Git commit changed');
+      for (const file of params.files) {
+        if (file.relativePath !== record.source.path && file.relativePath !== record.source.requestedPath) {
+          failures.push('relativePath: file not observed in registered session');
+          break;
+        }
+      }
+      if (failures.length) throw contextError(failures);
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return execute(params);
+    }
     if (method === 'update_powerapps_image') {
       validateImageParams(params);
       const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
