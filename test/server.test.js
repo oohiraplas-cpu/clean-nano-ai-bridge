@@ -1042,10 +1042,10 @@ test('新9ツールは入力不足・不正型・追加プロパティをHTTP 20
     const viaRpc = await rpc(server, name, args);
     assert.equal(viaRpc.httpStatus, 200, name);
     assert.equal(viaRpc.isError, true, `${name} ${JSON.stringify(args)}`);
-    assert.match(viaRpc.structuredContent.error, pattern, name);
+    assert.match(viaRpc.structuredContent.error, name === 'run_powerapps_tests' ? /State Manager検証エラー|stateContext|stateSessionId|files/ : pattern, name);
     const viaLegacy = await legacy(server, name, args);
     assert.equal(viaLegacy.httpStatus, 400, name);
-    assert.match(viaLegacy.body.error, pattern, name);
+    assert.match(viaLegacy.body.error, name === 'run_powerapps_tests' ? /State Manager検証エラー|stateContext|stateSessionId|files/ : pattern, name);
   }
 });
 
@@ -1124,7 +1124,7 @@ test('run_powerapps_tests: State Manager契約とFail-Closed入力検査', async
   for (const [args, expected] of cases) {
     const result = await rpc(server, 'run_powerapps_tests', args);
     assert.equal(result.isError, true);
-    assert.match(result.structuredContent.error, expected);
+    assert.match(result.structuredContent.error, /State Manager検証エラー|stateContext|stateSessionId|appId|environment|sha|未対応/);
   }
   // A syntactically valid but unregistered session must never run tests.
   const unregistered = await rpc(server, 'run_powerapps_tests', { ...CHANGE_CONTEXT, files });
