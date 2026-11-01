@@ -3098,7 +3098,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     if (method === 'run_powerapps_tests') {
       // Validate the observed session and the live app/Git state before running tests.
       const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
-      const scope = crypto.createHash('sha256').update(String(credential)).update('\\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+      const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
       const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
       const currentState = await powerAppsStore.getAppState();
       const canonical = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
