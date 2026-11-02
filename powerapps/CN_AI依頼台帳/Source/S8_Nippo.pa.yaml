@@ -207,12 +207,13 @@ Screens:
                                       Notify("PDFの作成に失敗しました：" & FirstError.Message, NotificationType.Error)
                                   );
                                   If(
-                                      gblPdfError,
-                                      false,
-                                      !IsBlank(Trim(Coalesce(gblPdfLink, ""))) && StartsWith(Lower(gblPdfLink), "https://"),
-                                      Set(gblPdfReady, true);
-                                      Launch(gblPdfLink),
-                                      Notify("PDFのURLが返されませんでした。再実行前に保存済みPDFを確認してください。", NotificationType.Error)
+                                      !gblPdfError,
+                                      If(
+                                          !IsBlank(Trim(Coalesce(gblPdfLink, ""))) && StartsWith(Lower(gblPdfLink), "https://"),
+                                          Set(gblPdfReady, true);
+                                          Launch(gblPdfLink),
+                                          Notify("PDFのURLが返されませんでした。再実行前に保存済みPDFを確認してください。", NotificationType.Error)
+                                      )
                                   )
                               )));
                               Set(gblSaving, false)
