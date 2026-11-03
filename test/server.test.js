@@ -1711,7 +1711,7 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
     })
   });
   const resultG = await resG.json();
-  assert.ok(resultG.result.structuredContent.conclusion === 'BLOCKED' || resultG.result.isError, 'missing appId returns error or BLOCKED');
+  assert.ok(resultG.result.structuredContent.status === 'error' && resultG.result.structuredContent.warnings.includes('LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED'), 'missing appId remains fail-closed');
 });
 
 
