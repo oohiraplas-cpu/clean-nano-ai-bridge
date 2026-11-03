@@ -778,6 +778,17 @@ async function run(tool, params = {}, deps = {}) {
     params = normalizeParams(tool, params);
     if (!params.operation) throw new OpError(`operation is required. valid: ${validOps(tool).join(', ')}`, 'invalid_input');
     if (!validOps(tool).includes(params.operation)) throw new OpError(`unknown operation "${params.operation}". valid: ${validOps(tool).join(', ')}`, 'invalid_input');
+    // Lv.5: keep only verified read/inspection operations until trusted write authorization exists.
+    const lv5ReadOps = {
+      sharepoint_manage: ['get', 'search', 'schema_validate'],
+      powerapps_manage: ['app_get', 'state_get', 'source_get', 'screen_get', 'control_get', 'powerfx_get', 'reread', 'app_checker'],
+      powerautomate_manage: ['list', 'get', 'connection_check', 'runs', 'failures'],
+      powerplatform_validate: ['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']
+    };
+    if (!(lv5ReadOps[tool] || []).includes(params.operation)) {
+      throw new OpError('LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED', 'approval_required');
+    }
+
     const r = await HANDLERS[tool](params, deps);
     const res = { status: r.verified ? 'ok' : 'partial', verified: !!r.verified, operationId: opId, tool, operation: params.operation, data: r.data, repair: r.attempts && r.attempts.length ? r.attempts : undefined, elapsedMs: Date.now() - t0 };
     audit(env, { opId, tool, operation: params.operation, status: res.status, verified: res.verified, elapsedMs: res.elapsedMs });

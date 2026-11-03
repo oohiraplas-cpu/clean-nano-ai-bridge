@@ -2215,6 +2215,15 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       return createCommonResponse({ status: 'error', verified: false, data: null, warnings: [err.message], summary: `${method} 失敗: ${err.message}` });
     }
   }
+  // Lv.5 isolated safety gate: no unverified approval may reach a write adapter.
+  // Re-enable only after trusted approval evidence is wired through WriteOperationAuthorizer.
+  if (['powerapps_app_edit_publish', 'powerapps_app_rollback',
+    'powerautomate_flow_update', 'powerautomate_flow_set_state',
+    'powerautomate_flow_rollback'].includes(method)) {
+    return createCommonResponse({status:'error', verified:false, data:null,
+      warnings:['LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED'],
+      summary:'Fail-closed: trusted authorization is not integrated for this write entrypoint'});
+  }
   if (method === 'powerapps_app_read' || method === 'powerapps_app_edit_publish' || method === 'powerapps_app_rollback' || method === 'powerapps_snapshots_list') {
     try {
       const p = params || {};
@@ -2469,6 +2478,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return contract;
   }
   if (method === 'execute_powerplatform_request') {
+    // Lv.5: free-form requests can invoke writes; no verified write authorization is wired here.
+    return createCommonResponse({status:'error', verified:false, data:null,
+      warnings:['LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED'],
+      summary:'Fail-closed: integrated execution requires trusted write authorization'});
+
     const paramError = validateExecutePowerPlatformRequestParams(params);
     if (paramError) throw requestError(paramError);
 
