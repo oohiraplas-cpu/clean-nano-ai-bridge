@@ -10,6 +10,7 @@
  */
 
 const crypto = require('node:crypto');
+const {reviewLegacyRecovery} = require('./lv5LegacyRecoveryGuard');
 
 /**
  * Recovery action types
@@ -46,7 +47,8 @@ class SelfRecoveryService {
     policyEngine = null,
     evidenceLedger = null,
     autoRecoveryEnabled = true,
-    approvalRequired = new Set(['POLICY_EXCEPTION', 'LEDGER_RECOVERY'])
+    approvalRequired = new Set(['POLICY_EXCEPTION', 'LEDGER_RECOVERY']),
+    lv5GuardEnabled = false
   } = {}) {
     this.stateContextStore = stateContextStore;
     this.transactionManager = transactionManager;
@@ -55,6 +57,7 @@ class SelfRecoveryService {
     this.autoRecoveryEnabled = autoRecoveryEnabled;
     this.approvalRequired = approvalRequired;
     this.recoveryLog = [];
+    this.lv5GuardEnabled = lv5GuardEnabled;
   }
 
   /**
@@ -79,6 +82,22 @@ class SelfRecoveryService {
     try {
       // Determine recovery action
       recovery.action = this._determineRecoveryAction(failureCode, context);
+
+      // Isolated Lv.5 opt-in: deny all legacy execution until separately authorized.
+      if (this.lv5GuardEnabled) {
+        const gate = reviewLegacyRecovery({
+          legacyAction: recovery.action,
+          context: context.lv5Context,
+          approval: context.lv5Approval,
+          evidence: context.lv5Evidence
+        });
+        recovery.state = RECOVERY_STATE.NEEDS_APPROVAL;
+        recovery.result = {success:false, gate};
+        this.recoveryLog.push(recovery);
+        return {recoveryId:recovery.recoveryId, action:recovery.action,
+          state:RECOVERY_STATE.NEEDS_APPROVAL, approvalRequired:true,
+          executionAllowed:false, gate};
+      }
 
       // Check if approval required
       if (this.approvalRequired.has(recovery.action)) {
@@ -375,6 +394,10 @@ class SelfRecoveryService {
       };
     }
 
+    if (this.lv5GuardEnabled) {
+      return {success:false, state:RECOVERY_STATE.NEEDS_APPROVAL,
+        reason:'lv5_separate_write_authorization_required', executionAllowed:false};
+    }
     try {
       recovery.state = RECOVERY_STATE.IN_PROGRESS;
       recovery.approver = approverPrincipal;
