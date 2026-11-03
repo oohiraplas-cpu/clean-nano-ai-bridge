@@ -2478,6 +2478,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     return contract;
   }
   if (method === 'execute_powerplatform_request') {
+    // Lv.5: free-form requests can invoke writes; no verified write authorization is wired here.
+    return createCommonResponse({status:'error', verified:false, data:null,
+      warnings:['LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED'],
+      summary:'Fail-closed: integrated execution requires trusted write authorization'});
+
     const paramError = validateExecutePowerPlatformRequestParams(params);
     if (paramError) throw requestError(paramError);
 
