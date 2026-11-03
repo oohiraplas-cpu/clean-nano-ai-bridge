@@ -164,6 +164,10 @@ class SelfRecoveryService {
    * Execute recovery action
    */
   async _executeAction(action, context) {
+    // Defense in depth: even a direct executor call cannot bypass Lv.5 isolation.
+    if (this.lv5GuardEnabled) {
+      return {success:false, reason:'lv5_separate_write_authorization_required', executionAllowed:false};
+    }
     try {
       switch (action) {
         case RECOVERY_ACTION.AUTO_RENEW:
