@@ -24,3 +24,12 @@ test('Lv5 opt-in does not execute even with eligible decision',async()=>{
  assert.equal(r.gate.status,'ELIGIBLE_FOR_SEPARATE_AUTHORIZATION');
  assert.equal(r.executionAllowed,false);assert.equal(writes,0);
 });
+
+test('Lv5 opt-in blocks direct executor bypass',async()=>{
+ let writes=0;
+ const service=new SelfRecoveryService({lv5GuardEnabled:true,stateContextStore:{get:()=>({contextId:'x'}),set:()=>{writes++;}}});
+ const r=await service._executeAction('auto_renew',{contextId:'x'});
+ assert.equal(r.success,false);
+ assert.equal(r.executionAllowed,false);
+ assert.equal(writes,0);
+});
