@@ -2905,6 +2905,29 @@ function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injecte
   };
 }
 
+// Read-only tools exposed to claude.ai custom connectors. These are direct (non-facade) published
+// tools, so resolveVisibleCall passes them through unchanged and no write path can be reached.
+const CONNECTOR_READONLY_TOOLS = Object.freeze(['health_check', 'resolve_app_target', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source']);
+
+function connectorReadOnlyGuard(req, res, next) {
+  const body = req.body;
+  if (!body || Array.isArray(body) || typeof body !== 'object' || body.jsonrpc !== '2.0') {
+    return res.status(400).json(jsonRpcError(null, -32600, 'このエンドポイントはJSON-RPC 2.0の単一リクエストのみ受け付けます'));
+  }
+  const { id, method } = body;
+  const params = body.params && typeof body.params === 'object' ? body.params : {};
+  if (typeof method === 'string' && method.startsWith('notifications/')) return next();
+  if (method === 'ping' || method === 'initialize') return next();
+  if (method === 'tools/list') {
+    return res.status(200).json(jsonRpcResult(id, { tools: PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)) }));
+  }
+  if (method === 'tools/call') {
+    if (typeof params.name === 'string' && CONNECTOR_READONLY_TOOLS.includes(params.name)) return next();
+    return res.status(200).json(jsonRpcError(id, -32601, 'このコネクタでは読み取り専用ツールのみ使用できます'));
+  }
+  return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${typeof method === 'string' ? method : ''}`));
+}
+
 function jsonRpcResult(id, result) {
   return { jsonrpc: '2.0', id, result };
 }
@@ -2977,6 +3000,18 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.post('/mcp', mcpAuth, (req, res, next) => {
+    handleMcpRequest(req, res, next).catch(next);
+  });
+
+  // claude.ai custom connectors cannot send custom headers, so this endpoint accepts a separate
+  // key (CONNECTOR_API_KEY) in the URL query (?api_key=...). It exposes read-only tools only.
+  // Fail-closed: with no key configured the endpoint does not exist (unlike /mcp).
+  const connectorKeyAuth = apiKeyMiddleware(() => config.connectorApiKey);
+  const connectorAuth = (req, res, next) => (config.connectorApiKey
+    ? connectorKeyAuth(req, res, next)
+    : res.status(404).json({ error: 'コネクタ用エンドポイントは無効です' }));
+  app.get('/connector/mcp', connectorAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.post('/connector/mcp', connectorAuth, connectorReadOnlyGuard, (req, res, next) => {
     handleMcpRequest(req, res, next).catch(next);
   });
 
@@ -3510,7 +3545,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    if (req.path === '/mcp' && error.type === 'entity.parse.failed') {
+    if ((req.path === '/mcp' || req.path === '/connector/mcp') && error.type === 'entity.parse.failed') {
       return res.status(400).json(jsonRpcError(null, -32700, 'Parse error: リクエストがJSONとして不正です'));
     }
     console.error('request_failed', { method: req.method, path: req.path, message: error.message });
@@ -3532,4 +3567,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { apiKeyMiddleware, createApp, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS };
+module.exports = { apiKeyMiddleware, createApp, CONNECTOR_READONLY_TOOLS, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS };
