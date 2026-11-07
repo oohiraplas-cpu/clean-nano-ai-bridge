@@ -56,7 +56,14 @@ async function main() {
     report.smoke[name] = safe(r);
     return r.data?.result?.structuredContent || null;
   };
-  report.health = safe(await request('/health'));
+  // Right after a deploy the first request can time out while the app warms up.
+  // Retry only transport failures (httpStatus null); a non-200 or non-ok health is never retried.
+  let healthResponse = await request('/health');
+  for (let attempt = 1; attempt < 3 && healthResponse.httpStatus === null; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    healthResponse = await request('/health');
+  }
+  report.health = safe(healthResponse);
   const init = await request('/mcp', { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'production-readonly-verifier', version: '1' } } });
   report.initialize = { httpStatus: init.httpStatus, protocolVersion: init.data?.result?.protocolVersion || null, success: !!init.data?.result?.capabilities };
   const listing = await request('/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
@@ -120,6 +127,8 @@ async function main() {
   report.azureReadiness = assessAzureReadiness(observed);
   const gate = report.health?.httpStatus === 200 && report.health.status === 'ok' && report.initialize.success && (report.mode === 'baseline' || report.tools.matchesCheckout === true);
   report.publicationGatePassed = gate;
+  // Short separate notice: the main notice can be truncated before runtimeEvidence. Category only, never map contents.
+  console.log('::notice title=Source map diagnostic::' + JSON.stringify({ sourceMapSchemaValid: report.runtimeEvidence?.sourceMapSchemaValid ?? null, sourceMapIssue: report.runtimeEvidence?.sourceMapIssue ?? null }));
   console.log('::notice title=Production Bridge evidence::' + JSON.stringify(report));
   if (!gate) process.exitCode = 1;
 }
