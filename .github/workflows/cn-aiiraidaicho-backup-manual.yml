@@ -33,6 +33,15 @@ jobs:
       - name: Record backup checksum
         run: sha256sum out/CN_AIIraiDaicho-unmanaged.zip > out/CN_AIIraiDaicho-unmanaged.sha256
 
+      - name: Upload backup artifact (no repository changes)
+        uses: actions/upload-artifact@v4
+        with:
+          name: CN_AIIraiDaicho-unmanaged-backup
+          path: |
+            out/CN_AIIraiDaicho-unmanaged.zip
+            out/CN_AIIraiDaicho-unmanaged.sha256
+          retention-days: 30
+
       - name: Extract isolated Canvas App YAML for review only
         shell: bash
         run: |
@@ -55,7 +64,7 @@ jobs:
                   if app.testzip(): raise SystemExit('Invalid Canvas App archive')
                   props = json.loads(app.read('Properties.json'))
                   if props.get('Name') != 'CN_AI依頼台帳':
-                      raise SystemExit('Unexpected Canvas App display name')
+                      raise SystemExit('Unexpected Canvas App display name: ' + repr(props.get('Name')))
                   names = [n for n in app.namelist() if n.replace('\\', '/').startswith('Src/') and n.endswith('.pa.yaml')]
                   if not names: raise SystemExit('No Canvas App YAML source found')
                   archive_entries = {}
@@ -87,13 +96,4 @@ jobs:
         with:
           name: CN_AIiraidaicho-extracted-source-review
           path: out/CN_AIiraidaicho_source/
-          retention-days: 30
-
-      - name: Upload backup artifact (no repository changes)
-        uses: actions/upload-artifact@v4
-        with:
-          name: CN_AIIraiDaicho-unmanaged-backup
-          path: |
-            out/CN_AIIraiDaicho-unmanaged.zip
-            out/CN_AIIraiDaicho-unmanaged.sha256
           retention-days: 30
