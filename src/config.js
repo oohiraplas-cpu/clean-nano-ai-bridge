@@ -36,7 +36,12 @@ function getConfig(env = process.env) {
     corsOrigins: origins,
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
-    mcpApiKey: env.MCP_API_KEY || '',
+    // 認証鍵の正式名は CN_MCP_API_KEY。後方互換として MCP_API_KEY を読む。値はログ・応答に出さない。
+    mcpApiKey: env.CN_MCP_API_KEY || env.MCP_API_KEY || '',
+    // 変数名のみを保持する（値は保持しない）。authentication_check が有効な変数名を示すために使う。
+    mcpApiKeySource: env.CN_MCP_API_KEY ? 'CN_MCP_API_KEY' : (env.MCP_API_KEY ? 'MCP_API_KEY' : null),
+    // Clean Nano Operations の一時ストレージ（JSON Lines）。未設定ならメモリ上に保持する。
+    operations: { storeFile: env.OPERATIONS_STORE_FILE ? path.resolve(env.OPERATIONS_STORE_FILE) : '' },
     // Separate, read-only key for the claude.ai connector endpoint (/connector/mcp). Empty disables the endpoint.
     connectorApiKey: env.CONNECTOR_API_KEY || '',
     stateContextRegistry: {

@@ -99,8 +99,9 @@ class ConfigurationValidator {
     if (!config.WEBHOOK_API_KEY) {
       issues.errors.push('Missing WEBHOOK_API_KEY');
     }
-    if (!config.MCP_API_KEY) {
-      issues.errors.push('Missing MCP_API_KEY');
+    // 正式名は CN_MCP_API_KEY。後方互換として MCP_API_KEY を許容する。どちらも未設定の場合のみ不足とする。
+    if (!config.CN_MCP_API_KEY && !config.MCP_API_KEY) {
+      issues.errors.push('Missing CN_MCP_API_KEY (legacy MCP_API_KEY also accepted)');
     }
 
     // Check key length

@@ -35,7 +35,14 @@ const { EvidenceCaptureEngine } = require('./evidenceCaptureEngine');
 const { RuntimeEvidenceEngine } = require('./runtimeEvidenceEngine');
 const { DispatchEngine } = require('./dispatchEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
-const { createOperationsMcp } = require('./operationsMcp');
+const { createOperationsMcp, OPERATIONS_PUBLIC_TOOLS, INTEGRATED_TOOL_NAMES } = require('./operationsMcp');
+
+// Clean Nano Operations の実行器は config ごとに1つ作る（同じ config の中では一時ストアを共有する）。
+const operationsRuntimes = new WeakMap();
+function operationsRuntimeFor(config) {
+  if (!operationsRuntimes.has(config)) operationsRuntimes.set(config, createOperationsMcp(config));
+  return operationsRuntimes.get(config);
+}
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
 const {
@@ -202,7 +209,9 @@ const MCP_METHODS = Object.freeze([
   'get_execution_status',
   'get_checkpoint',
   'get_azure_deployment_metadata', 'verify_github_ci_artifact',
-  'get_powerapps_media_asset', 'update_powerapps_image'
+  'get_powerapps_media_asset', 'update_powerapps_image',
+  // Clean Nano Operations（共通運用ツール。health_check は既存の定義を使う）
+  ...INTEGRATED_TOOL_NAMES
 ]);
 
 // 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
@@ -219,7 +228,7 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   remarks: { type: 'string', description: '備考' }
 });
 
-const MCP_PUBLIC_TOOLS = Object.freeze([
+const MCP_PUBLIC_TOOLS_BASE = Object.freeze([
   {
     name: 'health_check',
     description: 'Bridgeの稼働状態を確認します。',
@@ -1612,8 +1621,12 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
 ]);
 
+// Internal catalog: the existing tools plus the Clean Nano Operations tools (health_check is shared, not duplicated).
+const MCP_PUBLIC_TOOLS = Object.freeze([...MCP_PUBLIC_TOOLS_BASE, ...OPERATIONS_PUBLIC_TOOLS]);
+
 // External tools/list (CNAI and other MCP clients). Internal catalog stays in MCP_PUBLIC_TOOLS.
-const PUBLISHED_TOOLS = publishedToolsFor(MCP_PUBLIC_TOOLS);
+// Clean Nano Operations tools are published directly (not as facades) so that the existing /mcp connection discovers them.
+const PUBLISHED_TOOLS = Object.freeze([...publishedToolsFor(MCP_PUBLIC_TOOLS), ...OPERATIONS_PUBLIC_TOOLS]);
 
 async function tasksPayload(store) {
   const tasks = await store.list();
@@ -1722,6 +1735,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
       throw error;
     }
     return result;
+  }
+  // Clean Nano Operations tools are routed to their own runtime. They never reach the write paths below.
+  if (INTEGRATED_TOOL_NAMES.includes(method)) {
+    return operationsRuntimeFor(config).callTool(method, params || {});
   }
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
@@ -3004,18 +3021,24 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     handleMcpRequest(req, res, next).catch(next);
   });
 
-  // Clean Nano Operations MCP（共通運用ツール）。既存の /mcp とは別窓口で、同じ MCP_API_KEY を使う。
-  // 外部へ書き込むツールは持たない。未実装・未構成の項目は BLOCKED で返す。
-  const operationsMcp = createOperationsMcp(config);
-  app.get('/mcp/operations', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
-  app.post('/mcp/operations', mcpAuth, (req, res) => {
-    const body = req.body;
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: '不正なリクエストです' } });
+  // Clean Nano Operations MCP の互換エイリアス（内部検証用）。同じツールは /mcp の tools/list と tools/call からも使える。
+  // 認証鍵が未設定の場合は fail closed とし、認証設定不足として拒否する（値は返さない）。
+  const operationsKeyRequired = (req, res, next) => (config.mcpApiKey
+    ? mcpAuth(req, res, next)
+    : res.status(503).json({ error: '認証設定が不足しています（CN_MCP_API_KEY）' }));
+  app.get('/mcp/operations', operationsKeyRequired, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.post('/mcp/operations', operationsKeyRequired, async (req, res, next) => {
+    try {
+      const body = req.body;
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: '不正なリクエストです' } });
+      }
+      const response = await operationsRuntimeFor(config).handle(body);
+      if (response === null) return res.status(202).end();
+      return res.status(200).json(response);
+    } catch (error) {
+      return next(error);
     }
-    const response = operationsMcp.handle(body);
-    if (response === null) return res.status(202).end();
-    return res.status(200).json(response);
   });
 
   // claude.ai custom connectors cannot send custom headers, so this endpoint accepts a separate

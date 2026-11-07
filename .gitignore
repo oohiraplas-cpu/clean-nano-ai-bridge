@@ -9,4 +9,5 @@ __pycache__/
 *.log
 data/deployments.jsonl
 data/powerapps-operations.jsonl
+data/operations-*.jsonl
 C:\Users\oohir\Documents\bridge-mcp-test.ps1

@@ -18,7 +18,7 @@ npm test
 npm start
 ```
 
-`.env` はGit管理対象外です。`HOST` の既定値はクラウドコンテナ向けの `0.0.0.0`、`PORT` は実行環境の値を優先します。`WEBHOOK_API_KEY` と `MCP_API_KEY` を設定した場合、対象APIは `X-API-Key` ヘッダーを要求します。CORSは `CORS_ORIGINS` に列挙したOriginだけを許可します。
+`.env` はGit管理対象外です。`HOST` の既定値はクラウドコンテナ向けの `0.0.0.0`、`PORT` は実行環境の値を優先します。`WEBHOOK_API_KEY` と MCP の認証鍵を設定した場合、対象APIは `X-API-Key` ヘッダーを要求します。MCP の認証鍵の正式名は `CN_MCP_API_KEY` です。後方互換として `MCP_API_KEY` も読みます（両方ある場合は `CN_MCP_API_KEY` を優先）。CORSは `CORS_ORIGINS` に列挙したOriginだけを許可します。
 
 ## API
 
@@ -105,3 +105,12 @@ OpenAPI 3.x定義は [openapi.yaml](openapi.yaml) です。公開ホストが未
 ## CNAI Executive 運用基準
 
 `get_bridge_capabilities` の `data.executivePolicy` は、2026-10-05版の経営判断優先順位・SharePoint正本・既存資産再利用・承認・停止・検証・監査ルールを返します。原文は `src/executivePolicy.json`、Copilot向け指示は `CNAI_Bridge_M365_Instructions.md` に保持します。既存の認証・書込制御を維持します。この追加は運用基準の配信であり、未入金分析等のデータ連携やCopilot Studio内の指示設定・公開が完了したことは示しません。復旧時はこの変更コミットをrevertし、既存デプロイworkflowで直前版を再配備します。
+
+
+## Clean Nano Operations MCP（共通運用ツール）
+
+- 既存の `POST /mcp` の `tools/list` と `tools/call` から利用できます。`health_check` は既存の定義を使います。
+- `POST /mcp/operations` は互換エイリアス（内部検証用）です。認証鍵が未設定の場合は 503 で拒否します。
+- 外部接続（権限・ライセンス・疎通・SharePoint 読み取り・再取得・承認台帳・復元）はアダプターとして注入します。既定は未構成のため `BLOCKED` を返します。
+- 変更系の処理は、変更前スナップショットと監査の保存に成功した後にのみ許可されます。保存に失敗した場合は変更を開始しません。
+- 一時ストアは `OPERATIONS_STORE_FILE` で JSON Lines に保存できます。未設定ならメモリ上に保持します（再起動で消えます）。
