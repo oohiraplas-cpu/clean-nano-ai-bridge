@@ -35,6 +35,7 @@ const { EvidenceCaptureEngine } = require('./evidenceCaptureEngine');
 const { RuntimeEvidenceEngine } = require('./runtimeEvidenceEngine');
 const { DispatchEngine } = require('./dispatchEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
+const { createOperationsMcp } = require('./operationsMcp');
 const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
 const { runStaticTests } = require('./powerAppsStaticTests');
 const {
@@ -3001,6 +3002,20 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.post('/mcp', mcpAuth, (req, res, next) => {
     handleMcpRequest(req, res, next).catch(next);
+  });
+
+  // Clean Nano Operations MCP（共通運用ツール）。既存の /mcp とは別窓口で、同じ MCP_API_KEY を使う。
+  // 外部へ書き込むツールは持たない。未実装・未構成の項目は BLOCKED で返す。
+  const operationsMcp = createOperationsMcp(config);
+  app.get('/mcp/operations', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.post('/mcp/operations', mcpAuth, (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: '不正なリクエストです' } });
+    }
+    const response = operationsMcp.handle(body);
+    if (response === null) return res.status(202).end();
+    return res.status(200).json(response);
   });
 
   // claude.ai custom connectors cannot send custom headers, so this endpoint accepts a separate

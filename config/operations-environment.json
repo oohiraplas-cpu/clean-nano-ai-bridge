@@ -1,0 +1,24 @@
+{
+  "_comment": "Clean Nano Operations MCP の環境プロファイル（秘密値は含めない）。確定値は推測で変更しない。変更は利用者の承認後に限る。",
+  "mcpDisplayName": "Clean Nano Operations MCP",
+  "internalName": "clean-nano-operations",
+  "appServiceHost": "clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net",
+  "mcpEndpointPath": "/mcp/operations",
+  "transport": "Streamable HTTP",
+  "powerPlatformEnvironmentName": "clean nano",
+  "environmentId": "4d0aab59-43ec-ecf1-a9d1-869f2517adbb",
+  "sharePointSiteUrl": "https://hisyoengineer.sharepoint.com/sites/cleannano",
+  "solutionName": "CN_CompanyOS_Core",
+  "customConnectorName": "CN Clean Nano Operations MCP",
+  "currentAppServiceEnvName": "CN_MCP_API_KEY",
+  "currentAuthFormat": "Authorization: Bearer <token>",
+  "targetAuthOrder": ["Microsoft Entra ID OAuth 2.0", "Azure Managed Identity", "証明書", "委任OAuth"],
+  "workBranch": "feature/clean-nano-operations-mcp",
+  "firstE2ETarget": "CN_社員新規登録_Forms取込",
+  "unconfirmed": {
+    "repositoryOwnerAndName": "確定済み（oohiraplas-cpu/clean-nano-ai-bridge）",
+    "deploymentPath": "未確定（GitHub Actions経由の既存経路を調査で確認する）",
+    "entraTenantValues": "未確定（テナントID・クライアントIDは記録しない。存在確認のみ行う）",
+    "formsQuestionsAndApprovers": "未確定（実在を取得できるまで推測しない）"
+  }
+}
