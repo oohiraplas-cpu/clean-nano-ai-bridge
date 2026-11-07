@@ -101,7 +101,10 @@ jobs:
           MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
           test -n "$MSAPP"
           echo "MSAPP=$MSAPP" >> "$GITHUB_ENV"
-          "$PAC" canvas unpack --msapp "$MSAPP" --sources out/src --layout SourceCode --overwrite
+          rm -rf out/src out/src_base
+          "$PAC" canvas unpack --msapp "$MSAPP" --sources out/src
+          echo "unpacked files (first 60):"
+          find out/src -type f | sed 's#^out/src/##' | sort | head -60
           cp -r out/src out/src_base
 
       - name: Patch the S8_Nippo style (exactly one match or stop)
@@ -110,8 +113,10 @@ jobs:
           import pathlib
           OLD = "<style>body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:20px;font-size:13px}table{border-collapse:collapse;width:100%;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style>"
           NEW = "<style>@page{size:A4 portrait;margin:12mm}body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:10px;font-size:13px}table{border-collapse:collapse;width:100%;table-layout:fixed;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px;word-break:break-all;overflow-wrap:anywhere}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style>"
-          files = list(pathlib.Path('out/src').rglob('S8_Nippo.pa.yaml'))
-          if len(files) != 1: raise SystemExit(f'Expected exactly one S8_Nippo.pa.yaml; got {len(files)}')
+          files = [f for f in pathlib.Path('out/src').rglob('S8_Nippo*') if f.is_file() and f.name.endswith(('.pa.yaml', '.fx.yaml'))]
+          if len(files) != 1:
+              print('candidates:', sorted(str(f) for f in pathlib.Path('out/src').rglob('S8_Nippo*')))
+              raise SystemExit(f'Expected exactly one S8_Nippo source yaml; got {len(files)}')
           p = files[0]
           text = p.read_text(encoding='utf-8')
           if text.count(NEW) == 1 and text.count(OLD) == 0:
@@ -125,18 +130,21 @@ jobs:
       - name: Pack canvas app and verify only S8_Nippo changed
         run: |
           set -e
-          "$PAC" canvas pack --sources out/src --msapp "$MSAPP" --layout SourceCode --overwrite
-          "$PAC" canvas unpack --msapp "$MSAPP" --sources out/src_check --layout SourceCode --overwrite
+          rm -rf out/src_check out/packed.msapp
+          "$PAC" canvas pack --sources out/src --msapp out/packed.msapp
+          test -s out/packed.msapp
+          cp out/packed.msapp "$MSAPP"
+          "$PAC" canvas unpack --msapp out/packed.msapp --sources out/src_check
           python3 - <<'PY'
           import difflib, pathlib
           base, chk = pathlib.Path('out/src_base'), pathlib.Path('out/src_check')
           rel = lambda root: {str(p.relative_to(root)): p for p in root.rglob('*') if p.is_file()}
           a, b = rel(base), rel(chk)
           changed = sorted(k for k in set(a) | set(b) if k not in a or k not in b or a[k].read_bytes() != b[k].read_bytes())
-          yaml_changed = [k for k in changed if k.endswith('.pa.yaml')]
-          other_changed = [k for k in changed if not k.endswith('.pa.yaml')]
+          yaml_changed = [k for k in changed if k.endswith(('.pa.yaml', '.fx.yaml'))]
+          other_changed = [k for k in changed if not k.endswith(('.pa.yaml', '.fx.yaml'))]
           report = ['changed yaml: ' + repr(yaml_changed), 'changed non-yaml (informational): ' + repr(other_changed)]
-          target = [k for k in yaml_changed if k.endswith('S8_Nippo.pa.yaml')]
+          target = [k for k in yaml_changed if 'S8_Nippo' in k]
           if len(yaml_changed) != 1 or len(target) != 1:
               pathlib.Path('out').mkdir(exist_ok=True)
               pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
