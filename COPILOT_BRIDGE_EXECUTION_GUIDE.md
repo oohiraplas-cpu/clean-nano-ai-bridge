@@ -5,7 +5,7 @@
 Copilot Studio 環境で以下が設定済みであること：
 
 - **コネクタ名**: Clean Nano AI Bridge
-- **エンドポイント**: https://clean-nano-ai-bridge.azurewebsites.net/mcp
+- **エンドポイント**: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 - **認証**: API Key (X-API-Key ヘッダー)
 - **API Key**: Azure App Settings の MCP_API_KEY 値
 
@@ -20,7 +20,7 @@ Copilot Studio 環境で以下が設定済みであること：
 "Bridge の稼働状態を確認して。変更は禁止。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "health_check"
@@ -45,12 +45,14 @@ HTTP 200
 
 ### テスト 1.2: tools/list
 
+> 注記（2026-11-07 実測）: `tools/list` は JSON-RPC 形式（`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`）で呼び出してください。`{"method":"tools/list"}` だけのレガシー形式は 400 を返します。Copilot Studio の MCP 接続は JSON-RPC 形式で呼び出すため影響しません。
+
 ```
 【Copilot指示】
 "Bridge で登録済みのツール一覧を取得して。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "tools/list"
@@ -70,13 +72,13 @@ HTTP 200
       "name": "get_powerapps_app",
       "description": "Power Apps アプリケーション情報取得"
     },
-    ... (36個のツール)
+    ... (公開ツール24個。実測値)
   ]
 }
 
 【成功判定】
 ✅ HTTP 200
-✅ result 配列に36個のツール
+✅ result.tools に公開ツール24個
 ✅ health_check, get_powerapps_app, tools/list 確認
 ```
 
@@ -91,7 +93,7 @@ HTTP 200
 "CN_AI依頼台帳の対象アプリ情報を取得して。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "inspect_powerapps_target",
@@ -125,7 +127,7 @@ HTTP 200
 "CN_AI依頼台帳の現在の状態を取得して。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "get_powerapps_state",
@@ -166,7 +168,7 @@ HTTP 200
 "CN_AI依頼台帳のソースコード情報と Git リンクを取得して。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "get_powerapps_source",
@@ -216,7 +218,7 @@ HTTP 200
 "State が不足している場合の検証をテストして。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "update_powerapps_app",
@@ -250,7 +252,7 @@ HTTP 400
 "Invalid SHA フォーマットの検証をテストして。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "update_powerapps_app",
@@ -292,7 +294,7 @@ HTTP 400
 "Branch が一致しない場合の検証をテストして。"
 
 【実行内容】
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "update_powerapps_app",
@@ -375,7 +377,7 @@ HTTP 400
 
 確認項目:
 1. Azure App 稼働状態: https://portal.azure.com
-2. Bridge health_check: curl -s -H "x-api-key: test" https://clean-nano-ai-bridge.azurewebsites.net/mcp -d '{"method":"health_check"}'
+2. Bridge health_check: curl -s -H "x-api-key: test" https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp -d '{"method":"health_check"}'
 3. Copilot コネクタ設定: API Key を確認
 ```
 

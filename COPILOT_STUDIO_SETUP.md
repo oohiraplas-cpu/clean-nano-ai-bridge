@@ -4,7 +4,7 @@
 
 - Copilot Studio にアクセス可能（Microsoft 365 統合ユーザー）
 - Azure App Settings で `MCP_API_KEY` が設定済み
-- Bridge API エンドポイント: https://clean-nano-ai-bridge.azurewebsites.net/mcp
+- Bridge API エンドポイント: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 
 ---
 
@@ -30,7 +30,7 @@
 |------|-----|
 | **名前** | Clean Nano AI Bridge |
 | **説明** | Power Apps・SharePoint・Git を統合管理する Bridge MCP サーバー |
-| **ホスト** | clean-nano-ai-bridge.azurewebsites.net |
+| **ホスト** | clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net |
 
 ### 2.3 認証を設定
 
@@ -163,7 +163,7 @@ Copilot Studio で新しい Power Automate フローを作成：
   "result": [
     { "name": "health_check", "description": "..." },
     { "name": "get_powerapps_app", "description": "..." },
-    ... (36個のツール)
+    ... (公開ツール24個。実測値)
   ]
 }
 ```
