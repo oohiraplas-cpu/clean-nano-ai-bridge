@@ -17,7 +17,7 @@ for (const [label, entries, success] of [
 ]) test(`backup manifest observes exact ${label}`, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-manifest-test-'));
   try {
-    const setup = `import io,json,zipfile,pathlib\nentries=json.loads(${JSON.stringify(JSON.stringify(entries))})\napp=io.BytesIO()\nwith zipfile.ZipFile(app,'w') as z:\n z.writestr('Properties.json',json.dumps({'Name':'CN_AI依頼台帳'}))\n for name in entries: z.writestr(name,'Screens: {}')\npathlib.Path('out').mkdir()\nwith zipfile.ZipFile('out/CN_AIIraiDaicho-unmanaged.zip','w') as z:\n z.writestr('solution.xml','<UniqueName>CN_AIIraiDaicho</UniqueName>')\n z.writestr('customizations.xml','')\n z.writestr('[Content_Types].xml','')\n z.writestr('CanvasApps/fixture.msapp',app.getvalue())\n`;
+    const setup = `import io,json,zipfile,pathlib\nentries=json.loads(${JSON.stringify(JSON.stringify(entries))})\napp=io.BytesIO()\nwith zipfile.ZipFile(app,'w') as z:\n z.writestr('Properties.json',json.dumps({'Name':'clean nano kk'}))\n for name in entries: z.writestr(name,'Screens: {}')\npathlib.Path('out').mkdir()\nwith zipfile.ZipFile('out/CN_AIIraiDaicho-unmanaged.zip','w') as z:\n z.writestr('solution.xml','<UniqueName>CN_AIIraiDaicho</UniqueName>')\n z.writestr('customizations.xml','')\n z.writestr('[Content_Types].xml','')\n z.writestr('CanvasApps/fixture.msapp',app.getvalue())\n`;
     assert.equal(spawnSync('python3', ['-c', setup], { cwd: dir }).status, 0);
     const result = spawnSync('python3', ['-c', script], { cwd: dir });
     assert.equal(result.status === 0, success);

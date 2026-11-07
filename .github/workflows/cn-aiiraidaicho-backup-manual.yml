@@ -63,7 +63,7 @@ jobs:
               with zipfile.ZipFile(io.BytesIO(solution.read(apps[0]))) as app:
                   if app.testzip(): raise SystemExit('Invalid Canvas App archive')
                   props = json.loads(app.read('Properties.json'))
-                  if props.get('Name') != 'CN_AI依頼台帳':
+                  if props.get('Name') != 'clean nano kk':
                       raise SystemExit('Unexpected Canvas App display name: ' + repr(props.get('Name')))
                   names = [n for n in app.namelist() if n.replace('\\', '/').startswith('Src/') and n.endswith('.pa.yaml')]
                   if not names: raise SystemExit('No Canvas App YAML source found')
