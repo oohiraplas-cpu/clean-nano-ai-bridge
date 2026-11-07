@@ -10,7 +10,8 @@ const path = require('node:path');
 
 const REQUIRED_FIELDS = Object.freeze([
   'goal', 'completedTasks', 'runningTasks', 'readyTasks', 'blockedTasks',
-  'lastGoodCommit', 'testStatus', 'ciStatus', 'requiredHumanActions', 'timestamp'
+  'lastGoodCommit', 'testStatus', 'ciStatus', 'requiredHumanActions', 'timestamp',
+  'completionPercent', 'criticalPath', 'deferredTasks', 'nextAutoTasks'
 ]);
 
 function buildCheckpoint(input) {
@@ -25,7 +26,12 @@ function buildCheckpoint(input) {
     testStatus: input.testStatus ?? null,
     ciStatus: input.ciStatus ?? null,
     requiredHumanActions: input.requiredHumanActions || [],
-    timestamp: input.timestamp || new Date().toISOString()
+    timestamp: input.timestamp || new Date().toISOString(),
+    // completionPercent は { code, live } の形（コード完了と実環境検証を分ける）。
+    completionPercent: input.completionPercent ?? { code: 0, live: 0 },
+    criticalPath: input.criticalPath || [],
+    deferredTasks: input.deferredTasks || [],
+    nextAutoTasks: input.nextAutoTasks || []
   };
   return checkpoint;
 }
