@@ -1,0 +1,136 @@
+name: clean nano kk バックアップからのロールバック（既定は確認のみ）
+# Restores the solution CN_AIIraiDaicho from a backup artifact produced by cn-aiiraidaicho-backup-manual.yml.
+# - mode=dry-run (default): downloads the backup, verifies checksum / solution / app, reports the S8_Nippo style state. Never imports.
+# - mode=apply: additionally imports the backup solution (force-overwrite). Requires the human approval phrase.
+# CAUTION: importing the backup returns the WHOLE solution to the state at backup time.
+# Any other change made to the solution after the backup is lost.
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: "バックアップを取得した実行（cn-aiiraidaicho-backup-manual）の run ID"
+        required: true
+        default: "42356944362"
+      mode:
+        description: "dry-run: 取り込まずに確認だけ / apply: 取り込み（人間の承認が必要）"
+        required: true
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - apply
+      approval:
+        description: "applyのときだけ、人間の承認文言 ROLLBACK-S8-NIPPO-CSS をそのまま入力"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ENVIRONMENT_URL: https://org0bbb24c5.crm7.dynamics.com
+  SOLUTION_NAME: CN_AIIraiDaicho
+  APP_ID: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+  TENANT_ID: aa0b99c9-b756-4611-970a-6c31013c42e3
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require human approval phrase for apply
+        if: ${{ inputs.mode == 'apply' && inputs.approval != 'ROLLBACK-S8-NIPPO-CSS' }}
+        run: |
+          echo "::error::apply requires the human approval phrase. Nothing was changed."
+          exit 1
+
+      - name: Download the backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CN_AIIraiDaicho-unmanaged-backup
+          path: backup
+          run-id: ${{ inputs.backup_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Verify checksum, solution, app and S8_Nippo state of the backup
+        run: |
+          python3 - <<'PY'
+          import hashlib, io, json, pathlib, zipfile
+          OLD_MARK = "<style>body{font-family:'Yu Gothic'"
+          NEW_MARK = "<style>@page{size:A4 portrait;margin:12mm}"
+          z_path = pathlib.Path('backup/CN_AIIraiDaicho-unmanaged.zip')
+          sum_path = pathlib.Path('backup/CN_AIIraiDaicho-unmanaged.sha256')
+          if not z_path.is_file() or not sum_path.is_file():
+              raise SystemExit('Backup files not found in the artifact: ' + repr(sorted(p.name for p in pathlib.Path('backup').glob('*'))))
+          recorded = sum_path.read_text(encoding='utf-8').split()[0].lower()
+          actual = hashlib.sha256(z_path.read_bytes()).hexdigest()
+          print('checksum match:', recorded == actual)
+          if recorded != actual: raise SystemExit('Checksum mismatch. Nothing was changed.')
+          with zipfile.ZipFile(z_path) as z:
+              if z.testzip(): raise SystemExit('Invalid solution archive')
+              if '<UniqueName>CN_AIIraiDaicho</UniqueName>' not in z.read('solution.xml').decode('utf-8-sig'):
+                  raise SystemExit('Unexpected solution unique name')
+              apps = [n for n in z.namelist() if n.startswith('CanvasApps/') and n.endswith('.msapp')]
+              if len(apps) != 1: raise SystemExit(f'Expected exactly one canvas app; got {len(apps)}')
+              with zipfile.ZipFile(io.BytesIO(z.read(apps[0]))) as app:
+                  name = json.loads(app.read('Properties.json')).get('Name')
+                  if name != 'clean nano kk': raise SystemExit('Unexpected Canvas App display name: ' + repr(name))
+                  names = [n for n in app.namelist() if n.replace('\\', '/').endswith('Src/S8_Nippo.pa.yaml')]
+                  if len(names) != 1: raise SystemExit('S8_Nippo.pa.yaml not found exactly once in the backup')
+                  text = app.read(names[0]).decode('utf-8')
+          old_n, new_n = text.count(OLD_MARK), text.count(NEW_MARK)
+          print(f'::notice title=Backup S8_Nippo state::old style={old_n} new style={new_n}')
+          if old_n != 1 or new_n != 0:
+              raise SystemExit('The backup does not contain the original style exactly once. Nothing was changed.')
+          print('backup verified: contains the original style')
+          PY
+
+      - name: Install Power Platform Tools
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'ROLLBACK-S8-NIPPO-CSS' }}
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
+
+      - name: Import the backup solution (apply only)
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'ROLLBACK-S8-NIPPO-CSS' }}
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ env.APP_ID }}
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: ${{ env.TENANT_ID }}
+          solution-file: backup/CN_AIIraiDaicho-unmanaged.zip
+          force-overwrite: true
+
+      - name: Re-export to verify the rollback (apply only)
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'ROLLBACK-S8-NIPPO-CSS' }}
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ env.APP_ID }}
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: ${{ env.TENANT_ID }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          solution-output-file: out/after-rollback.zip
+
+      - name: Verify the original style is back (apply only)
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'ROLLBACK-S8-NIPPO-CSS' }}
+        run: |
+          python3 - <<'PY'
+          import io, zipfile
+          OLD_MARK = "<style>body{font-family:'Yu Gothic'"
+          NEW_MARK = "<style>@page{size:A4 portrait;margin:12mm}"
+          with zipfile.ZipFile('out/after-rollback.zip') as z:
+              apps = [n for n in z.namelist() if n.startswith('CanvasApps/') and n.endswith('.msapp')]
+              if len(apps) != 1: raise SystemExit('Expected exactly one canvas app after rollback')
+              with zipfile.ZipFile(io.BytesIO(z.read(apps[0]))) as app:
+                  names = [n for n in app.namelist() if n.replace('\\', '/').endswith('Src/S8_Nippo.pa.yaml')]
+                  if len(names) != 1: raise SystemExit('S8_Nippo.pa.yaml not found exactly once after rollback')
+                  text = app.read(names[0]).decode('utf-8')
+          old_n, new_n = text.count(OLD_MARK), text.count(NEW_MARK)
+          print(f'::notice title=After rollback::old style={old_n} new style={new_n}')
+          if old_n != 1 or new_n != 0:
+              raise SystemExit('The original style is not back exactly once after rollback')
+          PY
