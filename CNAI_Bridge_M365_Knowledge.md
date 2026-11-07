@@ -31,7 +31,9 @@ Secret: Azure App Settings の MCP_API_KEY
 
 ---
 
-## 3. 公開MCPツール一覧（36個）
+## 3. 公開MCPツール一覧
+
+> 注記: `tools/list` が返す公開ツールは24個、実装済みメソッド（MCP_METHODS）は105個です（2026-11-07 実測）。以下の36個の一覧は旧版の記載で、最新の一覧は `get_bridge_capabilities` を実行して取得してください。
 
 ### 既存ツール（28個）
 

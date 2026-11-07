@@ -7,7 +7,7 @@
 ```bash
 # Bridge の稼働状態を確認
 curl -s -H "x-api-key: test" \
-  -X POST "https://clean-nano-ai-bridge.azurewebsites.net/mcp" \
+  -X POST "https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp" \
   -H "Content-Type: application/json" \
   -d '{"method":"health_check"}' | jq '.'
 
@@ -33,7 +33,7 @@ curl -s -H "x-api-key: test" \
 
 **Expected Bridge Execution:**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY from Azure]
 Body: {
   "method": "health_check"
@@ -69,7 +69,7 @@ Body: {
 
 **Expected Bridge Execution:**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Header: X-API-Key: [MCP_API_KEY]
 Body: {
   "method": "tools/list"
@@ -114,14 +114,14 @@ Body: {
       "name": "publish_powerapps_app",
       "description": "公開実行"
     },
-    ... (36個のツール)
+    ... (公開ツール24個。実測値)
   ]
 }
 ```
 
 **Success Criteria:**
 - ✅ HTTP 200
-- ✅ result 配列に36個のツール
+- ✅ result.tools に公開ツール24個
 - ✅ 各ツール名と説明を Copilot が表示
 
 ---
@@ -135,7 +135,7 @@ Body: {
 
 **Step 3.1: Inspect Target**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Body: {
   "method": "inspect_powerapps_target",
   "params": {}
@@ -159,7 +159,7 @@ Body: {
 
 **Step 3.2: Get State**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Body: {
   "method": "get_powerapps_state",
   "params": {
@@ -188,7 +188,7 @@ Body: {
 
 **Step 3.3: Get Source**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Body: {
   "method": "get_powerapps_source",
   "params": {
@@ -236,7 +236,7 @@ Body: {
 
 **Expected Bridge Execution:**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Body: {
   "method": "update_powerapps_app",
   "params": {
@@ -279,7 +279,7 @@ Body: {
 
 **Expected Bridge Execution:**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Body: {
   "method": "update_powerapps_app",
   "params": {
@@ -328,7 +328,7 @@ Body: {
 
 **Expected Bridge Execution:**
 ```
-POST https://clean-nano-ai-bridge.azurewebsites.net/mcp
+POST https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
 Body: {
   "method": "update_powerapps_app",
   "params": {
@@ -386,7 +386,7 @@ Future integration points:
 | Scenario | Status | Details |
 |----------|--------|---------|
 | Scenario 1: Basic Connectivity | ✅ Ready | health_check returns OK |
-| Scenario 2: Tool Discovery | ✅ Ready | tools/list returns 36 tools |
+| Scenario 2: Tool Discovery | ✅ Ready | tools/list returns 24 published tools |
 | Scenario 3: Power Apps Inspection | ✅ Ready | State and source retrieved |
 | Scenario 4: Missing State | ✅ Ready | HTTP 400 enforcement |
 | Scenario 5: Invalid SHA | ✅ Ready | HTTP 400 enforcement |
