@@ -195,7 +195,75 @@ const CATALOG = Object.freeze([
   }, ['listId']),
   tool('sp_permissions_get', 'サイトの権限一覧を読み取ります（付与対象の識別子は返しません）。', meta('READ', 'low', {
     auditRequired: true, requiredPermissions: ['Sites.Selected'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint'
-  }))
+  })),
+  // ---- SharePoint WRITE（Lane D）。すべて dry-run → Snapshot → 監査開始 → WRITE → 保存後再取得 → 検証 → 監査完了 の順。物理削除は持たない。 ----
+  tool('sp_column_create', 'リストに列を作成します（dry-run・Snapshot・監査・保存後再取得を通します）。', meta('WRITE', 'medium', { supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100, description: '操作計画ID' },
+    dryRun: { type: 'boolean', description: 'true の場合は変更せず計画のみ返す' },
+    listId: { type: 'string', pattern: GUID_PATTERN, description: 'リストID（GUID）' },
+    column: {
+      type: 'object', additionalProperties: false, required: ['name', 'type'],
+      properties: {
+        name: { type: 'string', pattern: FIELD_NAME_PATTERN, description: '内部名' },
+        displayName: { type: 'string', maxLength: 255, description: '表示名' },
+        type: { type: 'string', enum: ['text', 'number', 'boolean', 'dateTime'], description: '列の種類' },
+        required: { type: 'boolean', description: '必須にするか' }
+      }
+    }
+  }, ['operationId', 'listId', 'column']),
+  tool('sp_column_update', 'リストの列の表示名・表示状態を更新します。', meta('WRITE', 'medium', { supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100 },
+    dryRun: { type: 'boolean' },
+    listId: { type: 'string', pattern: GUID_PATTERN },
+    columnId: { type: 'string', pattern: GUID_PATTERN, description: '列ID（GUID）' },
+    patch: {
+      type: 'object', additionalProperties: false, minProperties: 1,
+      properties: {
+        displayName: { type: 'string', maxLength: 255 },
+        hidden: { type: 'boolean' }
+      }
+    }
+  }, ['operationId', 'listId', 'columnId', 'patch']),
+  tool('sp_item_create', 'リストに項目を1件作成します。', meta('WRITE', 'medium', { supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100 },
+    dryRun: { type: 'boolean' },
+    listId: { type: 'string', pattern: GUID_PATTERN },
+    fields: { type: 'object', minProperties: 1, maxProperties: 50, additionalProperties: { type: ['string', 'number', 'boolean'], maxLength: 1000 }, description: '項目の値（内部名→値）' }
+  }, ['operationId', 'listId', 'fields']),
+  tool('sp_item_update', 'リストの項目の値を更新します（指定した項目だけを変更します）。', meta('WRITE', 'medium', { supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100 },
+    dryRun: { type: 'boolean' },
+    listId: { type: 'string', pattern: GUID_PATTERN },
+    itemId: { type: 'string', pattern: ITEM_ID_PATTERN },
+    fields: { type: 'object', minProperties: 1, maxProperties: 50, additionalProperties: { type: ['string', 'number', 'boolean'], maxLength: 1000 } }
+  }, ['operationId', 'listId', 'itemId', 'fields']),
+  tool('sp_attachment_add', '項目に添付ファイルを追加します。添付の書込み経路は未検証のため、現時点では BLOCKED を返します。', meta('WRITE', 'medium', { supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100 },
+    dryRun: { type: 'boolean' },
+    listId: { type: 'string', pattern: GUID_PATTERN },
+    itemId: { type: 'string', pattern: ITEM_ID_PATTERN },
+    fileName: { type: 'string', pattern: '^[^\\\\/:*?"<>|]{1,128}$' },
+    contentBase64: { type: 'string', maxLength: 1400000, description: '添付内容（Base64・復号後1MB以下）' }
+  }, ['operationId', 'listId', 'itemId', 'fileName', 'contentBase64']),
+  tool('sp_permissions_plan', 'サイトの権限付与・解除の計画を作ります（変更はしません）。', meta('READ', 'low', {
+    auditRequired: true, requiredPermissions: ['Sites.Selected'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint'
+  }), {
+    roles: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'string', enum: ['read', 'write'] } },
+    recipientEmails: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', maxLength: 254 } }
+  }, ['roles', 'recipientEmails']),
+  tool('sp_permissions_grant', 'サイトの権限を付与します。承認トークンが必要です。', meta('WRITE', 'high', { requiresApproval: true,  supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100 },
+    dryRun: { type: 'boolean' },
+    approvalToken: { type: 'string', maxLength: 512 },
+    roles: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'string', enum: ['read', 'write'] } },
+    recipientEmails: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', maxLength: 254 } }
+  }, ['operationId', 'roles', 'recipientEmails']),
+  tool('sp_permissions_revoke', 'サイトの権限付与を解除します（データは削除しません）。承認トークンが必要です。', meta('WRITE', 'high', { requiresApproval: true,  supportsDryRun: true, supportsRollback: true, auditRequired: true, requiredPermissions: ['Sites.Selected（対象サイトの書込みロール）'], requiredConnections: ['microsoft-graph', 'sharepoint-cleannano'], adapter: 'sharePoint' }), {
+    operationId: { type: 'string', maxLength: 100 },
+    dryRun: { type: 'boolean' },
+    approvalToken: { type: 'string', maxLength: 512 },
+    permissionId: { type: 'string', maxLength: 200, description: '権限ID' }
+  }, ['operationId', 'permissionId']),
 ]);
 
 const BY_NAME = new Map(CATALOG.map((entry) => [entry.name, entry]));
@@ -225,6 +293,12 @@ const OPERATIONS_PUBLIC_TOOLS = Object.freeze(INTEGRATED_TOOL_NAMES.map((name) =
 
 function checkValue(name, spec, value) {
   if (spec.enum && !spec.enum.includes(value)) return [`${name} の値が不正です`];
+  // 複数の型を許す指定（例: ['string', 'number', 'boolean']）は、いずれかに一致すれば通す。
+  if (Array.isArray(spec.type)) {
+    return spec.type.some((t) => checkValue(name, { ...spec, type: t }, value).length === 0)
+      ? []
+      : [`${name} の型が不正です`];
+  }
   const problems = [];
   switch (spec.type) {
     case 'string':
@@ -241,9 +315,17 @@ function checkValue(name, spec, value) {
     case 'boolean':
       if (typeof value !== 'boolean') return [`${name} は真偽値で指定してください`];
       break;
+    case 'number':
+      if (typeof value !== 'number' || !Number.isFinite(value)) return [`${name} は数値で指定してください`];
+      break;
     case 'object':
       if (value === null || typeof value !== 'object' || Array.isArray(value)) return [`${name} はオブジェクトで指定してください`];
       if (spec.maxJsonLength !== undefined && canonicalJson(value).length > spec.maxJsonLength) problems.push(`${name} が大きすぎます`);
+      if (spec.minProperties !== undefined && Object.keys(value).length < spec.minProperties) problems.push(`${name} は${spec.minProperties}項目以上で指定してください`);
+      if (spec.maxProperties !== undefined && Object.keys(value).length > spec.maxProperties) problems.push(`${name} は${spec.maxProperties}項目以内で指定してください`);
+      if (spec.additionalProperties && typeof spec.additionalProperties === 'object') {
+        for (const [key, item] of Object.entries(value)) problems.push(...checkValue(`${name}.${key}`, spec.additionalProperties, item));
+      }
       break;
     case 'array':
       if (!Array.isArray(value)) return [`${name} は配列で指定してください`];
@@ -764,6 +846,227 @@ function createOperationsMcp(config = {}, deps = {}) {
       return { status: 'PASS', count: permissions.length, permissions, executed: false };
     }
   };
+
+  // ---- SharePoint WRITE（Lane D）の共通実行器 ----
+  // 順序: 操作計画の確認 → 対象サイトの診断 → 承認（必要時） → dry-run → 変更前 Snapshot → 監査開始 → WRITE
+  //       → 保存後再取得と検証 → 監査完了。どこかで保存に失敗したら、その時点で止める。
+  const graphColumnBody = (column) => {
+    const facet = { text: 'text', number: 'number', boolean: 'boolean', dateTime: 'dateTime' }[column.type];
+    return { name: column.name, displayName: column.displayName || column.name, required: column.required === true, [facet]: {} };
+  };
+  const plainHash = (value) => hashValue(maskDeep(JSON.parse(canonicalJson(value ?? null))));
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  async function auditSafely(ctx, entry) {
+    try { await ctx.appendAudit(entry); return true; } catch { return false; }
+  }
+
+  async function runSpWrite(name, args, ctx, spec) {
+    const { operationId, dryRun = false, approvalToken } = args;
+    const record = plans.get(operationId);
+    if (!record) return { status: 'FAIL', reasonCode: 'TARGET_NOT_FOUND', message: '操作計画が登録されていません。', executed: false };
+    if (record.status === 'cancelled') return { status: 'FAIL', reasonCode: 'INVALID_STATE', executed: false };
+    const adapter = ctx.ready('sharePoint');
+    if (!adapter) return safeErrorPayload(new SharePointAdapterError('AUTH_NOT_CONFIGURED'));
+    if (spec.unsupported) {
+      return { status: 'BLOCKED', reasonCode: spec.unsupported, adapter: 'sharePoint', executed: false, message: spec.unsupportedMessage, nextStep: spec.nextStep };
+    }
+
+    // 対象サイトの診断（認証・サイト読取・権限読取）。1つでも未通過なら書き込まない。
+    const diagnosis = await runSharePointDiagnostics(adapter);
+    if (diagnosis.status !== 'PASS') {
+      return { status: diagnosis.status, reasonCode: 'PRECONDITION_FAILED', diagnosis: { status: diagnosis.status, checks: diagnosis.checks }, executed: false };
+    }
+
+    const targetId = spec.targetId(args);
+    if (dryRun) {
+      let plan;
+      try { plan = await spec.dryRun(adapter, args); } catch (error) { return safeErrorPayload(error); }
+      return { status: 'PASS', dryRun: true, executed: false, snapshotStored: false, targetId, plan };
+    }
+
+    if (spec.requiresApproval) {
+      if (!approvalToken) return { status: 'BLOCKED', reasonCode: 'APPROVAL_REQUIRED', executed: false, nextStep: '人間の承認を得て承認トークンを渡す。' };
+      const approvalAdapter = ctx.ready('approval');
+      if (!approvalAdapter) return adapterBlocked('approval', '承認台帳アダプターを構成する。');
+      const approval = (await approvalAdapter.verify(approvalToken, { operationId, tool: name })) || {};
+      if (approval.approved !== true) return { status: 'FAIL', reasonCode: 'APPROVAL_INVALID', executed: false };
+    }
+
+    // 変更前 Snapshot。保存できなければ書き込まない。
+    let before;
+    try { before = await spec.prior(adapter, args); } catch (error) { return safeErrorPayload(error); }
+    const beforeContent = maskDeep(JSON.parse(canonicalJson(before ?? null)));
+    const beforeHash = plainHash(before);
+    const snapshotId = crypto.randomUUID();
+    try {
+      await ctx.store.append('snapshots', {
+        snapshotId, operationId, correlationId: ctx.correlationId, targetType: 'sharepoint_list', targetId,
+        beforeHash, content: beforeContent, createdAt: isoNow()
+      });
+    } catch {
+      return { status: 'FAIL', reasonCode: 'SNAPSHOT_STORE_FAILED', message: 'スナップショットを保存できなかったため、変更は行いませんでした。', snapshotStored: false, executed: false };
+    }
+
+    // 監査開始。保存できなければ書き込まない（Snapshot は残るが、書き込みゲートは通らない）。
+    const started = await auditSafely(ctx, {
+      operationId, correlationId: ctx.correlationId, tool: name, event: 'write_started', status: 'STARTED',
+      targetType: 'sharepoint_list', targetId, beforeHash, snapshotId
+    });
+    if (!started) {
+      return { status: 'FAIL', reasonCode: 'AUDIT_WRITE_FAILED', message: '監査開始記録を保存できなかったため、変更は行いませんでした。', snapshotStored: true, snapshotId, executed: false };
+    }
+
+    // WRITE
+    let writeResult;
+    try {
+      writeResult = await spec.write(adapter, args, before);
+    } catch (error) {
+      const failed = safeErrorPayload(error);
+      await auditSafely(ctx, { operationId, correlationId: ctx.correlationId, tool: name, event: 'write_failed', status: 'FAIL', targetType: 'sharepoint_list', targetId, beforeHash, snapshotId, reasonCode: failed.reasonCode || 'WRITE_FAILED' });
+      return { ...failed, status: 'FAIL', executed: false, writeAttempted: true, snapshotId, beforeHash };
+    }
+
+    // 保存後再取得と検証（書き込み結果を実環境から読み直して確かめる）
+    let after = null;
+    let verified = false;
+    let rereadFailed = false;
+    try {
+      after = await spec.reread(adapter, args, writeResult);
+      verified = spec.verify(after, args, writeResult) === true;
+    } catch {
+      rereadFailed = true;
+    }
+    const afterHash = after === null || after === undefined ? null : plainHash(after);
+    const verification = verified ? 'PASS' : 'FAIL';
+
+    // 監査完了。ここで保存できない場合は、書き込みは実行済みのまま FAIL にする（状態の確認が必要）。
+    const completed = await auditSafely(ctx, {
+      operationId, correlationId: ctx.correlationId, tool: name, event: 'write_completed', status: verification,
+      targetType: 'sharepoint_list', targetId, beforeHash, afterHash, verification, rollbackAvailable: true, snapshotId
+    });
+    const base = {
+      executed: true, targetId, snapshotId, beforeHash, afterHash, verification,
+      verifyStep: 'post_write_reread', rollbackAvailable: true, writeResult: spec.summarize ? spec.summarize(writeResult) : {}
+    };
+    if (!completed) {
+      return { ...base, status: 'FAIL', reasonCode: 'AUDIT_WRITE_FAILED', message: '書き込みは実行済みですが、監査完了記録を保存できませんでした。状態を確認してください。' };
+    }
+    if (rereadFailed) return { ...base, status: 'FAIL', reasonCode: 'REREAD_FAILED' };
+    if (!verified) return { ...base, status: 'FAIL', reasonCode: 'VERIFY_FAILED' };
+    return { ...base, status: 'PASS' };
+  }
+
+  const SP_WRITE_HANDLERS = {
+    sp_column_create: (args, ctx) => runSpWrite('sp_column_create', args, ctx, {
+      targetId: (a) => a.listId,
+      dryRun: async (adapter, a) => ({ operationType: 'create_column', internalName: a.column.name, type: a.column.type }),
+      prior: async (adapter, a) => {
+        const columns = await adapter.listSchemaGet({ listId: a.listId });
+        if (columns.some((c) => c.internalName === a.column.name)) throw new SharePointAdapterError('CONFLICT');
+        return columns;
+      },
+      write: (adapter, a) => adapter.columnCreate({ listId: a.listId, column: graphColumnBody(a.column) }),
+      reread: (adapter, a) => adapter.listSchemaGet({ listId: a.listId }),
+      verify: (after, a) => Array.isArray(after) && after.some((c) => c.internalName === a.column.name),
+      summarize: (r) => ({ columnId: r.columnId })
+    }),
+
+    sp_column_update: (args, ctx) => runSpWrite('sp_column_update', args, ctx, {
+      targetId: (a) => a.listId,
+      dryRun: async (adapter, a) => ({ operationType: 'update_column', columnId: a.columnId, changedFields: Object.keys(a.patch).sort() }),
+      prior: async (adapter, a) => {
+        const column = (await adapter.listSchemaGet({ listId: a.listId })).find((c) => c.columnId === a.columnId);
+        if (!column) throw new SharePointAdapterError('TARGET_NOT_FOUND');
+        return column;
+      },
+      write: (adapter, a) => adapter.columnUpdate({ listId: a.listId, columnId: a.columnId, patch: a.patch }),
+      reread: async (adapter, a) => (await adapter.listSchemaGet({ listId: a.listId })).find((c) => c.columnId === a.columnId) || null,
+      verify: (after, a) => Boolean(after) && Object.entries(a.patch).every(([k, v]) => after[k] === v),
+      summarize: (r) => ({ columnId: r.columnId })
+    }),
+
+    sp_item_create: (args, ctx) => runSpWrite('sp_item_create', args, ctx, {
+      targetId: (a) => a.listId,
+      dryRun: async (adapter, a) => ({ operationType: 'create_item', fieldNames: Object.keys(a.fields).sort() }),
+      prior: async () => null,
+      write: (adapter, a) => adapter.itemCreate({ listId: a.listId, fields: a.fields }),
+      reread: (adapter, a, r) => {
+        if (!r.itemId) throw new SharePointAdapterError('UPSTREAM_INVALID_RESPONSE');
+        return adapter.itemGet({ listId: a.listId, itemId: r.itemId });
+      },
+      verify: (after, a) => Boolean(after) && Object.entries(a.fields).every(([k, v]) => after.fields[k] === v),
+      summarize: (r) => ({ itemId: r.itemId })
+    }),
+
+    sp_item_update: (args, ctx) => runSpWrite('sp_item_update', args, ctx, {
+      targetId: (a) => a.listId,
+      dryRun: async (adapter, a) => ({ operationType: 'update_item', itemId: a.itemId, fieldNames: Object.keys(a.fields).sort() }),
+      prior: (adapter, a) => adapter.itemGet({ listId: a.listId, itemId: a.itemId }),
+      write: (adapter, a) => adapter.itemUpdate({ listId: a.listId, itemId: a.itemId, fields: a.fields }),
+      reread: (adapter, a) => adapter.itemGet({ listId: a.listId, itemId: a.itemId }),
+      verify: (after, a) => Boolean(after) && Object.entries(a.fields).every(([k, v]) => after.fields[k] === v),
+      summarize: (r) => ({ itemId: r.itemId })
+    }),
+
+    // 添付の書込み経路は実環境で未検証のため BLOCKED。入力検証と契約はここで確定させる。
+    sp_attachment_add: (args, ctx) => {
+      const decodedBytes = Buffer.byteLength(args.contentBase64, 'base64');
+      if (decodedBytes > 1024 * 1024) return Promise.resolve({ status: 'FAIL', reasonCode: 'VALIDATION_FAILED', message: '添付は1MB以下にしてください。', executed: false });
+      return runSpWrite('sp_attachment_add', args, ctx, {
+        unsupported: 'ATTACHMENT_API_UNVERIFIED',
+        unsupportedMessage: 'SharePoint 項目への添付の書込み経路は実環境で未検証のため、実行しませんでした。',
+        nextStep: '添付の書込み経路（Graph またはドライブ経由）を実環境で検証してから有効化する。',
+        targetId: (a) => a.listId
+      });
+    },
+
+    sp_permissions_plan: async (args, ctx) => {
+      if (!args.recipientEmails.every((e) => EMAIL_PATTERN.test(e))) {
+        return { status: 'FAIL', reasonCode: 'VALIDATION_FAILED', message: 'メールアドレスの形式を確認してください。', executed: false };
+      }
+      const adapter = ctx.ready('sharePoint');
+      if (!adapter) return safeErrorPayload(new SharePointAdapterError('AUTH_NOT_CONFIGURED'));
+      const current = await adapter.permissionsGet();
+      return {
+        status: 'PASS', executed: false,
+        plan: { roles: [...new Set(args.roles)].sort(), recipientCount: new Set(args.recipientEmails).size, currentPermissionCount: current.length }
+      };
+    },
+
+    sp_permissions_grant: (args, ctx) => {
+      if (!args.recipientEmails.every((e) => EMAIL_PATTERN.test(e))) {
+        return Promise.resolve({ status: 'FAIL', reasonCode: 'VALIDATION_FAILED', message: 'メールアドレスの形式を確認してください。', executed: false });
+      }
+      return runSpWrite('sp_permissions_grant', args, ctx, {
+        requiresApproval: true,
+        targetId: () => 'site',
+        dryRun: async (adapter, a) => ({ operationType: 'grant_permission', roles: [...new Set(a.roles)].sort(), recipientCount: new Set(a.recipientEmails).size }),
+        prior: (adapter) => adapter.permissionsGet(),
+        write: (adapter, a) => adapter.permissionsGrant({ roles: [...new Set(a.roles)], recipientEmails: [...new Set(a.recipientEmails)] }),
+        reread: (adapter) => adapter.permissionsGet(),
+        verify: (after, a, r) => r.permissionIds.length > 0 && r.permissionIds.every((id) => after.some((p) => p.permissionId === id)),
+        summarize: (r) => ({ permissionIds: r.permissionIds })
+      });
+    },
+
+    sp_permissions_revoke: (args, ctx) => runSpWrite('sp_permissions_revoke', args, ctx, {
+      requiresApproval: true,
+      targetId: () => 'site',
+      dryRun: async (adapter, a) => ({ operationType: 'revoke_permission', permissionId: a.permissionId }),
+      prior: async (adapter, a) => {
+        const found = (await adapter.permissionsGet()).find((p) => p.permissionId === a.permissionId);
+        if (!found) throw new SharePointAdapterError('TARGET_NOT_FOUND');
+        if (found.roles.includes('owner')) throw new SharePointAdapterError('OWNER_REVOKE_BLOCKED');
+        return found;
+      },
+      write: (adapter, a) => adapter.permissionsRevoke({ permissionId: a.permissionId }),
+      reread: (adapter) => adapter.permissionsGet(),
+      verify: (after, a) => !after.some((p) => p.permissionId === a.permissionId),
+      summarize: () => ({ removed: true })
+    })
+  };
+  Object.assign(handlers, Object.fromEntries(Object.entries(SP_WRITE_HANDLERS).map(([name, fn]) => [name, fn])));
 
   // 監査が必要なツールは、開始の監査を保存できた場合にのみ実行する。完了の監査が保存できない場合は FAIL とする。
   function finalize(name, correlationId, result) {

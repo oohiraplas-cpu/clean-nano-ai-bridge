@@ -66,6 +66,35 @@ function createSharePointGraphAdapter({ siteUrl, tokenProvider = null, fetchImpl
     try { return await response.json(); } catch { throw new SharePointAdapterError('UPSTREAM_INVALID_RESPONSE'); }
   }
 
+  // 書き込み（Lane D）。許可したメソッドと経路だけを通す。応答本文は返さず、作成・更新の識別子のみ返す。
+  const WRITE_ALLOWED = Object.freeze({ POST: /^\/sites\/[^/]+\/(lists\/[^/]+\/(columns|items)|permissions)(\/[^/?]+\/fields)?(\?|$)/, PATCH: /^\/sites\/[^/]+\/lists\/[^/]+\/(columns\/[^/?]+|items\/[^/?]+\/fields)(\?|$)/, DELETE: /^\/sites\/[^/]+\/permissions\/[^/?]+(\?|$)/ });
+
+  async function graphWrite(method, pathAndQuery, body) {
+    if (!configured) throw new SharePointAdapterError('AUTH_NOT_CONFIGURED');
+    const pattern = WRITE_ALLOWED[method];
+    if (!pattern || !pattern.test(pathAndQuery)) throw new SharePointAdapterError('WRITE_PATH_REJECTED');
+    let token;
+    try { token = await tokenProvider(); } catch (error) {
+      const code = typeof error?.code === 'string' && /^AUTH_[A-Z_]+$/.test(error.code) ? error.code : 'AUTH_FAILED';
+      throw new SharePointAdapterError(code);
+    }
+    if (typeof token !== 'string' || token.length === 0) throw new SharePointAdapterError('AUTH_FAILED');
+    let response;
+    try {
+      response = await fetchImpl(`${graphBase}${pathAndQuery}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+    } catch {
+      throw new SharePointAdapterError('UPSTREAM_UNREACHABLE');
+    }
+    if (!response.ok) throw new SharePointAdapterError(mapHttpStatus(response.status), response.status);
+    if (method === 'DELETE' || response.status === 204) return {};
+    try { return await response.json(); } catch { return {}; }
+  }
+
   function resolveSiteId() {
     if (!siteIdPromise) {
       siteIdPromise = graphGet(`/sites/${hostname}:${sitePath}?$select=id,displayName,webUrl`)
@@ -130,6 +159,47 @@ function createSharePointGraphAdapter({ siteUrl, tokenProvider = null, fetchImpl
       const siteId = await resolveSiteId();
       const data = await graphGet(`/sites/${encodeId(siteId)}/lists/${encodeId(listId)}/items?$expand=fields&$top=${Number(top)}`);
       return (data.value || []).map((item) => ({ itemId: item.id, fields: item.fields || {} }));
+    },
+
+    // ---- 書き込み（Lane D）。すべて事前に dry-run・Snapshot・監査を通す前提（operationsMcp 側で強制）。 ----
+
+    async columnCreate({ listId, column }) {
+      const siteId = await resolveSiteId();
+      const created = await graphWrite('POST', `/sites/${encodeId(siteId)}/lists/${encodeId(listId)}/columns`, column);
+      return { columnId: created.id || null, internalName: created.name || column.name };
+    },
+
+    async columnUpdate({ listId, columnId, patch }) {
+      const siteId = await resolveSiteId();
+      await graphWrite('PATCH', `/sites/${encodeId(siteId)}/lists/${encodeId(listId)}/columns/${encodeId(columnId)}`, patch);
+      return { columnId };
+    },
+
+    async itemCreate({ listId, fields }) {
+      const siteId = await resolveSiteId();
+      const created = await graphWrite('POST', `/sites/${encodeId(siteId)}/lists/${encodeId(listId)}/items`, { fields });
+      return { itemId: created.id || null };
+    },
+
+    async itemUpdate({ listId, itemId, fields }) {
+      const siteId = await resolveSiteId();
+      await graphWrite('PATCH', `/sites/${encodeId(siteId)}/lists/${encodeId(listId)}/items/${encodeId(itemId)}/fields`, fields);
+      return { itemId };
+    },
+
+    async permissionsGrant({ roles, recipientEmails }) {
+      const siteId = await resolveSiteId();
+      const created = await graphWrite('POST', `/sites/${encodeId(siteId)}/permissions`, {
+        roles,
+        recipients: recipientEmails.map((email) => ({ email }))
+      });
+      return { permissionIds: Array.isArray(created.value) ? created.value.map((p) => p.id) : (created.id ? [created.id] : []) };
+    },
+
+    async permissionsRevoke({ permissionId }) {
+      const siteId = await resolveSiteId();
+      await graphWrite('DELETE', `/sites/${encodeId(siteId)}/permissions/${encodeId(permissionId)}`);
+      return { permissionId };
     },
 
     async permissionsGet() {

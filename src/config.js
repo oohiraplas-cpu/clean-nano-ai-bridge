@@ -44,6 +44,9 @@ function getConfig(env = process.env) {
     corsOrigins: origins,
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
+    // Webhook の認証モード。compat（既定）は従来どおり鍵未設定でも通す（既存の呼出元を壊さない）。
+    // enforce は鍵未設定を 503 で拒否する。切替は本番影響があるため、既定値は変更しない。
+    webhookAuthMode: env.WEBHOOK_AUTH_MODE === 'enforce' ? 'enforce' : 'compat',
     // 認証鍵の正式名は CN_MCP_API_KEY。後方互換として MCP_API_KEY を読む。値はログ・応答に出さない。
     mcpApiKey: resolveMcpApiKey(env).key,
     // 変数名のみを保持する（値は保持しない）。authentication_check が有効な変数名を示すために使う。

@@ -167,6 +167,19 @@ function apiKeyMiddleware(getKey) {
   };
 }
 
+// Webhook の公開経路（呼出元の一覧。追加・削除時は docs/webhook-auth-migration.md も更新する）。
+const WEBHOOK_PATHS = Object.freeze(['/webhooks/claude-code', '/webhooks/copilot']);
+
+// 認証モードに応じたゲート。enforce で鍵未設定のときだけ拒否し、それ以外は既存の挙動を保つ。
+function webhookAuthGate(config, check) {
+  return (req, res, next) => {
+    if (config.webhookAuthMode === 'enforce' && !config.webhookApiKey) {
+      return res.status(503).json({ error: '認証設定が不足しています（WEBHOOK_API_KEY）' });
+    }
+    return check(req, res, next);
+  };
+}
+
 const MCP_METHODS = Object.freeze([
   'get_executive_policy', 'get_executive_brief',
   'health_check', 'get_tasks', 'get_next_task',
@@ -2986,8 +2999,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     try { return res.status(200).json(await nextPayload(store)); } catch (error) { return next(error); }
   });
 
-  const webhookAuth = apiKeyMiddleware(() => config.webhookApiKey);
-  for (const path of ['/webhooks/claude-code', '/webhooks/copilot']) {
+  // Webhook 認証。compat モード（既定）は従来どおり。enforce モードでは鍵未設定を fail closed（503）にする。
+  const webhookAuthCheck = apiKeyMiddleware(() => config.webhookApiKey);
+  const webhookAuth = webhookAuthGate(config, webhookAuthCheck);
+  for (const path of WEBHOOK_PATHS) {
     app.post(path, webhookAuth, async (req, res, next) => {
       const errorMessage = validateTaskInput(req.body, { requireTitle: true });
       if (errorMessage) return res.status(400).json({ error: errorMessage });
@@ -3607,4 +3622,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { apiKeyMiddleware, createApp, CONNECTOR_READONLY_TOOLS, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS };
+module.exports = { apiKeyMiddleware, webhookAuthGate, WEBHOOK_PATHS, createApp, CONNECTOR_READONLY_TOOLS, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS };

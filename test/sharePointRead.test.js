@@ -124,10 +124,12 @@ test('a network failure is reported as UPSTREAM_UNREACHABLE', async () => {
   await assert.rejects(() => adapter.siteGet(), (error) => error.code === 'UPSTREAM_UNREACHABLE');
 });
 
-test('the adapter exposes no write operations', () => {
+test('the adapter exposes only the approved write operations and no data-deletion operation', () => {
   const adapter = createSharePointGraphAdapter({ siteUrl: SITE_URL, tokenProvider: async () => TOKEN, fetchImpl: async () => ({}) });
-  const writeLike = Object.keys(adapter).filter((name) => /create|update|delete|post|patch|put|set|add|remove/i.test(name));
-  assert.deepEqual(writeLike, []);
+  const writeLike = Object.keys(adapter).filter((name) => /create|update|delete|post|patch|put|set|add|remove|grant|revoke/i.test(name)).sort();
+  // 添付の書込みは経路未検証のためアダプターに持たせない（BLOCKED）。
+  assert.deepEqual(writeLike, ['columnCreate', 'columnUpdate', 'itemCreate', 'itemUpdate', 'permissionsGrant', 'permissionsRevoke']);
+  assert.equal(writeLike.some((name) => /^(item|list|site|column)Delete/i.test(name)), false);
 });
 
 // ---- ツール層（モック経由） ----

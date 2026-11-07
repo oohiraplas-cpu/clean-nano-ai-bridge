@@ -9,7 +9,9 @@ const EXPECTED_TOOLS = [
   'permission_check', 'license_check', 'connection_test', 'environment_get', 'operation_plan',
   'operation_status', 'operation_cancel', 'dry_run', 'snapshot_create', 'operation_verify', 'audit_write',
   'rollback_execute', 'sp_site_get', 'sp_lists_list', 'sp_list_get', 'sp_list_schema_get', 'sp_item_get',
-  'sp_item_query', 'sp_permissions_get'
+  'sp_item_query', 'sp_permissions_get',
+  'sp_column_create', 'sp_column_update', 'sp_item_create', 'sp_item_update', 'sp_attachment_add',
+  'sp_permissions_plan', 'sp_permissions_grant', 'sp_permissions_revoke'
 ];
 const GUID = '11111111-2222-3333-4444-555555555555';
 const planArgs = (overrides = {}) => ({

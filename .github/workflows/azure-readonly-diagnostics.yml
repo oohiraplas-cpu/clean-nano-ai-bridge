@@ -1,0 +1,143 @@
+name: Azure read-only diagnostics (Clean Nano Operations MCP)
+
+# 目的: Claude Code 実行環境の通信制限に依存せず、GitHub Actions から App Service の状態を read-only で確認する。
+# 禁止事項: 本番設定の変更、App Service の再起動、デプロイ、新規リソースの作成。
+# 秘密値: 認証鍵は GitHub Secrets から環境変数で渡すのみ。値は出力・Artifact に含めない（名前の有無だけを記録する）。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_NAME: clean-nano-ai-bridge
+      OUT_DIR: diagnostics-out
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Azure login (OIDC, read-only use)
+        id: login
+        continue-on-error: true
+        uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: App Service state and setting names (read-only)
+        id: appservice
+        if: steps.login.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR"
+          # 状態・既定ホスト名・リソースグループのみを取得する（値を含む設定一覧は取得しない）。
+          az webapp show --name "$APP_NAME" --query "{resourceGroup:resourceGroup, state:state, defaultHostName:defaultHostName, kind:kind}" -o json > "$OUT_DIR/appservice-state.json"
+          RG=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["resourceGroup"])' "$OUT_DIR/appservice-state.json")
+          # 設定の「名前」だけを取得する。値は取得しない。
+          az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[].name" -o tsv > "$OUT_DIR/appsetting-names.txt"
+          python3 - "$OUT_DIR" <<'PY'
+          import json, sys, pathlib
+          out = pathlib.Path(sys.argv[1])
+          names = set((out / "appsetting-names.txt").read_text().split())
+          state = json.loads((out / "appservice-state.json").read_text())
+          summary = {
+              "state": state.get("state"),
+              "defaultHostName": state.get("defaultHostName"),
+              "resourceGroupResolved": bool(state.get("resourceGroup")),
+              "settingNamePresence": {
+                  "CN_MCP_API_KEY": "CN_MCP_API_KEY" in names,
+                  "MCP_API_KEY": "MCP_API_KEY" in names,
+              },
+          }
+          (out / "appservice-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+          PY
+          rm -f "$OUT_DIR/appsetting-names.txt"
+
+      - name: Bridge diagnostics over HTTPS (no secret output)
+        id: bridge
+        shell: bash
+        env:
+          CN_MCP_API_KEY: ${{ secrets.CN_MCP_API_KEY }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT_DIR"
+          HOST=""
+          if [ -f "$OUT_DIR/appservice-state.json" ]; then
+            HOST=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("defaultHostName") or "")' "$OUT_DIR/appservice-state.json" 2>/dev/null || true)
+          fi
+          if [ -z "$HOST" ]; then
+            echo '{"schema":"clean-nano-azure-readonly-diagnostics/1","status":"BLOCKED","checks":[{"name":"base_url","status":"BLOCKED","reasonCode":"HOST_UNKNOWN"}]}' > "$OUT_DIR/bridge-diagnostics.json"
+            echo "status=BLOCKED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          export BRIDGE_BASE_URL="https://${HOST}"
+          set +e
+          node scripts/azure-readonly-diagnostics.js "$OUT_DIR/bridge-diagnostics.json"
+          RC=$?
+          set -e
+          echo "status=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["status"])' "$OUT_DIR/bridge-diagnostics.json")" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: App Service logs (read-only download, scanned for secrets)
+        if: steps.login.outcome == 'success'
+        shell: bash
+        env:
+          CN_MCP_API_KEY: ${{ secrets.CN_MCP_API_KEY }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT_DIR/logs"
+          RG=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["resourceGroup"])' "$OUT_DIR/appservice-state.json" 2>/dev/null || true)
+          if [ -z "$RG" ]; then echo "resource group unknown; skip logs"; exit 0; fi
+          az webapp log download --name "$APP_NAME" --resource-group "$RG" --log-file "$OUT_DIR/logs/app-logs.zip" || { echo "log download failed"; exit 0; }
+          # ログに秘密値が含まれていれば、ログを Artifact に含めず破棄する（値は表示しない）。
+          if command -v unzip >/dev/null 2>&1 && unzip -p "$OUT_DIR/logs/app-logs.zip" > "$OUT_DIR/logs/combined.txt" 2>/dev/null; then
+            LEAK=0
+            for V in "${CN_MCP_API_KEY:-}" "${MCP_API_KEY:-}"; do
+              if [ -n "$V" ] && grep -q -F -- "$V" "$OUT_DIR/logs/combined.txt"; then LEAK=1; fi
+            done
+            if [ "$LEAK" = "1" ]; then
+              echo "secret-like value found in logs; logs discarded from artifact"
+              rm -rf "$OUT_DIR/logs"
+            fi
+            rm -f "$OUT_DIR/logs/combined.txt"
+          fi
+          exit 0
+
+      - name: Upload diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-readonly-diagnostics-${{ github.run_id }}
+          path: diagnostics-out
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          BRIDGE_STATUS: ${{ steps.bridge.outputs.status }}
+          LOGIN_OUTCOME: ${{ steps.login.outcome }}
+        run: |
+          echo "Azure login: ${LOGIN_OUTCOME}"
+          echo "Bridge diagnostics: ${BRIDGE_STATUS:-not run}"
+          if [ "${LOGIN_OUTCOME}" != "success" ]; then
+            echo "BLOCKED: Azure OIDC login is not configured (管理者操作が必要: OIDC の federated credential と RBAC の確認)"
+          fi
