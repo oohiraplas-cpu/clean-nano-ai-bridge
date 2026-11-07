@@ -37,6 +37,8 @@ function getConfig(env = process.env) {
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     mcpApiKey: env.MCP_API_KEY || '',
+    // Separate, read-only key for the claude.ai connector endpoint (/connector/mcp). Empty disables the endpoint.
+    connectorApiKey: env.CONNECTOR_API_KEY || '',
     stateContextRegistry: {
       ttlMs: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_TTL_MS, 300000)),
       maxEntries: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_MAX_ENTRIES, 1000))
