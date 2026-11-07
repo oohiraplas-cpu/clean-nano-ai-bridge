@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REQUIRED_FIELDS = Object.freeze([
-  'goal', 'completedTasks', 'runningTasks', 'readyTasks', 'blockedTasks',
+  'schema', 'goal', 'completedTasks', 'runningTasks', 'readyTasks', 'blockedTasks',
   'lastGoodCommit', 'testStatus', 'ciStatus', 'requiredHumanActions', 'timestamp',
   'completionPercent', 'criticalPath', 'deferredTasks', 'nextAutoTasks'
 ]);
@@ -37,14 +37,29 @@ function buildCheckpoint(input) {
 }
 
 function validateCheckpoint(checkpoint) {
-  if (!checkpoint || typeof checkpoint !== 'object') return { ok: false, missing: [...REQUIRED_FIELDS] };
+  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) return { ok: false, missing: [...REQUIRED_FIELDS], invalid: [] };
   const missing = REQUIRED_FIELDS.filter((field) => checkpoint[field] === undefined);
-  return { ok: missing.length === 0, missing };
+  const invalid = [];
+  const check = (field, valid) => { if (!missing.includes(field) && !valid) invalid.push(field); };
+  const nonemptyString = (value) => typeof value === 'string' && value.trim().length > 0;
+  check('schema', checkpoint.schema === 'clean-nano-checkpoint/1');
+  check('goal', nonemptyString(checkpoint.goal));
+  for (const field of ['lastGoodCommit', 'testStatus', 'ciStatus']) {
+    check(field, checkpoint[field] === null || nonemptyString(checkpoint[field]));
+  }
+  for (const field of ['completedTasks', 'runningTasks', 'readyTasks', 'blockedTasks', 'requiredHumanActions', 'criticalPath', 'deferredTasks', 'nextAutoTasks']) {
+    check(field, Array.isArray(checkpoint[field]) && checkpoint[field].every(nonemptyString));
+  }
+  check('timestamp', typeof checkpoint.timestamp === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(checkpoint.timestamp) && Number.isFinite(Date.parse(checkpoint.timestamp)));
+  const percent = checkpoint.completionPercent;
+  check('completionPercent', percent !== null && typeof percent === 'object' && !Array.isArray(percent) &&
+    ['code', 'live'].every((key) => Number.isFinite(percent[key]) && percent[key] >= 0 && percent[key] <= 100));
+  return { ok: missing.length === 0 && invalid.length === 0, missing, invalid };
 }
 
 function saveCheckpoint(filePath, checkpoint) {
   const validation = validateCheckpoint(checkpoint);
-  if (!validation.ok) throw new Error(`checkpoint missing fields: ${validation.missing.join(', ')}`);
+  if (!validation.ok) throw new Error(`checkpoint missing fields: ${validation.missing.join(', ')}; invalid fields: ${validation.invalid.join(', ')}`);
   fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });
   const tmp = `${filePath}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf8');
@@ -57,7 +72,7 @@ function restoreCheckpoint(filePath) {
   let parsed;
   try { parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return { ok: false, reasonCode: 'CHECKPOINT_INVALID_JSON', checkpoint: null }; }
   const validation = validateCheckpoint(parsed);
-  if (!validation.ok) return { ok: false, reasonCode: 'CHECKPOINT_INCOMPLETE', missing: validation.missing, checkpoint: null };
+  if (!validation.ok) return { ok: false, reasonCode: validation.missing.length ? 'CHECKPOINT_INCOMPLETE' : 'CHECKPOINT_INVALID_FIELDS', missing: validation.missing, invalid: validation.invalid, checkpoint: null };
   return { ok: true, reasonCode: null, checkpoint: parsed };
 }
 

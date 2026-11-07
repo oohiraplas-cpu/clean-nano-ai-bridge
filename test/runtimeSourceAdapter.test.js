@@ -211,7 +211,7 @@ test('MCP cross-session comparison is validation_blocked before runtime export',
   assert.equal(f.counts().exports, 0);
 });
 test('PAC worker archive and subprocess tests pass', () => {
-  const output = execFileSync(process.env.POWERAPPS_RUNTIME_PYTHON || 'python3', [path.join(__dirname, 'runtime_source_worker_test.py')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const output = execFileSync(process.env.POWERAPPS_RUNTIME_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(__dirname, 'runtime_source_worker_test.py')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   assert.match(output, /worker tests passed/);
 });
 

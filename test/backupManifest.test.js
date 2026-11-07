@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const python = process.env.POWERAPPS_RUNTIME_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 const yaml = require('js-yaml');
 const workflow = yaml.load(fs.readFileSync('.github/workflows/cn-aiiraidaicho-backup-manual.yml', 'utf8'));
 const step = workflow.jobs['export-backup'].steps.find(x => x.name.startsWith('Extract isolated'));
@@ -17,9 +18,10 @@ for (const [label, entries, success] of [
 ]) test(`backup manifest observes exact ${label}`, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-manifest-test-'));
   try {
-    const setup = `import io,json,zipfile,pathlib\nentries=json.loads(${JSON.stringify(JSON.stringify(entries))})\napp=io.BytesIO()\nwith zipfile.ZipFile(app,'w') as z:\n z.writestr('Properties.json',json.dumps({'Name':'clean nano kk'}))\n for name in entries: z.writestr(name,'Screens: {}')\npathlib.Path('out').mkdir()\nwith zipfile.ZipFile('out/CN_AIIraiDaicho-unmanaged.zip','w') as z:\n z.writestr('solution.xml','<UniqueName>CN_AIIraiDaicho</UniqueName>')\n z.writestr('customizations.xml','')\n z.writestr('[Content_Types].xml','')\n z.writestr('CanvasApps/fixture.msapp',app.getvalue())\n`;
-    assert.equal(spawnSync('python3', ['-c', setup], { cwd: dir }).status, 0);
-    const result = spawnSync('python3', ['-c', script], { cwd: dir });
+    const setup = `import io,json,zipfile,pathlib\nentries=json.loads(${JSON.stringify(JSON.stringify(entries))})\napp=io.BytesIO()\nwith zipfile.ZipFile(app,'w') as z:\n z.writestr('Properties.json',json.dumps({'Name':'clean nano kk'}))\n for name in entries:\n  entry=zipfile.ZipInfo(); entry.filename=entry.orig_filename=name\n  z.writestr(entry,'Screens: {}')\npathlib.Path('out').mkdir()\nwith zipfile.ZipFile('out/CN_AIIraiDaicho-unmanaged.zip','w') as z:\n z.writestr('solution.xml','<UniqueName>CN_AIIraiDaicho</UniqueName>')\n z.writestr('customizations.xml','')\n z.writestr('[Content_Types].xml','')\n z.writestr('CanvasApps/fixture.msapp',app.getvalue())\n`;
+    const fixture = spawnSync(python, ['-c', setup], { cwd: dir });
+    assert.equal(fixture.status, 0, fixture.error?.message || fixture.stderr?.toString());
+    const result = spawnSync(python, ['-c', script], { cwd: dir });
     assert.equal(result.status === 0, success);
     if (success) {
       const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'out/CN_AIiraidaicho_source/source-manifest.json')));

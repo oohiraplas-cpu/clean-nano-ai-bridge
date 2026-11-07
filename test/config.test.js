@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const path = require('node:path');
 const { getConfig } = require('../src/config');
 
 test('既存CN_CompanyOS環境をPower Apps Git同期の既定値にする', () => {
@@ -55,7 +56,7 @@ test('デプロイ連携の設定を環境変数で上書きできる（URL末�
   assert.equal(deployment.productionBaseUrl, 'https://p.example.com');
   assert.equal(deployment.healthAttempts, 5);
   assert.equal(deployment.healthRetryDelayMs, 0);
-  assert.equal(deployment.historyPath, '/tmp/history.jsonl');
+  assert.equal(deployment.historyPath, path.resolve('/tmp/history.jsonl'));
 });
 
 test('デプロイ用GitHubトークンはPower Appsソース用トークンを流用しない', () => {

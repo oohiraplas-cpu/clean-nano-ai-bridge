@@ -184,7 +184,7 @@ test('検証はファイルを展開せず、展開結果のsha256を返す', ()
 test('パスガードはルート外への相対パスとシンボリックリンク脱出を拒否する', (t) => {
   const root = tmpDir(t);
   const outside = tmpDir(t);
-  fs.symlinkSync(outside, path.join(root, 'escape'));
+  fs.symlinkSync(outside, path.join(root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => resolveInRoot(root, '../x'), PathGuardError);
   assert.throws(() => resolveInRoot(root, '/etc/passwd'), PathGuardError);
   assert.throws(() => resolveInRoot(root, 'escape/x.txt'), (e) => e.code === 'SYMLINK_ESCAPE');

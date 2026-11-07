@@ -65,21 +65,23 @@ jobs:
                   props = json.loads(app.read('Properties.json'))
                   if props.get('Name') != 'clean nano kk':
                       raise SystemExit('Unexpected Canvas App display name: ' + repr(props.get('Name')))
-                  names = [n for n in app.namelist() if n.replace('\\', '/').startswith('Src/') and n.endswith('.pa.yaml')]
+                  # Python normalizes filename on Windows; preserve observed ZIP names.
+                  entries = app.infolist()
+                  names = [info for info in entries if info.orig_filename.replace('\\', '/').startswith('Src/') and info.orig_filename.endswith('.pa.yaml')]
                   if not names: raise SystemExit('No Canvas App YAML source found')
                   archive_entries = {}
-                  for name in names:
+                  for info in names:
+                      name = info.orig_filename
                       parts = name.replace('\\', '/').split('/')
                       if any(part in ('', '.', '..') for part in parts):
                           raise SystemExit('Unsafe source archive entry')
                       basename = parts[-1]
-                      if basename in archive_entries or app.namelist().count(name) != 1:
+                      if basename in archive_entries or sum(entry.orig_filename == name for entry in entries) != 1:
                           raise SystemExit('Ambiguous source archive entry')
-                      info = app.getinfo(name)
                       if info.file_size > 2 * 1024 * 1024:
                           raise SystemExit('Source size limit')
                       archive_entries[basename] = name
-                      (dst / basename).write_bytes(app.read(name))
+                      (dst / basename).write_bytes(app.read(info))
                   (dst.parent / 'source-manifest.json').write_text(json.dumps({
                       'solution': 'CN_AIIraiDaicho',
                       'appDisplayName': props['Name'],

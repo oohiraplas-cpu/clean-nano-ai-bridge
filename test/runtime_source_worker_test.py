@@ -44,7 +44,11 @@ class WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / 'app.msapp'
             with zipfile.ZipFile(archive, 'w') as package:
-                package.writestr(entry, 'Screens: {}')
+                # ZipInfo.__init__ normalizes backslashes on Windows. Set the
+                # observed archive name after construction to keep this fixture exact.
+                info = zipfile.ZipInfo()
+                info.filename = info.orig_filename = entry
+                package.writestr(info, 'Screens: {}')
             self.assertTrue(worker.valid_source_entry(entry))
             self.assertEqual(worker.extract_source(archive, entry)[0], 'Screens: {}')
             with self.assertRaises(RuntimeError):

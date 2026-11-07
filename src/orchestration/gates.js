@@ -17,9 +17,18 @@ function selectTests(changedFiles, testRequires) {
 }
 
 // 実際の結果だけで判定する独立Verifier。
+function testsPassing(tests) {
+  if (!tests || typeof tests !== 'object' || Array.isArray(tests)) return false;
+  if (!Number.isSafeInteger(tests.pass) || tests.pass <= 0 || tests.fail !== 0) return false;
+  // 未実行・中断された試験を全件PASSの根拠にしない。旧形式ではこれらの件数は省略可能。
+  return ['cancelled', 'skipped', 'todo'].every((key) =>
+    tests[key] === undefined || (Number.isSafeInteger(tests[key]) && tests[key] === 0));
+}
+
 function independentVerify(facts) {
   const problems = [];
-  if (!facts.tests || facts.tests.fail !== 0 || facts.tests.pass <= 0) problems.push('TESTS_NOT_PASSING');
+  if (!testsPassing(facts?.tests)) problems.push('TESTS_NOT_PASSING');
+  facts = facts || {};
   if (facts.secretScan && facts.secretScan.findings > 0) problems.push('SECRET_FOUND');
   if (facts.backCompat && facts.backCompat.broken === true) problems.push('BACKWARD_COMPAT_BROKEN');
   if (facts.contract && facts.contract.violations > 0) problems.push('CONTRACT_VIOLATION');
@@ -32,7 +41,7 @@ function independentVerify(facts) {
 function integrationGate({ lanesToIntegrate, fullRegression, commitPending = false }) {
   const needsFullRegression = lanesToIntegrate >= 2 || commitPending;
   if (needsFullRegression && !fullRegression) return { allowed: false, reasonCode: 'FULL_REGRESSION_REQUIRED' };
-  if (fullRegression && (fullRegression.fail !== 0 || fullRegression.pass <= 0)) return { allowed: false, reasonCode: 'FULL_REGRESSION_FAILED' };
+  if (fullRegression && !testsPassing(fullRegression)) return { allowed: false, reasonCode: 'FULL_REGRESSION_FAILED' };
   return { allowed: true, reasonCode: null };
 }
 

@@ -231,6 +231,9 @@ function createEntraWriter({ adapter, now = () => new Date().toISOString() } = {
     const dryRun = rawArgs.dryRun !== false;
     if (!dryRun && rawArgs.approvedByHuman !== true) return fail('APPROVAL_REQUIRED', '外部への書込みには利用者の明示承認（approvedByHuman=true）が必要です。計画のみ（dryRun）は承認なしで実行できます。');
     const args = Object.fromEntries(Object.entries(rawArgs).filter(([k]) => !['dryRun', 'approvedByHuman'].includes(k)));
+    let written = false;
+    let attempted = false;
+    let recovery = null;
     try {
       const spec = await specs[operation](args);
       if (spec.conflict) return fail(spec.conflict, '書込みの前提を満たさないため実行しませんでした。', { operation });
@@ -242,12 +245,29 @@ function createEntraWriter({ adapter, now = () => new Date().toISOString() } = {
         humanActions: spec.humanActions || []
       };
       if (dryRun) return { status: 'PASS', executed: false, ...base };
+      recovery = base;
+      attempted = true;
       const targetId = await spec.write();
+      written = true;
+      base.targetId = targetId;
+      if (operation === 'entra_user_create') {
+        base.rollback.rollbackArgs = { userId: targetId, accountEnabled: false };
+      }
       const verdict = await spec.verify(targetId);
       if (!verdict.ok) return { status: 'FAIL', executed: true, verified: false, reasonCode: 'VERIFY_MISMATCH', ...base, message: '書込み後の再取得で目的の状態を確認できませんでした。Rollback を検討してください。' };
       return { status: 'PASS', executed: true, verified: true, afterSha256: sha256Json(verdict.after), ...base };
     } catch (error) {
-      return classifyGraphError(error, operation);
+      const failure = classifyGraphError(error, operation);
+      if (written) return { ...failure, ...recovery, status: 'FAIL', executed: true, verified: false };
+      // A lost write response cannot establish that no external change happened.
+      if (attempted) return {
+        ...failure, ...recovery, status: 'FAIL', executed: null,
+        writeAttempted: true, executionUncertain: true, verified: false,
+        ...(operation === 'entra_user_create' ? { rollback: {
+          ...recovery.rollback, rollbackAvailable: false, reasonCode: 'TARGET_ID_UNRESOLVED'
+        } } : {})
+      };
+      return failure;
     }
   }
 

@@ -132,6 +132,38 @@ test('duplicate human actions from several tasks collapse into one step with all
   assert.deepEqual(bundle.actions[0].sourceTasks, ['f-1', 'f-2']);
 });
 
+test('malformed checkpoint fields are rejected before saving or resuming', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-invalid-'));
+  const file = path.join(dir, 'checkpoint.json');
+  const mutations = [
+    ['schema', 'unknown/2'], ['goal', ''], ['goal', {}], ['timestamp', 0], ['timestamp', 'invalid-date'],
+    ['lastGoodCommit', {}], ['testStatus', false], ['ciStatus', []],
+    ...['completedTasks', 'runningTasks', 'readyTasks', 'blockedTasks', 'requiredHumanActions', 'criticalPath', 'deferredTasks', 'nextAutoTasks']
+      .flatMap((field) => [[field, 'task'], [field, [42]], [field, ['']]]),
+    ...[null, [], {}, { code: '50', live: 0 }, { code: NaN, live: 0 }, { code: Infinity, live: 0 }, { code: -1, live: 0 }, { code: 0, live: 101 }]
+      .map((value) => ['completionPercent', value])
+  ];
+  try {
+    for (const [field, value] of mutations) {
+      const broken = { ...fullCheckpoint(), [field]: value };
+      const validation = validateCheckpoint(broken);
+      assert.equal(validation.ok, false, field);
+      assert.ok(validation.invalid.includes(field), field);
+      assert.throws(() => saveCheckpoint(file, broken), /invalid fields/);
+      fs.writeFileSync(file, JSON.stringify(broken));
+      const restored = restoreCheckpoint(file);
+      assert.equal(restored.ok, false, field);
+      assert.equal(restored.reasonCode, 'CHECKPOINT_INVALID_FIELDS');
+      assert.equal(restored.checkpoint, null);
+    }
+    assert.equal(validateCheckpoint([]).ok, false);
+    assert.equal(validateCheckpoint(fullCheckpoint({ lastGoodCommit: 'abc', completionPercent: { code: 100, live: 0 } })).ok, true);
+    assert.equal(validateCheckpoint(require('../docs/orchestration/checkpoint.json')).ok, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('auto-resume returns only the tasks whose human action has been completed', () => {
   const blocked = [
     { taskId: 'f-1', actionKey: 'federated-credential' },
@@ -172,6 +204,31 @@ test('the independent verifier flags secrets, broken compatibility and contract 
   const v = independentVerify({ tests: { pass: 5, fail: 0 }, secretScan: { findings: 1 }, backCompat: { broken: true }, contract: { violations: 2 } });
   assert.equal(v.verdict, 'FAIL');
   assert.deepEqual(v.problems.sort(), ['BACKWARD_COMPAT_BROKEN', 'CONTRACT_VIOLATION', 'SECRET_FOUND']);
+});
+
+test('verification and commit gates reject missing, malformed and incomplete test results', () => {
+  const invalid = [
+    null, [], {}, { fail: 0 }, { pass: 1 },
+    ...[undefined, null, '1', 'yes', NaN, Infinity, -1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1]
+      .map((pass) => ({ pass, fail: 0 })),
+    ...[undefined, null, '0', NaN, Infinity, -1, 1, 0.5]
+      .map((fail) => ({ pass: 1, fail })),
+    ...['cancelled', 'skipped', 'todo'].flatMap((key) =>
+      [null, '0', NaN, Infinity, -1, 1, 0.5].map((count) => ({ pass: 1, fail: 0, [key]: count })))
+  ];
+  for (const tests of invalid) {
+    assert.equal(independentVerify({ tests }).verdict, 'FAIL');
+    assert.equal(integrationGate({ commitPending: true, fullRegression: tests }).allowed, false);
+  }
+  assert.equal(independentVerify().verdict, 'FAIL');
+  assert.equal(independentVerify(null).verdict, 'FAIL');
+});
+
+test('verification and commit gates accept complete numeric results and the existing result format', () => {
+  for (const tests of [{ pass: 1, fail: 0 }, { pass: 25, fail: 0, cancelled: 0, skipped: 0, todo: 0 }]) {
+    assert.equal(independentVerify({ tests }).verdict, 'PASS');
+    assert.equal(integrationGate({ commitPending: true, fullRegression: tests }).allowed, true);
+  }
 });
 
 test('integration needs a full regression for two or more lanes, and for every commit', () => {

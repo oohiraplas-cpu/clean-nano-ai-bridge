@@ -45,7 +45,9 @@ def extract_source(archive, entry):
     if archive.stat().st_size > MAX_ARCHIVE:
         raise RuntimeError("archive_limit")
     with zipfile.ZipFile(archive) as package:
-        matching = [item for item in package.infolist() if item.filename == entry]
+        # filename is normalized to '/' by Python on Windows; orig_filename
+        # preserves the observed archive entry required by the exact-name contract.
+        matching = [item for item in package.infolist() if item.orig_filename == entry]
         if len(matching) != 1 or matching[0].is_dir():
             raise RuntimeError("source_entry_missing_or_ambiguous")
         info = matching[0]

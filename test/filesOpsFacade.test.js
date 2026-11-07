@@ -22,8 +22,11 @@ function workspace(t) {
   fs.mkdirSync(path.join(root, 'sub'));
   fs.writeFileSync(path.join(root, 'sub', 'b.json'), '{"k":1}');
   fs.writeFileSync(path.join(outside, 'secret-outside.txt'), 'outside');
-  fs.symlinkSync(outside, path.join(root, 'escape'));
-  fs.symlinkSync(path.join(outside, 'secret-outside.txt'), path.join(root, 'link.txt'));
+  // Junctions exercise the same reparse-point escape guard without requiring
+  // Windows developer mode or elevated symbolic-link privileges.
+  fs.symlinkSync(outside, path.join(root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+  fs.symlinkSync(process.platform === 'win32' ? outside : path.join(outside, 'secret-outside.txt'),
+    path.join(root, 'link.txt'), process.platform === 'win32' ? 'junction' : 'file');
   return { root, outside };
 }
 
@@ -195,6 +198,10 @@ test('zip_op: 検査・検証・展開（dryRun 既定）・作成が安全に�
   const created = await m.callTool('zip_manage', { operation: 'zip_create', destination: 'made.zip', sources: ['a.txt', 'sub/b.json'], dryRun: false });
   ok(created);
   assert.equal(created.verified, true);
+  assert.deepEqual(created.plan.entries.map((entry) => entry.name), ['a.txt', 'sub/b.json']);
+  const made = await m.callTool('zip_manage', { operation: 'zip_inspect', path: 'made.zip' });
+  ok(made);
+  assert.deepEqual(made.entries.map((entry) => entry.name), ['a.txt', 'sub/b.json']);
   const again = await m.callTool('zip_manage', { operation: 'zip_create', destination: 'made.zip', sources: ['a.txt'], dryRun: false });
   assert.equal(again.reasonCode, 'TARGET_EXISTS');
   const val = await m.callTool('zip_manage', { operation: 'zip_validate', path: 'made.zip' });

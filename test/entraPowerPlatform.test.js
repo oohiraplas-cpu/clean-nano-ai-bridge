@@ -202,12 +202,57 @@ test('Entra WRITE: ユーザー作成は無効状態で作り、初期パスワ�
   const r = await writer.run('entra_user_create', { userPrincipalName: 'new@example.jp', displayName: 'New', mailNickname: 'new', dryRun: false, approvedByHuman: true });
   assert.equal(r.status, 'PASS', JSON.stringify(r));
   assert.equal(r.verified, true);
+  assert.equal(r.targetId, 'new1');
+  assert.deepEqual(r.rollback.rollbackArgs, { userId: 'new1', accountEnabled: false });
   assert.equal(posted.accountEnabled, false);
   assert.equal(posted.passwordProfile.forceChangePasswordNextSignIn, true);
   const pw = posted.passwordProfile.password;
   assert.equal(JSON.stringify(r).includes(pw), false, '応答に初期パスワードを含めない');
   assert.equal(r.humanActions.length >= 1, true);
   assert.equal(randomInitialPassword().length >= 20, true);
+});
+
+test('Entra WRITE: verification read failure retains the confirmed write and recovery target', async () => {
+  for (const status of [401, 403, 404, 429, 503]) {
+    let posts = 0;
+    const { fetchImpl } = mockFetch([
+      ['GET https://graph.microsoft.com/v1.0/users?$filter', json({ value: [] })],
+      ['POST https://graph.microsoft.com/v1.0/users', () => { posts++; return json({ id: 'created-user' }, 201); }],
+      ['GET https://graph.microsoft.com/v1.0/users/created-user', json({}, status)]
+    ]);
+    const writer = createEntraWriter({ adapter: adapterWith(fetchImpl, { maxRetries: 0 }) });
+    const result = await writer.run('entra_user_create', {
+      userPrincipalName: 'new@example.jp', displayName: 'New', mailNickname: 'new', dryRun: false, approvedByHuman: true
+    });
+    assert.equal(result.status, 'FAIL');
+    assert.equal(result.executed, true);
+    assert.equal(result.verified, false);
+    assert.equal(result.targetId, 'created-user');
+    assert.deepEqual(result.rollback.rollbackArgs, { userId: 'created-user', accountEnabled: false });
+    assert.match(result.snapshot.beforeSha256, /^[a-f0-9]{64}$/);
+    assert.equal(posts, 1);
+  }
+});
+
+test('Entra WRITE: lost create response reports uncertainty without retry or invented rollback target', async () => {
+  let posts = 0;
+  const { fetchImpl } = mockFetch([
+    ['GET https://graph.microsoft.com/v1.0/users?$filter', json({ value: [] })],
+    ['POST https://graph.microsoft.com/v1.0/users', () => { posts++; throw new Error('transport failure'); }]
+  ]);
+  const result = await createEntraWriter({ adapter: adapterWith(fetchImpl) }).run('entra_user_create', {
+    userPrincipalName: 'new@example.jp', displayName: 'New', mailNickname: 'new', dryRun: false, approvedByHuman: true
+  });
+  assert.equal(result.status, 'FAIL');
+  assert.equal(result.executed, null);
+  assert.equal(result.writeAttempted, true);
+  assert.equal(result.executionUncertain, true);
+  assert.equal(result.verified, false);
+  assert.equal(result.rollback.rollbackAvailable, false);
+  assert.equal(result.rollback.reasonCode, 'TARGET_ID_UNRESOLVED');
+  assert.equal(result.targetId, undefined);
+  assert.equal(posts, 1);
+  assert.equal(JSON.stringify(result).includes('transport failure'), false);
 });
 
 test('Entra WRITE: 既存UPNの作成は衝突として停止する', async () => {

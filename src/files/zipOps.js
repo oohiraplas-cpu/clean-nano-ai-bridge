@@ -117,7 +117,8 @@ function createZipOps({ workRoot, idFactory } = {}) {
         if (!data.includes(0) && containsLikelySecret(data.toString('utf8'))) return fail('SECRET_DETECTED', '秘密情報らしき内容を含むためZIP作成を拒否しました。', { path: rel });
         total += data.length;
         if (total > LIMITS_DEFAULT.maxTotalUncompressed) return fail('TOTAL_SIZE_EXCEEDED', '合計サイズが上限を超えています。');
-        files.push({ name: checkRelative(rel), data, sourceSha256: sha256(data) });
+        // Validate using native paths, then encode archive entries with ZIP separators.
+        files.push({ name: checkRelative(rel).split(path.sep).join('/'), data, sourceSha256: sha256(data) });
       }
       const names = files.map((f) => f.name);
       if (new Set(names).size !== names.length) return fail('DUPLICATE_NAME', '同じ名前の元ファイルが複数あります。');
