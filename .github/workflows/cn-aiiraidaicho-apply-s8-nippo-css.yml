@@ -113,18 +113,24 @@ jobs:
           import pathlib
           OLD = "<style>body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:20px;font-size:13px}table{border-collapse:collapse;width:100%;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style>"
           NEW = "<style>@page{size:A4 portrait;margin:12mm}body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:10px;font-size:13px}table{border-collapse:collapse;width:100%;table-layout:fixed;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px;word-break:break-all;overflow-wrap:anywhere}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style>"
-          files = [f for f in pathlib.Path('out/src').rglob('S8_Nippo*') if f.is_file() and f.name.endswith(('.pa.yaml', '.fx.yaml'))]
-          if len(files) != 1:
-              print('candidates:', sorted(str(f) for f in pathlib.Path('out/src').rglob('S8_Nippo*')))
-              raise SystemExit(f'Expected exactly one S8_Nippo source yaml; got {len(files)}')
-          p = files[0]
-          text = p.read_text(encoding='utf-8')
-          if text.count(NEW) == 1 and text.count(OLD) == 0:
+          src = pathlib.Path('out/src')
+          targets = [src / 'Src' / 'S8_Nippo.fx.yaml', src / 'Other' / 'Src' / 'S8_Nippo.pa.yaml']
+          texts, counts = {}, {}
+          for t in targets:
+              if not t.is_file():
+                  print('candidates:', sorted(str(f) for f in src.rglob('S8_Nippo*')))
+                  raise SystemExit(f'Missing expected source file: {t}')
+              texts[t] = t.read_text(encoding='utf-8')
+              counts[t] = (texts[t].count(OLD), texts[t].count(NEW))
+          for t in targets:
+              print(f'{t}: old={counts[t][0]} new={counts[t][1]}')
+          if all(counts[t] == (0, 1) for t in targets):
               raise SystemExit('Already applied: the new style is already present. Nothing to do.')
-          if text.count(OLD) != 1:
-              raise SystemExit(f'Old style matched {text.count(OLD)} times (expected 1). Nothing was changed.')
-          p.write_text(text.replace(OLD, NEW, 1), encoding='utf-8')
-          print('patched exactly one occurrence')
+          if not all(counts[t][0] == 1 for t in targets):
+              raise SystemExit('Old style must match exactly once in BOTH files. Nothing was changed.')
+          for t in targets:
+              t.write_text(texts[t].replace(OLD, NEW, 1), encoding='utf-8')
+          print('patched exactly one occurrence in each of the 2 files')
           PY
 
       - name: Pack canvas app and verify only S8_Nippo changed
@@ -144,19 +150,24 @@ jobs:
           yaml_changed = [k for k in changed if k.endswith(('.pa.yaml', '.fx.yaml'))]
           other_changed = [k for k in changed if not k.endswith(('.pa.yaml', '.fx.yaml'))]
           report = ['changed yaml: ' + repr(yaml_changed), 'changed non-yaml (informational): ' + repr(other_changed)]
-          target = [k for k in yaml_changed if 'S8_Nippo' in k]
-          if len(yaml_changed) != 1 or len(target) != 1:
-              pathlib.Path('out').mkdir(exist_ok=True)
+          report += ['changed yaml files: ' + repr(yaml_changed)]
+          pathlib.Path('out').mkdir(exist_ok=True)
+          bad = [k for k in yaml_changed if 'S8_Nippo' not in k]
+          if bad or len(yaml_changed) != 2:
               pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
+              print('\n'.join(report))
               raise SystemExit('Unexpected set of changed source files: ' + repr(yaml_changed))
-          diff = list(difflib.unified_diff(a[target[0]].read_text(encoding='utf-8').splitlines(), b[target[0]].read_text(encoding='utf-8').splitlines(), lineterm='', n=0))
-          minus = [l for l in diff if l.startswith('-') and not l.startswith('---')]
-          plus = [l for l in diff if l.startswith('+') and not l.startswith('+++')]
-          report += [f'S8_Nippo changed lines: -{len(minus)} +{len(plus)}']
+          for k in yaml_changed:
+              diff = list(difflib.unified_diff(a[k].read_text(encoding='utf-8').splitlines(), b[k].read_text(encoding='utf-8').splitlines(), lineterm='', n=0))
+              minus = [l for l in diff if l.startswith('-') and not l.startswith('---')]
+              plus = [l for l in diff if l.startswith('+') and not l.startswith('+++')]
+              report.append(f'{k}: changed lines -{len(minus)} +{len(plus)}')
+              if len(minus) != 1 or len(plus) != 1:
+                  pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
+                  print('\n'.join(report))
+                  raise SystemExit(f'{k}: diff is not exactly one line')
           pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
           print('\n'.join(report))
-          if len(minus) != 1 or len(plus) != 1:
-              raise SystemExit('S8_Nippo diff is not exactly one line')
           PY
 
       - name: Pack solution
