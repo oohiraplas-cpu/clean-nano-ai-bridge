@@ -100,7 +100,13 @@ class ConfigurationValidator {
       issues.errors.push('Missing WEBHOOK_API_KEY');
     }
     // 正式名は CN_MCP_API_KEY。後方互換として MCP_API_KEY を許容する。どちらも未設定の場合のみ不足とする。
-    if (!config.CN_MCP_API_KEY && !config.MCP_API_KEY) {
+    // 解決後の値（mcpApiKey）または環境変数名のどちらかで判定する。値は表示しない。
+    const { resolveMcpApiKey } = require('./config');
+    const mcpKeyPresent = Boolean(config.mcpApiKey || resolveMcpApiKey({
+      CN_MCP_API_KEY: config.CN_MCP_API_KEY,
+      MCP_API_KEY: config.MCP_API_KEY
+    }).key);
+    if (!mcpKeyPresent) {
       issues.errors.push('Missing CN_MCP_API_KEY (legacy MCP_API_KEY also accepted)');
     }
 

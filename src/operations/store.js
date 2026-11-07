@@ -114,6 +114,7 @@ function createOperationsStore(options = {}) {
 
 module.exports = {
   COLLECTIONS,
+  prepareRecord,
   canonicalJson,
   sha256Hex,
   hashValue,

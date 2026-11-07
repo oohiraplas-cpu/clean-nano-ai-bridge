@@ -17,6 +17,8 @@ const environmentProfile = require('../config/operations-environment.json');
 const { maskDeep } = require('./secretMasking');
 const { createOperationsStore, canonicalJson, hashValue } = require('./operations/store');
 const { createSharePointGraphAdapter, SharePointAdapterError } = require('./operations/sharePointGraphAdapter');
+const { createManagedIdentitySource, createInjectedSource, createGraphTokenProvider } = require('./operations/graphAuth');
+const { runSharePointDiagnostics } = require('./operations/sharePointDiagnostics');
 
 const SERVER_NAME = 'Clean Nano Operations MCP';
 const INTERNAL_NAME = 'clean-nano-operations';
@@ -326,10 +328,41 @@ function createOperationsMcp(config = {}, deps = {}) {
   const adapters = Object.fromEntries(ADAPTER_NAMES.map((name) => [name, null]));
   Object.assign(adapters, deps.adapters || {});
   if (!adapters.sharePoint) {
+    // 取得元の優先順: Managed Identity → 証明書 → 委任OAuth。未構成の取得元しか無ければ BLOCKED。
+    const graphAuth = config.graphAuth || {};
+    const tokenProvider = deps.sharePointTokenProvider || createGraphTokenProvider([
+      createManagedIdentitySource({ identityEndpoint: graphAuth.identityEndpoint, identityHeader: graphAuth.identityHeader, fetchImpl: deps.fetchImpl }),
+      createInjectedSource({ name: 'certificate', identifiers: graphAuth.certificate || {}, acquireFn: deps.certificateAcquire || null }),
+      createInjectedSource({ name: 'delegated', identifiers: graphAuth.delegated || {}, acquireFn: deps.delegatedAcquire || null })
+    ]);
     adapters.sharePoint = createSharePointGraphAdapter({
       siteUrl: environmentProfile.sharePointSiteUrl,
-      tokenProvider: deps.sharePointTokenProvider || null
+      tokenProvider,
+      fetchImpl: deps.fetchImpl
     });
+  }
+  // permission_check / connection_test は SharePoint の共通診断を使う（SharePoint が構成済みで、明示注入が無い場合のみ）。
+  if (adapters.sharePoint.configured && !deps.adapters?.permission) {
+    adapters.permission = {
+      configured: true,
+      check: async ({ scope }) => {
+        const diagnosis = await runSharePointDiagnostics(adapters.sharePoint);
+        // Sites.Selected は、対象サイトの読取が成功した場合にのみ付与済みとみなす（根拠は evidence に明示）。
+        const granted = scope === 'sharepoint' && diagnosis.siteReadable ? ['Sites.Selected'] : [];
+        return { granted, evidence: 'sharepoint_site_read', diagnosisStatus: diagnosis.status };
+      }
+    };
+  }
+  if (adapters.sharePoint.configured && !deps.adapters?.connection) {
+    adapters.connection = {
+      configured: true,
+      test: async ({ target }) => {
+        if (target !== 'sharepoint') return { reachable: false, reasonCode: 'UNSUPPORTED_TARGET' };
+        const started = Date.now();
+        const diagnosis = await runSharePointDiagnostics(adapters.sharePoint);
+        return { reachable: diagnosis.siteReachable, latencyMs: Date.now() - started, diagnosisStatus: diagnosis.status };
+      }
+    };
   }
 
   function ready(name) {
@@ -338,26 +371,27 @@ function createOperationsMcp(config = {}, deps = {}) {
   }
 
   // ---- 監査（追記・ハッシュ連結） ----
-  function appendAudit(entry) {
-    const rows = store.list('audit');
+  // 監査はストアが非同期（永続ストア対応）のため async。保存に失敗すると例外を投げる。
+  async function appendAudit(entry) {
+    const rows = await store.list('audit');
     const prevHash = rows.length ? rows[rows.length - 1].recordHash : ZERO_HASH;
     const body = { auditRecordId: crypto.randomUUID(), createdAt: isoNow(), prevHash, ...entry };
     return store.append('audit', { ...body, recordHash: hashValue(body) });
   }
 
-  function auditTrail(operationId) {
-    return store.list('audit').filter((row) => row.operationId === operationId);
+  async function auditTrail(operationId) {
+    return (await store.list('audit')).filter((row) => row.operationId === operationId);
   }
 
   // ---- 書き込み前ゲート ----
   // 変更処理は、対象操作のスナップショットが存在し、ハッシュが一致し、
   // かつ snapshot_create の完了監査が保存されている場合にのみ許可する。
-  function canStartWrite(operationId) {
-    const snapshots = store.list('snapshots').filter((row) => row.operationId === operationId);
+  async function canStartWrite(operationId) {
+    const snapshots = (await store.list('snapshots')).filter((row) => row.operationId === operationId);
     if (snapshots.length === 0) return { allowed: false, reasonCode: 'SNAPSHOT_MISSING' };
     const snapshot = snapshots[snapshots.length - 1];
     if (hashValue(snapshot.content) !== snapshot.beforeHash) return { allowed: false, reasonCode: 'SNAPSHOT_INTEGRITY_FAILED' };
-    const audited = store.list('audit').some((row) => row.operationId === operationId
+    const audited = (await store.list('audit')).some((row) => row.operationId === operationId
       && row.tool === 'snapshot_create' && row.event === 'tool_completed' && row.status === 'PASS');
     if (!audited) return { allowed: false, reasonCode: 'AUDIT_MISSING' };
     return { allowed: true, snapshotId: snapshot.snapshotId, beforeHash: snapshot.beforeHash };
@@ -457,7 +491,7 @@ function createOperationsMcp(config = {}, deps = {}) {
         status: reachable ? 'PASS' : 'FAIL',
         target,
         reachable,
-        ...(reachable ? {} : { reasonCode: 'CONNECTION_FAILED' }),
+        ...(reachable ? {} : { reasonCode: result.reasonCode || 'CONNECTION_FAILED' }),
         ...(Number.isFinite(result.latencyMs) ? { latencyMs: result.latencyMs } : {}),
         executed: false
       };
@@ -548,7 +582,7 @@ function createOperationsMcp(config = {}, deps = {}) {
       };
     },
 
-    snapshot_create: ({ operationId, targetType, targetId, content, dryRun = false }, ctx) => {
+    snapshot_create: async ({ operationId, targetType, targetId, content, dryRun = false }, ctx) => {
       const record = plans.get(operationId);
       if (!record) return { status: 'FAIL', reasonCode: 'TARGET_NOT_FOUND', message: '操作計画が登録されていません。', executed: false };
       if (record.status === 'cancelled') return { status: 'FAIL', reasonCode: 'INVALID_STATE', executed: false };
@@ -566,7 +600,7 @@ function createOperationsMcp(config = {}, deps = {}) {
         createdAt: isoNow()
       };
       try {
-        ctx.store.append('snapshots', snapshot);
+        await ctx.store.append('snapshots', snapshot);
       } catch {
         return {
           status: 'FAIL',
@@ -585,20 +619,45 @@ function createOperationsMcp(config = {}, deps = {}) {
       const observed = (await adapter.reread({ targetType, targetId })) || {};
       const observedHash = hashValue(maskDeep(JSON.parse(canonicalJson(observed.content ?? null))));
       const verified = observedHash === expectedAfterHash;
+      // 変更前後のハッシュ・検証結果・ロールバック可否を監査へ残す（保存失敗時は PASS にしない）。
+      const snapshots = operationId ? (await ctx.store.list('snapshots')).filter((row) => row.operationId === operationId) : [];
+      const snapshot = snapshots[snapshots.length - 1] || null;
+      const beforeHash = snapshot ? snapshot.beforeHash : null;
+      const rollbackAvailable = snapshot ? hashValue(snapshot.content) === snapshot.beforeHash : false;
+      try {
+        await ctx.appendAudit({
+          operationId: operationId ?? null,
+          correlationId: ctx.correlationId,
+          tool: 'operation_verify',
+          event: 'change_recorded',
+          status: verified ? 'PASS' : 'FAIL',
+          targetType: targetType ?? null,
+          targetId: targetId ?? null,
+          beforeHash,
+          afterHash: observedHash,
+          expectedAfterHash,
+          verification: verified ? 'PASS' : 'FAIL',
+          rollbackAvailable
+        });
+      } catch {
+        return { status: 'FAIL', reasonCode: 'AUDIT_WRITE_FAILED', operationId, verified: false, executed: false };
+      }
       return {
         status: verified ? 'PASS' : 'FAIL',
         operationId,
         verified,
         observedHash,
         expectedAfterHash,
+        beforeHash,
+        rollbackAvailable,
         ...(verified ? {} : { reasonCode: 'VERIFY_FAILED' }),
         executed: false
       };
     },
 
-    audit_write: ({ operationId, event, status, details }, ctx) => {
+    audit_write: async ({ operationId, event, status, details }, ctx) => {
       try {
-        const row = ctx.appendAudit({
+        const row = await ctx.appendAudit({
           operationId: operationId ?? null,
           correlationId: ctx.correlationId,
           tool: 'audit_write',
@@ -613,7 +672,7 @@ function createOperationsMcp(config = {}, deps = {}) {
     },
 
     rollback_execute: async ({ operationId, snapshotId, approvalToken, dryRun = false }, ctx) => {
-      const snapshot = ctx.store.get('snapshots', snapshotId);
+      const snapshot = await ctx.store.get('snapshots', snapshotId);
       let reason = null;
       if (!snapshot) reason = 'SNAPSHOT_NOT_FOUND';
       else if (snapshot.operationId !== operationId) reason = 'SNAPSHOT_OPERATION_MISMATCH';
@@ -727,7 +786,7 @@ function createOperationsMcp(config = {}, deps = {}) {
 
     if (audited) {
       try {
-        appendAudit({ operationId, correlationId, tool: name, event: 'tool_started', status: 'STARTED', argumentKeys: Object.keys(args).sort() });
+        await appendAudit({ operationId, correlationId, tool: name, event: 'tool_started', status: 'STARTED', argumentKeys: Object.keys(args).sort() });
       } catch {
         return finalize(name, correlationId, {
           reasonCode: 'AUDIT_WRITE_FAILED',
@@ -745,7 +804,7 @@ function createOperationsMcp(config = {}, deps = {}) {
 
     if (audited) {
       try {
-        appendAudit({
+        await appendAudit({
           operationId,
           correlationId,
           tool: name,

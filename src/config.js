@@ -26,6 +26,14 @@ function parsePositiveInt(value, fallback) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+// MCP 認証鍵の解決。正式名 CN_MCP_API_KEY を最優先し、未設定時のみ後方互換の MCP_API_KEY を使う。
+// 戻り値は値そのものを含むため、ログ・応答・監査へ出してはならない（出すのは source のみ）。
+function resolveMcpApiKey(env = process.env) {
+  if (env.CN_MCP_API_KEY) return { key: env.CN_MCP_API_KEY, source: 'CN_MCP_API_KEY' };
+  if (env.MCP_API_KEY) return { key: env.MCP_API_KEY, source: 'MCP_API_KEY' };
+  return { key: '', source: null };
+}
+
 function getConfig(env = process.env) {
   const origins = (env.CORS_ORIGINS || DEFAULT_ORIGINS.join(','))
     .split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -37,9 +45,16 @@ function getConfig(env = process.env) {
     tasksFile: path.resolve(env.TASKS_FILE || 'data/tasks.json'),
     webhookApiKey: env.WEBHOOK_API_KEY || '',
     // 認証鍵の正式名は CN_MCP_API_KEY。後方互換として MCP_API_KEY を読む。値はログ・応答に出さない。
-    mcpApiKey: env.CN_MCP_API_KEY || env.MCP_API_KEY || '',
+    mcpApiKey: resolveMcpApiKey(env).key,
     // 変数名のみを保持する（値は保持しない）。authentication_check が有効な変数名を示すために使う。
-    mcpApiKeySource: env.CN_MCP_API_KEY ? 'CN_MCP_API_KEY' : (env.MCP_API_KEY ? 'MCP_API_KEY' : null),
+    mcpApiKeySource: resolveMcpApiKey(env).source,
+    // Microsoft Graph（SharePoint READ）の認証材料。値は内部保持のみで、応答・ログ・監査へ出さない。
+    graphAuth: {
+      identityEndpoint: env.IDENTITY_ENDPOINT || '',
+      identityHeader: env.IDENTITY_HEADER || '',
+      certificate: { tenantId: env.GRAPH_CERT_TENANT_ID || '', clientId: env.GRAPH_CERT_CLIENT_ID || '', thumbprint: env.GRAPH_CERT_THUMBPRINT || '' },
+      delegated: { tenantId: env.GRAPH_DELEGATED_TENANT_ID || '', clientId: env.GRAPH_DELEGATED_CLIENT_ID || '' }
+    },
     // Clean Nano Operations の一時ストレージ（JSON Lines）。未設定ならメモリ上に保持する。
     operations: { storeFile: env.OPERATIONS_STORE_FILE ? path.resolve(env.OPERATIONS_STORE_FILE) : '' },
     // Separate, read-only key for the claude.ai connector endpoint (/connector/mcp). Empty disables the endpoint.
@@ -127,4 +142,4 @@ function getConfig(env = process.env) {
   };
 }
 
-module.exports = { getConfig };
+module.exports = { getConfig, resolveMcpApiKey };

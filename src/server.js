@@ -3008,7 +3008,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     } catch (error) { return next(error); }
   });
 
-  const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+  // /mcp 系は fail closed: 認証鍵が未設定なら、鍵の値を示さずに 503 で拒否する（旧仕様の「鍵なしで通す」は使わない）。
+  const mcpAuthCheck = apiKeyMiddleware(() => config.mcpApiKey);
+  const mcpAuth = (req, res, next) => (config.mcpApiKey
+    ? mcpAuthCheck(req, res, next)
+    : res.status(503).json({ error: '認証設定が不足しています（CN_MCP_API_KEY）' }));
 
   // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
   // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
@@ -3023,9 +3027,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 
   // Clean Nano Operations MCP の互換エイリアス（内部検証用）。同じツールは /mcp の tools/list と tools/call からも使える。
   // 認証鍵が未設定の場合は fail closed とし、認証設定不足として拒否する（値は返さない）。
-  const operationsKeyRequired = (req, res, next) => (config.mcpApiKey
-    ? mcpAuth(req, res, next)
-    : res.status(503).json({ error: '認証設定が不足しています（CN_MCP_API_KEY）' }));
+  const operationsKeyRequired = mcpAuth;
   app.get('/mcp/operations', operationsKeyRequired, (req, res) => res.status(405).set('Allow', 'POST').end());
   app.post('/mcp/operations', operationsKeyRequired, async (req, res, next) => {
     try {

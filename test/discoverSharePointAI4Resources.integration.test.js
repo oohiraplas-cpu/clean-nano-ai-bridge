@@ -6,6 +6,7 @@ const { getConfig } = require('../src/config');
 test('discover_sharepoint_ai4_resources MCP integration', async (t) => {
   await t.test('returns error when SharePoint not configured', async () => {
     const config = getConfig({
+      MCP_API_KEY: 'test-mcp-key',
       SHAREPOINT_TENANT_ID: '',
       SHAREPOINT_CLIENT_ID: '',
       SHAREPOINT_CLIENT_SECRET: ''
@@ -19,7 +20,7 @@ test('discover_sharepoint_ai4_resources MCP integration', async (t) => {
       const url = `http://127.0.0.1:${server.address().port}/mcp`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key' },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
@@ -38,7 +39,7 @@ test('discover_sharepoint_ai4_resources MCP integration', async (t) => {
   });
 
   await t.test('appears in tools/list', async () => {
-    const config = getConfig({});
+    const config = getConfig({ MCP_API_KEY: 'test-mcp-key' });
     const app = createApp(config);
     const server = await new Promise(resolve => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -48,7 +49,7 @@ test('discover_sharepoint_ai4_resources MCP integration', async (t) => {
       const url = `http://127.0.0.1:${server.address().port}/mcp`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
       });
 

@@ -38,7 +38,7 @@ test('snapshot_create stores the masked content and records a hash that matches 
   assert.equal(snap.snapshotStored, true);
   assert.equal(JSON.stringify(snap).includes('sk-live-abcdef123456'), false);
 
-  const stored = mcp.store.get('snapshots', snap.snapshotId);
+  const stored = await mcp.store.get('snapshots', snap.snapshotId);
   assert.equal(stored.content.apiKey, MASK);
   assert.equal(stored.beforeHash, hashValue(maskDeep(content)));
   assert.equal(hashValue(stored.content), stored.beforeHash);
@@ -50,7 +50,7 @@ test('snapshot_create dry-run computes the hash without storing anything', async
   const payload = await mcp.callTool('snapshot_create', { operationId, targetType: 'other', targetId: 't', content: { a: 1 }, dryRun: true });
   assert.equal(payload.status, 'PASS');
   assert.equal(payload.snapshotStored, false);
-  assert.equal(mcp.store.list('snapshots').length, 0);
+  assert.equal(await mcp.store.list('snapshots').length, 0);
 });
 
 test('snapshot_create requires a registered, non-cancelled operation', async () => {
@@ -71,7 +71,7 @@ test('when the snapshot store fails, snapshot_create reports failure and writes 
   assert.equal(snap.status, 'FAIL');
   assert.equal(snap.reasonCode, 'SNAPSHOT_STORE_FAILED');
   assert.equal(snap.executed, false);
-  const gate = mcp.canStartWrite(operationId);
+  const gate = await mcp.canStartWrite(operationId);
   assert.equal(gate.allowed, false);
   assert.equal(gate.reasonCode, 'SNAPSHOT_MISSING');
 });
@@ -82,8 +82,8 @@ test('when the audit store fails before snapshot_create starts, nothing is snaps
   const operationId = await planOperation(mcp);
   const snap = await mcp.callTool('snapshot_create', { operationId, targetType: 'other', targetId: 't', content: { a: 1 } });
   assert.equal(snap.reasonCode, 'AUDIT_WRITE_FAILED');
-  assert.equal(store.list('snapshots').length, 0);
-  assert.equal(mcp.canStartWrite(operationId).allowed, false);
+  assert.equal((await store.list('snapshots')).length, 0);
+  assert.equal((await mcp.canStartWrite(operationId)).allowed, false);
 });
 
 test('when the completion audit fails after a snapshot is stored, the write gate still refuses', async () => {
@@ -93,15 +93,15 @@ test('when the completion audit fails after a snapshot is stored, the write gate
   const snap = await mcp.callTool('snapshot_create', { operationId, targetType: 'other', targetId: 't', content: { a: 1 } });
   assert.equal(snap.status, 'FAIL');
   assert.equal(snap.reasonCode, 'AUDIT_WRITE_FAILED');
-  assert.equal(store.list('snapshots').length, 1);
-  assert.equal(mcp.canStartWrite(operationId).reasonCode, 'AUDIT_MISSING');
+  assert.equal((await store.list('snapshots')).length, 1);
+  assert.equal((await mcp.canStartWrite(operationId)).reasonCode, 'AUDIT_MISSING');
 });
 
 test('a completed snapshot with its audit trail allows the write gate', async () => {
   const mcp = createOperationsMcp({});
   const operationId = await planOperation(mcp);
   const snap = await mcp.callTool('snapshot_create', { operationId, targetType: 'other', targetId: 't', content: { a: 1 } });
-  const gate = mcp.canStartWrite(operationId);
+  const gate = await mcp.canStartWrite(operationId);
   assert.equal(gate.allowed, true);
   assert.equal(gate.snapshotId, snap.snapshotId);
   assert.equal(gate.beforeHash, snap.beforeHash);
@@ -121,7 +121,7 @@ test('the write gate refuses when a stored snapshot has been tampered with', asy
   const mcp = createOperationsMcp({}, { store });
   const operationId = await planOperation(mcp);
   await mcp.callTool('snapshot_create', { operationId, targetType: 'other', targetId: 't', content: { a: 1 } });
-  assert.equal(mcp.canStartWrite(operationId).reasonCode, 'SNAPSHOT_INTEGRITY_FAILED');
+  assert.equal((await mcp.canStartWrite(operationId)).reasonCode, 'SNAPSHOT_INTEGRITY_FAILED');
 });
 
 // ---------- Audit ----------
@@ -129,7 +129,7 @@ test('the write gate refuses when a stored snapshot has been tampered with', asy
 test('audit rows form a hash chain and link each call by correlationId', async () => {
   const mcp = createOperationsMcp({});
   const plan = await mcp.callTool('operation_plan', { ...planArgs, correlationId: 'corr-chain-0001' });
-  const rows = mcp.store.list('audit');
+  const rows = await mcp.store.list('audit');
   assert.ok(rows.length >= 2);
   assert.equal(rows[0].prevHash, '0'.repeat(64));
   for (let i = 1; i < rows.length; i += 1) assert.equal(rows[i].prevHash, rows[i - 1].recordHash);
@@ -145,7 +145,7 @@ test('audit_write records the event with secrets masked', async () => {
   const mcp = createOperationsMcp({});
   const payload = await mcp.callTool('audit_write', { event: 'manual_check', status: 'PASS', details: { token: 'tok-abcdef-123456' } });
   assert.equal(payload.status, 'PASS');
-  const row = mcp.store.list('audit').find((r) => r.auditRecordId === payload.auditRecordId);
+  const row = await mcp.store.list('audit').find((r) => r.auditRecordId === payload.auditRecordId);
   assert.equal(row.details.token, MASK);
   assert.equal(JSON.stringify(payload).includes('tok-abcdef-123456'), false);
 });

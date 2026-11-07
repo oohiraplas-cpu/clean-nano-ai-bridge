@@ -190,7 +190,7 @@ test('without a configured token the sp_* tools are BLOCKED and make no call', a
 test('sp_item_get and sp_permissions_get are audited before and after the call', async () => {
   const { mcp } = runtimeWith(defaultRoutes);
   const item = await mcp.callTool('sp_item_get', { listId: LIST_ID, itemId: '7' });
-  const rows = mcp.store.list('audit').filter((row) => row.tool === 'sp_item_get');
+  const rows = await mcp.store.list('audit').filter((row) => row.tool === 'sp_item_get');
   assert.deepEqual(rows.map((row) => row.event), ['tool_started', 'tool_completed']);
   assert.ok(rows.every((row) => row.correlationId === item.correlationId));
 });

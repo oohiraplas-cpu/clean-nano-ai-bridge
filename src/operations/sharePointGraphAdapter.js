@@ -39,13 +39,18 @@ function parseSiteUrl(siteUrl) {
 
 function createSharePointGraphAdapter({ siteUrl, tokenProvider = null, fetchImpl = globalThis.fetch, graphBase = GRAPH_BASE, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const { hostname, sitePath } = parseSiteUrl(siteUrl);
-  const configured = typeof tokenProvider === 'function';
+  // 取得元が構成済みと報告する場合のみ configured=true（未構成の提供者は通信せず BLOCKED とする）。
+  const configured = typeof tokenProvider === 'function' && tokenProvider.configured !== false;
   let siteIdPromise = null;
 
   async function graphGet(pathAndQuery) {
     if (!configured) throw new SharePointAdapterError('AUTH_NOT_CONFIGURED');
     let token;
-    try { token = await tokenProvider(); } catch { throw new SharePointAdapterError('AUTH_FAILED'); }
+    try { token = await tokenProvider(); } catch (error) {
+      // 取得元が返した種別コード（AUTH_NOT_CONFIGURED など）はそのまま伝える。値は含めない。
+      const code = typeof error?.code === 'string' && /^AUTH_[A-Z_]+$/.test(error.code) ? error.code : 'AUTH_FAILED';
+      throw new SharePointAdapterError(code);
+    }
     if (typeof token !== 'string' || token.length === 0) throw new SharePointAdapterError('AUTH_FAILED');
     let response;
     try {

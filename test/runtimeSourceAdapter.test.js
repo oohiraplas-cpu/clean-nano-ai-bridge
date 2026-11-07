@@ -133,7 +133,7 @@ test('ambiguous duplicate keys, invalid YAML and cyclic aliases fail normalizati
 
 async function mcpFixture(t, options = {}) {
   let now = 100;
-  const config = getConfig({}); config.enforceStateManager = true;
+  const config = getConfig({ MCP_API_KEY: 'test-mcp-key' }); config.enforceStateManager = true;
   config.stateContextRegistry = { now: () => now, ttlMs: 1000 };
   const state = { status: 'ok', appId: APP, environmentId: ENV };
   const source = { status: 'ok', path: FILE, content: SOURCE, sha: blobSha(SOURCE), branch: 'main', canonicalBranch: 'main' };
@@ -162,7 +162,7 @@ async function mcpFixture(t, options = {}) {
   const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   t.after(() => new Promise(resolve => server.close(resolve)));
   async function call(name, args = {}, session = 'session-a') {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'Mcp-Session-Id': session }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key', 'Mcp-Session-Id': session }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
     const body = await response.json(); return body.result;
   }
   async function chain() {

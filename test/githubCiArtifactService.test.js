@@ -71,7 +71,7 @@ test('MCP authentication, listing, legacy and tools/call routes are wired',async
  const f=fixture(),config=getConfig({MCP_API_KEY:'mcp-test'});config.deployment=f.config;
  const app=createApp(config,{list:async()=>[]});const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());
  const url=`http://127.0.0.1:${server.address().port}/mcp`;
- const post=(body,key='mcp-test')=>fetch(url,{method:'POST',headers:{'content-type':'application/json','x-api-key':key},body:JSON.stringify(body)});
+ const post=(body,key='mcp-test')=>fetch(url,{method:'POST',headers:{'content-type': 'application/json', 'x-api-key':key},body:JSON.stringify(body)});
  assert.equal((await post({method:'verify_github_ci_artifact',params},'wrong')).status,401);assert.equal(f.calls.length,0);
  const legacy=await(await post({method:'verify_github_ci_artifact',params})).json();assert.equal(legacy.result.status,'no_repair_needed');
  const rpc=await(await post({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'verify_github_ci_artifact',arguments:params}})).json();assert.equal(rpc.result.structuredContent.status,'no_repair_needed');
@@ -80,6 +80,7 @@ test('MCP authentication, listing, legacy and tools/call routes are wired',async
 test('missing MCP key blocks the new reader even with an Actions credential',async t=>{
  const f=fixture(),config=getConfig({});config.deployment=f.config;
  const server=createApp(config,{list:async()=>[]}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());
- const r=await fetch(`http://127.0.0.1:${server.address().port}/mcp`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'verify_github_ci_artifact',params})});
- assert.equal((await r.json()).result.reason,'mcp_authentication_required');assert.equal(f.calls.length,0);
+ // 認証鍵が無い場合は /mcp 自体が fail closed（503）で拒否し、ツールもGitHubも呼ばない。
+ const r=await fetch(`http://127.0.0.1:${server.address().port}/mcp`,{method:'POST',headers:{'content-type': 'application/json'},body:JSON.stringify({method:'verify_github_ci_artifact',params})});
+ assert.equal(r.status,503);assert.equal(f.calls.length,0);
 });

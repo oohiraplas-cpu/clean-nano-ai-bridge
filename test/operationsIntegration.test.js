@@ -86,12 +86,12 @@ test('the operations alias fails closed with 503 when no key is configured, and 
   });
 });
 
-test('authentication_check over /mcp reports FAIL when no key is configured', async () => {
+test('/mcp fails closed (503) when no key is configured, without revealing key state', async () => {
   await withApp({}, async (base) => {
     const res = await post(`${base}/mcp`, rpc('tools/call', { name: 'authentication_check', arguments: {} }));
-    const json = await res.json();
-    assert.equal(json.result.structuredContent.status, 'FAIL');
-    assert.equal(json.result.structuredContent.reasonCode, 'AUTH_CONFIG_MISSING');
+    assert.equal(res.status, 503);
+    const text = await res.text();
+    assert.equal(text.includes('CN_MCP_API_KEY') && !text.includes('structuredContent'), true);
   });
 });
 
