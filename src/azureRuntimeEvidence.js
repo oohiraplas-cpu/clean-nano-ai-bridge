@@ -15,6 +15,19 @@ function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = nul
       typeof key === 'string' && /^[\w.-]+\.pa\.yaml$/.test(key)
       && typeof value === 'string' && /^Src[\\/][\w./\\-]+\.pa\.yaml$/.test(value)
       && !value.split(/[\\/]/).some(part => part === '..'));
+  // Diagnostic category only: never emit keys, values or paths from the map.
+  const keyOk = key => /^[\w.-]+\.pa\.yaml$/.test(key);
+  const valueOk = value => typeof value === 'string' && /^Src[\\/][\w./\\-]+\.pa\.yaml$/.test(value)
+    && !value.split(/[\\/]/).some(part => part === '..');
+  let sourceMapIssue = null;
+  if (typeof map !== 'string' || map.trim() === '') sourceMapIssue = 'missing_or_empty';
+  else if (mapping === null) sourceMapIssue = 'not_valid_json';
+  else if (typeof mapping !== 'object' || Array.isArray(mapping)) sourceMapIssue = 'not_a_json_object';
+  else if (Object.keys(mapping).length === 0) sourceMapIssue = 'no_entries';
+  else if (!sourceMapSchemaValid) {
+    const entries = Object.entries(mapping);
+    sourceMapIssue = `invalid_entries:keys=${entries.filter(([k]) => !keyOk(k)).length},values=${entries.filter(([, v]) => !valueOk(v)).length},total=${entries.length}`;
+  }
   const runtimeProbeVerified = pacProbe?.trustedAdapterVerified === true
     && pacProbe?.status === 'ok'
     && pacProbe?.source === 'power-apps-saved-msapp'
@@ -33,6 +46,7 @@ function collectRuntimeEvidence({ settings = {}, deployment = {}, pacProbe = nul
     managedIdentityClientIdFormatValid: settings.POWERAPPS_RUNTIME_MI_CLIENT_ID == null
       || settings.POWERAPPS_RUNTIME_MI_CLIENT_ID === '' || uuid(settings.POWERAPPS_RUNTIME_MI_CLIENT_ID),
     sourceMapSchemaValid,
+    sourceMapIssue,
     sourceMapVerified: sourceMapSchemaValid && runtimeProbeVerified,
     pacProfileVerified: runtimeProbeVerified,
     deploymentShaMatched: !!independentShaMatched,

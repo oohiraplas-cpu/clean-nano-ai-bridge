@@ -29,3 +29,14 @@ test('invalid source map never leaks its content', () => {
   assert.equal(result.sourceMapSchemaValid, false);
   assert.equal(JSON.stringify(result).includes('password'), false);
 });
+test('source map issue is a content-free category', () => {
+  const issue = map => collectRuntimeEvidence({ settings: { POWERAPPS_RUNTIME_SOURCE_MAP: map } }).sourceMapIssue;
+  assert.equal(issue(undefined), 'missing_or_empty');
+  assert.equal(issue('not json secret-token'), 'not_valid_json');
+  assert.equal(issue('[]'), 'not_a_json_object');
+  assert.equal(issue('{}'), 'no_entries');
+  assert.equal(issue(validMap), null);
+  const bad = issue('{"secret":"password","App.pa.yaml":"Src/App.pa.yaml"}');
+  assert.equal(bad, 'invalid_entries:keys=1,values=1,total=2');
+  assert.equal(bad.includes('password') || bad.includes('secret'), false);
+});
