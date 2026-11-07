@@ -1,7 +1,7 @@
 // Read-only Azure metadata and Bridge smoke tests. Never emit setting values or response bodies.
 const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
-const { MCP_PUBLIC_TOOLS } = require('../src/server');
+const { PUBLISHED_TOOLS } = require('../src/server');
 const { assessAzureReadiness } = require('../src/azureReadiness');
 const { collectRuntimeEvidence } = require('../src/azureRuntimeEvidence');
 const azure = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8000000 }));
@@ -61,7 +61,7 @@ async function main() {
   report.initialize = { httpStatus: init.httpStatus, protocolVersion: init.data?.result?.protocolVersion || null, success: !!init.data?.result?.capabilities };
   const listing = await request('/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   const actual = listing.data?.result?.tools;
-  report.tools = { httpStatus: listing.httpStatus, count: actual?.length || 0, names: actual?.map(t => t.name) || [], contractSha256: actual ? hash(actual) : null, first28MatchesCheckout: actual?.length >= 28 && hash(actual.slice(0, 28)) === hash(MCP_PUBLIC_TOOLS.slice(0, 28)), matchesCheckout: actual && hash(actual) === hash(MCP_PUBLIC_TOOLS) };
+  report.tools = { httpStatus: listing.httpStatus, count: actual?.length || 0, names: actual?.map(t => t.name) || [], contractSha256: actual ? hash(actual) : null, first28MatchesCheckout: actual?.length >= 28 && hash(actual.slice(0, 28)) === hash(PUBLISHED_TOOLS.slice(0, 28)), matchesCheckout: actual && hash(actual) === hash(PUBLISHED_TOOLS) };
   if (report.mode !== 'baseline' && actual) {
     await call('health_check');
     if (actual.some(t => t.name === 'get_executive_policy')) await call('get_executive_policy', { query: '利益・未入金・銀行融資' });
@@ -74,8 +74,9 @@ async function main() {
       if (source?.content && source.branch === sourceBranch) await call('analyze_change_impact', { branch: sourceBranch, changes: [{ relativePath: 'App.pa.yaml', content: source.content }] });
       else report.smoke.analyze_change_impact = { status: 'blocked', reason: 'canonical_source_unavailable' };
     }
-    if (source?.content) await call('run_powerapps_tests', { files: [{ relativePath: 'App.pa.yaml', content: source.content }] });
-    else report.smoke.run_powerapps_tests = { status: 'blocked', reason: 'source_unavailable' };
+    // run_powerapps_tests requires the server-issued state context; never fabricate one.
+    if (source?.content && source.stateContext && source.stateSessionId) await call('run_powerapps_tests', { files: [{ relativePath: 'App.pa.yaml', content: source.content }], stateContext: source.stateContext, stateSessionId: source.stateSessionId });
+    else report.smoke.run_powerapps_tests = { status: 'blocked', reason: source?.content ? 'state_context_unavailable' : 'source_unavailable' };
     await call('get_permissions', { targetType: 'powerapps_app' });
     if (actual.some(t => t.name === 'create_change_snapshot')) {
       if (settings.POWERAPPS_SNAPSHOT_DIR && report.smoke.inspect_powerapps_structure?.recovery?.allowed) {
