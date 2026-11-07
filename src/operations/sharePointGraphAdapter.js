@@ -7,7 +7,8 @@
 // - 書き込み系メソッドは持たない。
 // - エラーは種別コードだけを返し、応答本文・トークン・URLの秘密部分は含めない。
 
-const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const { createGraphClient, GraphClientError, mapHttpStatus, GRAPH_BASE } = require('../graph/graphClient');
+
 const DEFAULT_TIMEOUT_MS = 15000;
 
 class SharePointAdapterError extends Error {
@@ -19,14 +20,6 @@ class SharePointAdapterError extends Error {
   }
 }
 
-function mapHttpStatus(status) {
-  if (status === 401) return 'AUTH_FAILED';
-  if (status === 403) return 'PERMISSION_DENIED';
-  if (status === 404) return 'TARGET_NOT_FOUND';
-  if (status === 429) return 'RATE_LIMITED';
-  if (status >= 500) return 'UPSTREAM_ERROR';
-  return 'UPSTREAM_REJECTED';
-}
 
 function parseSiteUrl(siteUrl) {
   let url;
@@ -43,56 +36,26 @@ function createSharePointGraphAdapter({ siteUrl, tokenProvider = null, fetchImpl
   const configured = typeof tokenProvider === 'function' && tokenProvider.configured !== false;
   let siteIdPromise = null;
 
+  // 共通 Graph クライアントへ委譲する（認証・HTTP・429再試行・分類は graphClient.js に一本化）。
+  const client = createGraphClient({ tokenProvider: configured ? tokenProvider : null, fetchImpl, graphBase, timeoutMs });
+  const toAdapterError = (error) => (error instanceof GraphClientError ? new SharePointAdapterError(error.code, error.status) : error);
   async function graphGet(pathAndQuery) {
-    if (!configured) throw new SharePointAdapterError('AUTH_NOT_CONFIGURED');
-    let token;
-    try { token = await tokenProvider(); } catch (error) {
-      // 取得元が返した種別コード（AUTH_NOT_CONFIGURED など）はそのまま伝える。値は含めない。
-      const code = typeof error?.code === 'string' && /^AUTH_[A-Z_]+$/.test(error.code) ? error.code : 'AUTH_FAILED';
-      throw new SharePointAdapterError(code);
-    }
-    if (typeof token !== 'string' || token.length === 0) throw new SharePointAdapterError('AUTH_FAILED');
-    let response;
     try {
-      response = await fetchImpl(`${graphBase}${pathAndQuery}`, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-    } catch {
-      throw new SharePointAdapterError('UPSTREAM_UNREACHABLE');
+      return await client.request({ method: 'GET', pathAndQuery });
+    } catch (error) {
+      throw toAdapterError(error);
     }
-    if (!response.ok) throw new SharePointAdapterError(mapHttpStatus(response.status), response.status);
-    try { return await response.json(); } catch { throw new SharePointAdapterError('UPSTREAM_INVALID_RESPONSE'); }
   }
 
   // 書き込み（Lane D）。許可したメソッドと経路だけを通す。応答本文は返さず、作成・更新の識別子のみ返す。
   const WRITE_ALLOWED = Object.freeze({ POST: /^\/sites\/[^/]+\/(lists\/[^/]+\/(columns|items)|permissions)(\/[^/?]+\/fields)?(\?|$)/, PATCH: /^\/sites\/[^/]+\/lists\/[^/]+\/(columns\/[^/?]+|items\/[^/?]+\/fields)(\?|$)/, DELETE: /^\/sites\/[^/]+\/permissions\/[^/?]+(\?|$)/ });
 
   async function graphWrite(method, pathAndQuery, body) {
-    if (!configured) throw new SharePointAdapterError('AUTH_NOT_CONFIGURED');
-    const pattern = WRITE_ALLOWED[method];
-    if (!pattern || !pattern.test(pathAndQuery)) throw new SharePointAdapterError('WRITE_PATH_REJECTED');
-    let token;
-    try { token = await tokenProvider(); } catch (error) {
-      const code = typeof error?.code === 'string' && /^AUTH_[A-Z_]+$/.test(error.code) ? error.code : 'AUTH_FAILED';
-      throw new SharePointAdapterError(code);
-    }
-    if (typeof token !== 'string' || token.length === 0) throw new SharePointAdapterError('AUTH_FAILED');
-    let response;
     try {
-      response = await fetchImpl(`${graphBase}${pathAndQuery}`, {
-        method,
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-    } catch {
-      throw new SharePointAdapterError('UPSTREAM_UNREACHABLE');
+      return await client.request({ method, pathAndQuery, body, allowWrite: (m, p) => Boolean(WRITE_ALLOWED[m] && WRITE_ALLOWED[m].test(p)) });
+    } catch (error) {
+      throw toAdapterError(error);
     }
-    if (!response.ok) throw new SharePointAdapterError(mapHttpStatus(response.status), response.status);
-    if (method === 'DELETE' || response.status === 204) return {};
-    try { return await response.json(); } catch { return {}; }
   }
 
   function resolveSiteId() {

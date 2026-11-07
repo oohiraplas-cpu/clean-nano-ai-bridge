@@ -60,6 +60,8 @@ function getConfig(env = process.env) {
     },
     // Clean Nano Operations の一時ストレージ（JSON Lines）。未設定ならメモリ上に保持する。
     operations: { storeFile: env.OPERATIONS_STORE_FILE ? path.resolve(env.OPERATIONS_STORE_FILE) : '' },
+    // Files / ZIP の作業ルート。未設定ならファイル操作は BLOCKED になる。配下以外へは一切アクセスしない。
+    files: { workRoot: env.OPERATIONS_WORK_ROOT ? path.resolve(env.OPERATIONS_WORK_ROOT) : '' },
     // Separate, read-only key for the claude.ai connector endpoint (/connector/mcp). Empty disables the endpoint.
     connectorApiKey: env.CONNECTOR_API_KEY || '',
     stateContextRegistry: {

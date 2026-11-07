@@ -8,8 +8,19 @@ const targetsOf = (facade) => Object.values(facade.ops).map((op) => op.tool);
 
 test('published tools/list is under the CNAI limit (70) and within the recommended 50', () => {
   assert.ok(PUBLISHED_TOOLS.length < 70, `published ${PUBLISHED_TOOLS.length}`);
-  // 推奨値 50 は超過している（SharePoint WRITE 8件の追加）。ハード上限 70 を守り、超過は報告事項として扱う。
-  assert.ok(PUBLISHED_TOOLS.length <= 60, `published ${PUBLISHED_TOOLS.length}`);
+  // 推奨値 50 以下を満たす（根拠: 同一ドメインの操作を facade にまとめ、内部ツールは公開一覧から外した）。
+  assert.ok(PUBLISHED_TOOLS.length <= 50, `published ${PUBLISHED_TOOLS.length}`);
+});
+
+test('every internal Bridge tool is reachable: published directly, through a facade, or by its internal name', () => {
+  const published = new Set(PUBLISHED_TOOLS.map((t) => t.name));
+  const facadeTargets = new Set(FACADES.flatMap((f) => Object.values(f.ops).map((op) => op.tool)));
+  const methods = new Set(MCP_METHODS);
+  for (const tool of MCP_PUBLIC_TOOLS) {
+    const reachable = published.has(tool.name) || facadeTargets.has(tool.name) || methods.has(tool.name);
+    assert.ok(reachable, tool.name);
+    assert.ok(methods.has(tool.name), `${tool.name} must stay callable through tools/call`);
+  }
 });
 
 test('published tool names are unique and each consolidated tool has a strict operation schema', () => {

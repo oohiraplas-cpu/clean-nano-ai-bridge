@@ -6,7 +6,8 @@ const path = require('node:path');
 const test = require('node:test');
 const { createApp, CONNECTOR_READONLY_TOOLS, PUBLISHED_TOOLS, MCP_PUBLIC_TOOLS, MCP_METHODS } = require('../src/server');
 const { getConfig } = require('../src/config');
-const { INTEGRATED_TOOL_NAMES, ALL_TOOL_NAMES } = require('../src/operationsMcp');
+const { INTEGRATED_TOOL_NAMES, ALL_TOOL_NAMES, INTERNAL_ONLY_TOOL_NAMES } = require('../src/operationsMcp');
+const { FACADES, DIRECT_TOOL_NAMES } = require('../src/toolVisibility');
 
 const CN_KEY = 'cn-primary-key-AAAA1111';
 const LEGACY_KEY = 'legacy-key-BBBB2222';
@@ -111,7 +112,13 @@ test('/mcp tools/list exposes every Clean Nano Operations tool, and no tool name
   await withApp({ CN_MCP_API_KEY: CN_KEY }, async (base) => {
     const res = await post(`${base}/mcp`, rpc('tools/list'), { 'x-api-key': CN_KEY });
     const names = (await res.json()).result.tools.map((tool) => tool.name);
-    for (const name of INTEGRATED_TOOL_NAMES) assert.ok(names.includes(name), name);
+    // 内部専用（files_manage 等）は公開しない。それ以外の統合ツールは全て公開する。
+    const facadeTargets = new Set(FACADES.flatMap((f) => Object.values(f.ops).map((op) => op.tool)));
+    const published = INTEGRATED_TOOL_NAMES.filter((name) => !INTERNAL_ONLY_TOOL_NAMES.includes(name) && !facadeTargets.has(name));
+    for (const name of published) assert.ok(names.includes(name), name);
+    // health_check など直接公開するツールは facade の対象でも公開を続ける（DIRECT_TOOL_NAMES）。
+    const hidden = [...INTERNAL_ONLY_TOOL_NAMES, ...facadeTargets].filter((name) => !DIRECT_TOOL_NAMES.includes(name));
+    for (const name of hidden) assert.equal(names.includes(name), false, name);
     assert.equal(new Set(names).size, names.length);
     assert.equal(names.filter((name) => name === 'health_check').length, 1);
   });
@@ -121,7 +128,8 @@ test('the operations tools are part of the internal catalog and the method regis
   for (const name of INTEGRATED_TOOL_NAMES) {
     assert.ok(MCP_METHODS.includes(name), name);
     assert.ok(MCP_PUBLIC_TOOLS.some((tool) => tool.name === name), name);
-    assert.ok(PUBLISHED_TOOLS.some((tool) => tool.name === name), name);
+    const facadeTargets = new Set(FACADES.flatMap((f) => Object.values(f.ops).map((op) => op.tool)));
+    if (!INTERNAL_ONLY_TOOL_NAMES.includes(name) && !facadeTargets.has(name)) assert.ok(PUBLISHED_TOOLS.some((tool) => tool.name === name), name);
   }
   assert.ok(ALL_TOOL_NAMES.every((name) => MCP_PUBLIC_TOOLS.some((tool) => tool.name === name)));
 });
@@ -198,7 +206,7 @@ test('/mcp/operations (compatibility alias) lists all operations tools with the 
   await withApp({ CN_MCP_API_KEY: CN_KEY }, async (base) => {
     const res = await post(`${base}/mcp/operations`, rpc('tools/list'), { 'x-api-key': CN_KEY });
     const names = (await res.json()).result.tools.map((tool) => tool.name);
-    assert.deepEqual([...names].sort(), [...ALL_TOOL_NAMES].sort());
+    assert.deepEqual([...names].sort(), ALL_TOOL_NAMES.filter((name) => !INTERNAL_ONLY_TOOL_NAMES.includes(name)).sort());
   });
 });
 

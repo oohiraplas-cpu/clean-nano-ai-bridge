@@ -245,6 +245,146 @@ const FACADES = Object.freeze([
       update: { tool: 'update_employee_ledger_entry' },
     },
   },
+  {
+    name: 'file_op',
+    errorCode: 'VALIDATION_FAILED',
+    description: '作業ルート（OPERATIONS_WORK_ROOT）内のファイル操作。operation: directory_list（一覧）| folder_tree（階層）| file_search（名前検索）| file_metadata_get（メタ情報）| file_read（読取・秘密値は伏せ字）| file_write（作成・上書きはoverwrite=trueのみ、既定dryRun）| file_copy（複写、既定dryRun）| file_diff（比較）| hash_sha256（SHA-256）。絶対パス・..・シンボリックリンクは拒否。',
+    ops: {
+      directory_list: { tool: 'files_manage', fixed: { operation: 'directory_list' } },
+      folder_tree: { tool: 'files_manage', fixed: { operation: 'folder_tree' } },
+      file_search: { tool: 'files_manage', fixed: { operation: 'file_search' } },
+      file_metadata_get: { tool: 'files_manage', fixed: { operation: 'file_metadata_get' } },
+      file_read: { tool: 'files_manage', fixed: { operation: 'file_read' } },
+      file_write: { tool: 'files_manage', fixed: { operation: 'file_write' } },
+      file_copy: { tool: 'files_manage', fixed: { operation: 'file_copy' } },
+      file_diff: { tool: 'files_manage', fixed: { operation: 'file_diff' } },
+      hash_sha256: { tool: 'files_manage', fixed: { operation: 'hash_sha256' } }
+    },
+  },
+  {
+    name: 'zip_op',
+    errorCode: 'VALIDATION_FAILED',
+    description: 'ZIPの操作（作業ルート内）。operation: zip_inspect（中身の一覧）| zip_validate（ZIP Slip・ZIP bomb・symlink・暗号化・ZIP64・CRC・重複名の検証）| zip_extract（全件検証OKの時のみ新規先へ展開、既定dryRun）| zip_create（既存ファイルからZIP作成、既定dryRun）。自動実行はしません。元ZIPは変更しません。',
+    ops: {
+      zip_inspect: { tool: 'zip_manage', fixed: { operation: 'zip_inspect' } },
+      zip_extract: { tool: 'zip_manage', fixed: { operation: 'zip_extract' } },
+      zip_create: { tool: 'zip_manage', fixed: { operation: 'zip_create' } },
+      zip_validate: { tool: 'zip_manage', fixed: { operation: 'zip_validate' } }
+    },
+  },
+  {
+    name: 'structured_data_op',
+    errorCode: 'VALIDATION_FAILED',
+    description: 'JSON / YAML / XML の整形式検証。operation: json_validate | yaml_validate | xml_validate。path（作業ルート内）かcontent（1MB以下）のどちらか一方を指定。XMLのDTD・ENTITY宣言は拒否。',
+    ops: {
+      json_validate: { tool: 'structured_data_manage', fixed: { operation: 'json_validate' } },
+      yaml_validate: { tool: 'structured_data_manage', fixed: { operation: 'yaml_validate' } },
+      xml_validate: { tool: 'structured_data_manage', fixed: { operation: 'xml_validate' } }
+    },
+  },
+  {
+    name: 'entra_read',
+    errorCode: 'VALIDATION_FAILED',
+    description: 'Entra ID（Graph）の読み取り。operation: entra_tenant_get（テナント）| entra_user_search（ユーザー検索・上限あり）| entra_user_get | entra_groups_list | entra_group_get | entra_licenses_list（空き数付き）| entra_role_assignments_get | entra_apps_list | entra_service_principals_list | entra_audit_logs_get。資格情報・秘密値は返しません。',
+    ops: {
+      entra_tenant_get: { tool: 'entra_read_manage', fixed: { operation: 'entra_tenant_get' } },
+      entra_user_search: { tool: 'entra_read_manage', fixed: { operation: 'entra_user_search' } },
+      entra_user_get: { tool: 'entra_read_manage', fixed: { operation: 'entra_user_get' } },
+      entra_groups_list: { tool: 'entra_read_manage', fixed: { operation: 'entra_groups_list' } },
+      entra_group_get: { tool: 'entra_read_manage', fixed: { operation: 'entra_group_get' } },
+      entra_licenses_list: { tool: 'entra_read_manage', fixed: { operation: 'entra_licenses_list' } },
+      entra_role_assignments_get: { tool: 'entra_read_manage', fixed: { operation: 'entra_role_assignments_get' } },
+      entra_apps_list: { tool: 'entra_read_manage', fixed: { operation: 'entra_apps_list' } },
+      entra_service_principals_list: { tool: 'entra_read_manage', fixed: { operation: 'entra_service_principals_list' } },
+      entra_audit_logs_get: { tool: 'entra_read_manage', fixed: { operation: 'entra_audit_logs_get' } }
+    },
+  },
+  {
+    name: 'entra_write',
+    errorCode: 'VALIDATION_FAILED',
+    description: 'Entra ID の書込み（既定 dryRun）。operation: entra_user_create（無効状態で作成、初期パスワードは返さない）| entra_user_update | entra_user_disable（accountEnabled で有効/無効）| entra_group_member_add | entra_group_member_remove | entra_license_assign（空き数が無ければ停止・購入しない）| entra_license_remove。実行には approvedByHuman=true が必要。物理削除・管理者ロール付与はありません。',
+    ops: {
+      entra_user_create: { tool: 'entra_write_manage', fixed: { operation: 'entra_user_create' } },
+      entra_user_update: { tool: 'entra_write_manage', fixed: { operation: 'entra_user_update' } },
+      entra_user_disable: { tool: 'entra_write_manage', fixed: { operation: 'entra_user_disable' } },
+      entra_group_member_add: { tool: 'entra_write_manage', fixed: { operation: 'entra_group_member_add' } },
+      entra_group_member_remove: { tool: 'entra_write_manage', fixed: { operation: 'entra_group_member_remove' } },
+      entra_license_assign: { tool: 'entra_write_manage', fixed: { operation: 'entra_license_assign' } },
+      entra_license_remove: { tool: 'entra_write_manage', fixed: { operation: 'entra_license_remove' } }
+    },
+  },
+  {
+    name: 'power_platform_read',
+    errorCode: 'VALIDATION_FAILED',
+    description: 'Power Platform の読み取り（対象環境 4d0aab59-43ec-ecf1-a9d1-869f2517adbb に固定）。operation: pp_environments_list | pp_environment_get | pp_connectors_list | pp_connections_list | pp_connection_test | solutions_list | connection_references_get | environment_variables_get（名前と設定の有無のみ、値は返さない）| pp_dlp_policies_list。書込みはありません。',
+    ops: {
+      pp_environments_list: { tool: 'power_platform_manage', fixed: { operation: 'pp_environments_list' } },
+      pp_environment_get: { tool: 'power_platform_manage', fixed: { operation: 'pp_environment_get' } },
+      pp_connectors_list: { tool: 'power_platform_manage', fixed: { operation: 'pp_connectors_list' } },
+      pp_connections_list: { tool: 'power_platform_manage', fixed: { operation: 'pp_connections_list' } },
+      pp_connection_test: { tool: 'power_platform_manage', fixed: { operation: 'pp_connection_test' } },
+      solutions_list: { tool: 'power_platform_manage', fixed: { operation: 'solutions_list' } },
+      connection_references_get: { tool: 'power_platform_manage', fixed: { operation: 'connection_references_get' } },
+      environment_variables_get: { tool: 'power_platform_manage', fixed: { operation: 'environment_variables_get' } },
+      pp_dlp_policies_list: { tool: 'power_platform_manage', fixed: { operation: 'pp_dlp_policies_list' } }
+    },
+  },
+  {
+    name: 'operations_control',
+    description: 'Clean Nano Operations の確認系。operation: version_get（版・SHA）| tools_list | tool_schema_get（入力スキーマ）| capability_check（実装・構成状態）| authentication_check（認証の有無のみ）| environment_get（環境プロファイル）。読取のみ。',
+    ops: {
+      version_get: { tool: 'version_get' },
+      tools_list: { tool: 'tools_list' },
+      tool_schema_get: { tool: 'tool_schema_get' },
+      capability_check: { tool: 'capability_check' },
+      authentication_check: { tool: 'authentication_check' },
+      environment_get: { tool: 'environment_get' }
+    },
+  },
+  {
+    name: 'operations_permission',
+    description: 'Clean Nano Operations の権限・ライセンス・接続確認（読取のみ）。operation: permission_check | license_check | connection_test。未構成の接続先は BLOCKED で返します。',
+    ops: {
+      permission_check: { tool: 'permission_check' },
+      license_check: { tool: 'license_check' },
+      connection_test: { tool: 'connection_test' }
+    },
+  },
+  {
+    name: 'operations_lifecycle',
+    description: '変更操作の共通ライフサイクル。operation: operation_plan（計画登録）| operation_status | operation_cancel | dry_run | snapshot_create（変更前スナップショット）| operation_verify（変更後の検証）| audit_write | rollback_execute（承認必須）。',
+    ops: {
+      operation_plan: { tool: 'operation_plan' },
+      operation_status: { tool: 'operation_status' },
+      operation_cancel: { tool: 'operation_cancel' },
+      dry_run: { tool: 'dry_run' },
+      snapshot_create: { tool: 'snapshot_create' },
+      operation_verify: { tool: 'operation_verify' },
+      audit_write: { tool: 'audit_write' },
+      rollback_execute: { tool: 'rollback_execute' }
+    },
+  },
+  {
+    name: 'sharepoint_graph',
+    description: 'SharePoint（Microsoft Graph）の操作。読取: sp_site_get | sp_lists_list | sp_list_get | sp_list_schema_get | sp_item_get | sp_item_query | sp_permissions_get。書込み（承認と再取得検証付き）: sp_column_create | sp_column_update | sp_item_create | sp_item_update | sp_attachment_add（経路未検証のため BLOCKED）| sp_permissions_plan | sp_permissions_grant | sp_permissions_revoke。',
+    ops: {
+      sp_site_get: { tool: 'sp_site_get' },
+      sp_lists_list: { tool: 'sp_lists_list' },
+      sp_list_get: { tool: 'sp_list_get' },
+      sp_list_schema_get: { tool: 'sp_list_schema_get' },
+      sp_item_get: { tool: 'sp_item_get' },
+      sp_item_query: { tool: 'sp_item_query' },
+      sp_permissions_get: { tool: 'sp_permissions_get' },
+      sp_column_create: { tool: 'sp_column_create' },
+      sp_column_update: { tool: 'sp_column_update' },
+      sp_item_create: { tool: 'sp_item_create' },
+      sp_item_update: { tool: 'sp_item_update' },
+      sp_attachment_add: { tool: 'sp_attachment_add' },
+      sp_permissions_plan: { tool: 'sp_permissions_plan' },
+      sp_permissions_grant: { tool: 'sp_permissions_grant' },
+      sp_permissions_revoke: { tool: 'sp_permissions_revoke' }
+    },
+  },
 ]);
 
 const FACADE_BY_NAME = new Map(FACADES.map((f) => [f.name, f]));
@@ -318,7 +458,7 @@ function resolveVisibleCall(name, args) {
   if (!target) {
     const error = new Error(`${name} の operation が不正です（対応: ${Object.keys(facade.ops).join(', ')}）`);
     error.status = 400;
-    error.payload = { reasonCode: FACADE_ERROR, operation: typeof operation === 'string' ? operation : null };
+    error.payload = { reasonCode: facade.errorCode || FACADE_ERROR, operation: typeof operation === 'string' ? operation : null };
     throw error;
   }
   return { name: target.tool, args: { ...rest, ...(target.fixed || {}) } };

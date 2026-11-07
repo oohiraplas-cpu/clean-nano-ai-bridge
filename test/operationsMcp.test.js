@@ -4,6 +4,8 @@ const test = require('node:test');
 const { createOperationsMcp, CATALOG, ALL_TOOL_NAMES, INTEGRATED_TOOL_NAMES, OPERATIONS_PUBLIC_TOOLS, FORBIDDEN_OPERATION_TYPES, APPROVAL_REQUIRED_TYPES } = require('../src/operationsMcp');
 const { createMemoryStore } = require('../src/operations/store');
 
+// 公開ツール（operations 系）と、facade 経由でのみ公開する内部ツール。
+const INTERNAL_TOOLS = ['files_manage', 'zip_manage', 'structured_data_manage', 'entra_read_manage', 'entra_write_manage', 'power_platform_manage'];
 const EXPECTED_TOOLS = [
   'health_check', 'version_get', 'tools_list', 'tool_schema_get', 'capability_check', 'authentication_check',
   'permission_check', 'license_check', 'connection_test', 'environment_get', 'operation_plan',
@@ -23,7 +25,7 @@ const planArgs = (overrides = {}) => ({
 });
 
 test('the catalogue contains every common and SharePoint tool, with no duplicate names', () => {
-  assert.deepEqual([...ALL_TOOL_NAMES].sort(), [...EXPECTED_TOOLS].sort());
+  assert.deepEqual([...ALL_TOOL_NAMES].sort(), [...EXPECTED_TOOLS, ...INTERNAL_TOOLS].sort());
   assert.equal(new Set(ALL_TOOL_NAMES).size, ALL_TOOL_NAMES.length);
 });
 
@@ -50,7 +52,8 @@ test('approval and forbidden operation sets do not overlap', () => {
 
 test('the integrated set excludes health_check, which /mcp already serves', () => {
   assert.equal(INTEGRATED_TOOL_NAMES.includes('health_check'), false);
-  assert.equal(INTEGRATED_TOOL_NAMES.length, EXPECTED_TOOLS.length - 1);
+  assert.equal(INTEGRATED_TOOL_NAMES.length, EXPECTED_TOOLS.length - 1 + INTERNAL_TOOLS.length);
+  assert.equal(INTERNAL_TOOLS.every((name) => INTEGRATED_TOOL_NAMES.includes(name)), true);
   assert.equal(OPERATIONS_PUBLIC_TOOLS.every((tool) => tool.inputSchema && tool.inputSchema.type === 'object'), true);
 });
 
@@ -65,7 +68,7 @@ test('version_get reports the package version and the configured deployment SHA'
 test('capability_check lists every tool as implemented and reports live adapter state', async () => {
   const payload = await createOperationsMcp({}).callTool('capability_check');
   assert.equal(payload.status, 'PARTIAL');
-  assert.equal(payload.implemented, EXPECTED_TOOLS.length);
+  assert.equal(payload.implemented, EXPECTED_TOOLS.length + INTERNAL_TOOLS.length);
   assert.ok(payload.tools.every((tool) => tool.implementationStatus === 'implemented'));
   assert.equal(payload.tools.find((tool) => tool.name === 'version_get').liveStatus, 'READY');
   assert.equal(payload.tools.find((tool) => tool.name === 'permission_check').liveStatus, 'NOT_CONFIGURED');

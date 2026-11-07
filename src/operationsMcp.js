@@ -19,6 +19,13 @@ const { createOperationsStore, canonicalJson, hashValue } = require('./operation
 const { createSharePointGraphAdapter, SharePointAdapterError } = require('./operations/sharePointGraphAdapter');
 const { createManagedIdentitySource, createInjectedSource, createGraphTokenProvider } = require('./operations/graphAuth');
 const { runSharePointDiagnostics } = require('./operations/sharePointDiagnostics');
+const { createFileOps, ACTIONS: FILE_ACTIONS } = require('./files/fileOps');
+const { createZipOps, ACTIONS: ZIP_ACTIONS } = require('./files/zipOps');
+const { createStructuredData, ACTIONS: STRUCTURED_ACTIONS } = require('./files/structuredData');
+const { createEntraAdapter, classifyGraphError, READ_ACTION_SCHEMAS: ENTRA_READ_SCHEMAS } = require('./operations/entraAdapter');
+const { createEntraWriter, ACTION_SCHEMAS: ENTRA_WRITE_SCHEMAS } = require('./operations/entraWrite');
+const { createPowerPlatformAdapter, READ_ACTION_SCHEMAS: PP_READ_SCHEMAS } = require('./operations/powerPlatformAdapter');
+const { validateAction } = require('./files/actionSchema');
 
 const SERVER_NAME = 'Clean Nano Operations MCP';
 const INTERNAL_NAME = 'clean-nano-operations';
@@ -78,7 +85,7 @@ function tool(name, description, metadata, properties = {}, required = []) {
   };
 }
 
-const CATALOG = Object.freeze([
+const CATALOG_CORE = Object.freeze([
   tool('health_check', 'Clean Nano Operations MCPの稼働状態を返します。', meta('READ', 'low')),
   tool('version_get', 'Bridgeのバージョンと配備SHAを返します。', meta('READ', 'low')),
   tool('tools_list', 'このサーバーのツール一覧とメタデータを返します。', meta('READ', 'low')),
@@ -264,7 +271,70 @@ const CATALOG = Object.freeze([
     approvalToken: { type: 'string', maxLength: 512 },
     permissionId: { type: 'string', maxLength: 200, description: '権限ID' }
   }, ['operationId', 'permissionId']),
+])
+
+// Files / ZIP / 構造化データ の内部実装。公開は facade（file_op / zip_op / structured_data_op）で行う。
+// 内部ツールは tools/call で呼べるが、tools/list（公開）には出さない。
+const FILE_PROPERTIES = Object.freeze({
+  path: { type: 'string', maxLength: 1024, description: '作業ルートからの相対パス' },
+  destination: { type: 'string', maxLength: 1024, description: '出力先の相対パス' },
+  source: { type: 'string', maxLength: 1024, description: 'コピー元の相対パス' },
+  left: { type: 'string', maxLength: 1024, description: '比較元の相対パス' },
+  right: { type: 'string', maxLength: 1024, description: '比較先の相対パス' },
+  sources: { type: 'array', maxItems: 200, items: { type: 'string', maxLength: 1024 }, description: 'ZIPに含める元ファイルの相対パス' },
+  pattern: { type: 'string', maxLength: 200, description: 'ファイル名の検索語' },
+  content: { type: 'string', maxLength: 1048576, description: '内容（テキスト・1MB以下）' },
+  maxResults: { type: 'integer', minimum: 1, maximum: 500 },
+  maxEntries: { type: 'integer', minimum: 1, maximum: 1000 },
+  maxDepth: { type: 'integer', minimum: 1, maximum: 6 },
+  maxBytes: { type: 'integer', minimum: 1, maximum: 2097152 },
+  overwrite: { type: 'boolean', description: '既存ファイルの上書き（既定 false）' },
+  dryRun: { type: 'boolean', description: '計画のみ（既定 true）' }
+});
+const CATALOG_MANAGE = Object.freeze([
+  tool('files_manage', '作業ルート内のファイル操作の内部実装（file_op から呼ばれる）。', meta('WRITE', 'medium', {
+    supportsDryRun: true, supportsRollback: true, auditRequired: true, adapter: 'files'
+  }), { operation: { type: 'string', enum: FILE_ACTIONS }, ...FILE_PROPERTIES }, ['operation']),
+  tool('zip_manage', 'ZIPの検査・検証・展開・作成の内部実装（zip_op から呼ばれる）。', meta('WRITE', 'medium', {
+    supportsDryRun: true, supportsRollback: true, auditRequired: true, adapter: 'files'
+  }), { operation: { type: 'string', enum: ZIP_ACTIONS }, ...FILE_PROPERTIES }, ['operation']),
+  tool('structured_data_manage', 'JSON / YAML / XML の整形式検証の内部実装（structured_data_op から呼ばれる）。', meta('READ', 'low', {
+    auditRequired: true, adapter: 'files'
+  }), { operation: { type: 'string', enum: STRUCTURED_ACTIONS }, path: FILE_PROPERTIES.path, content: FILE_PROPERTIES.content }, ['operation'])
 ]);
+const ENTRA_READ_OPS = Object.freeze(Object.keys(ENTRA_READ_SCHEMAS));
+const ENTRA_WRITE_OPS = Object.freeze(Object.keys(ENTRA_WRITE_SCHEMAS));
+const PP_READ_OPS = Object.freeze(['pp_environments_list', 'pp_environment_get', 'pp_connectors_list', 'pp_connections_list', 'pp_connection_test', 'solutions_list', 'connection_references_get', 'environment_variables_get', 'pp_dlp_policies_list']);
+const ENTRA_PROPERTIES = Object.freeze({
+  userId: { type: 'string', maxLength: 256, description: 'ユーザーのIDまたはUPN' },
+  userPrincipalName: { type: 'string', maxLength: 320, description: 'UPN（新規作成）' },
+  displayName: { type: 'string', maxLength: 256, description: '表示名' },
+  mailNickname: { type: 'string', maxLength: 64 },
+  usageLocation: { type: 'string', maxLength: 2, description: '利用国（2文字）' },
+  changes: { type: 'object', description: '更新する項目（許可された項目のみ）' },
+  accountEnabled: { type: 'boolean' },
+  groupId: { type: 'string', maxLength: 64 },
+  skuId: { type: 'string', maxLength: 64 },
+  principalId: { type: 'string', maxLength: 64 },
+  query: { type: 'string', maxLength: 100 },
+  top: { type: 'integer', minimum: 1, maximum: 999 },
+  days: { type: 'integer', minimum: 1, maximum: 30 },
+  connectionName: { type: 'string', maxLength: 100 },
+  approvedByHuman: { type: 'boolean', description: '外部書込みの明示承認（書込み時に必須）' },
+  dryRun: { type: 'boolean', description: '計画のみ（既定 true）' }
+});
+const CATALOG_ENTRA = Object.freeze([
+  tool('entra_read_manage', 'Entra ID の読み取りの内部実装（entra_read から呼ばれる）。', meta('READ', 'low', {
+    auditRequired: true, adapter: 'entra', requiredPermissions: ['Graph 読取権限（操作ごと）'], requiredConnections: ['microsoft-graph']
+  }), { operation: { type: 'string', enum: ENTRA_READ_OPS }, ...ENTRA_PROPERTIES }, ['operation']),
+  tool('entra_write_manage', 'Entra ID の書込みの内部実装（entra_write から呼ばれる）。計画→スナップショット→書込み→再取得検証の順に行う。', meta('WRITE', 'high', {
+    requiresApproval: true, supportsDryRun: true, supportsRollback: true, auditRequired: true, adapter: 'entra', requiredPermissions: ['Graph 書込み権限（操作ごと）'], requiredConnections: ['microsoft-graph']
+  }), { operation: { type: 'string', enum: ENTRA_WRITE_OPS }, ...ENTRA_PROPERTIES }, ['operation']),
+  tool('power_platform_manage', 'Power Platform の読み取りの内部実装（power_platform_read から呼ばれる）。対象環境は固定。', meta('READ', 'low', {
+    auditRequired: true, adapter: 'powerPlatform', requiredConnections: ['power-platform-admin']
+  }), { operation: { type: 'string', enum: PP_READ_OPS }, top: ENTRA_PROPERTIES.top, connectionName: ENTRA_PROPERTIES.connectionName }, ['operation'])
+]);
+const CATALOG = Object.freeze([...CATALOG_CORE, ...CATALOG_MANAGE, ...CATALOG_ENTRA]);
 
 const BY_NAME = new Map(CATALOG.map((entry) => [entry.name, entry]));
 const ALL_TOOL_NAMES = Object.freeze(CATALOG.map((entry) => entry.name));
@@ -287,7 +357,12 @@ function publicToolFor(entry) {
   };
 }
 
-const OPERATIONS_PUBLIC_TOOLS = Object.freeze(INTEGRATED_TOOL_NAMES.map((name) => publicToolFor(BY_NAME.get(name))));
+// 公開しない内部ツール（facade 経由でのみ公開する）。tools/call では引き続き呼べる。
+const INTERNAL_ONLY_TOOL_NAMES = Object.freeze(['files_manage', 'zip_manage', 'structured_data_manage', 'entra_read_manage', 'entra_write_manage', 'power_platform_manage']);
+const INTERNAL_ONLY_TOOLS = Object.freeze(INTERNAL_ONLY_TOOL_NAMES.map((name) => publicToolFor(BY_NAME.get(name))));
+const OPERATIONS_PUBLIC_TOOLS = Object.freeze(INTEGRATED_TOOL_NAMES
+  .filter((name) => !INTERNAL_ONLY_TOOL_NAMES.includes(name))
+  .map((name) => publicToolFor(BY_NAME.get(name))));
 
 // ---------- 入力検証 ----------
 
@@ -409,14 +484,15 @@ function createOperationsMcp(config = {}, deps = {}) {
   const plans = new Map();
   const adapters = Object.fromEntries(ADAPTER_NAMES.map((name) => [name, null]));
   Object.assign(adapters, deps.adapters || {});
+  // Graph の取得元（SharePoint / Entra で共有）。優先順: Managed Identity → 証明書 → 委任OAuth。未構成なら BLOCKED。
+  const graphAuth = config.graphAuth || {};
+  const graphTokenProvider = deps.graphTokenProvider || deps.sharePointTokenProvider || createGraphTokenProvider([
+    createManagedIdentitySource({ identityEndpoint: graphAuth.identityEndpoint, identityHeader: graphAuth.identityHeader, fetchImpl: deps.fetchImpl }),
+    createInjectedSource({ name: 'certificate', identifiers: graphAuth.certificate || {}, acquireFn: deps.certificateAcquire || null }),
+    createInjectedSource({ name: 'delegated', identifiers: graphAuth.delegated || {}, acquireFn: deps.delegatedAcquire || null })
+  ]);
   if (!adapters.sharePoint) {
-    // 取得元の優先順: Managed Identity → 証明書 → 委任OAuth。未構成の取得元しか無ければ BLOCKED。
-    const graphAuth = config.graphAuth || {};
-    const tokenProvider = deps.sharePointTokenProvider || createGraphTokenProvider([
-      createManagedIdentitySource({ identityEndpoint: graphAuth.identityEndpoint, identityHeader: graphAuth.identityHeader, fetchImpl: deps.fetchImpl }),
-      createInjectedSource({ name: 'certificate', identifiers: graphAuth.certificate || {}, acquireFn: deps.certificateAcquire || null }),
-      createInjectedSource({ name: 'delegated', identifiers: graphAuth.delegated || {}, acquireFn: deps.delegatedAcquire || null })
-    ]);
+    const tokenProvider = graphTokenProvider;
     adapters.sharePoint = createSharePointGraphAdapter({
       siteUrl: environmentProfile.sharePointSiteUrl,
       tokenProvider,
@@ -1068,6 +1144,56 @@ function createOperationsMcp(config = {}, deps = {}) {
   };
   Object.assign(handlers, Object.fromEntries(Object.entries(SP_WRITE_HANDLERS).map(([name, fn]) => [name, fn])));
 
+  // Files / ZIP / 構造化データ（作業ルート OPERATIONS_WORK_ROOT 内のみ）。
+  const fileOps = deps.fileOps || createFileOps({ workRoot: config.files?.workRoot });
+  const zipOps = deps.zipOps || createZipOps({ workRoot: config.files?.workRoot });
+  const structuredData = deps.structuredData || createStructuredData({ workRoot: config.files?.workRoot });
+  const withoutOperation = (args) => {
+    const { operation, ...rest } = args || {};
+    return rest;
+  };
+  Object.assign(handlers, {
+    files_manage: (args) => fileOps.run(args.operation, withoutOperation(args)),
+    zip_manage: (args) => zipOps.run(args.operation, withoutOperation(args)),
+    structured_data_manage: (args) => structuredData.run(args.operation, withoutOperation(args))
+  });
+
+  // Entra ID（READ / WRITE）と Power Platform（READ）。資格情報が無ければ BLOCKED を返す（ダミー成功にしない）。
+  const entraAdapter = deps.entraAdapter || createEntraAdapter({ tokenProvider: graphTokenProvider, fetchImpl: deps.fetchImpl });
+  const entraWriter = deps.entraWriter || createEntraWriter({ adapter: entraAdapter });
+  const powerPlatform = deps.powerPlatformAdapter || createPowerPlatformAdapter({ tokenFor: deps.powerPlatformTokenFor || (() => null), fetchImpl: deps.fetchImpl });
+  const notConfigured = (adapter, nextStep) => ({ status: 'BLOCKED', reasonCode: 'ADAPTER_NOT_CONFIGURED', adapter, executed: false, message: `${adapter} の認証が未構成のため、実環境での確認は行えません（未確認）。`, nextStep });
+  Object.assign(handlers, {
+    entra_read_manage: async (args) => {
+      const operation = args.operation;
+      if (!ENTRA_READ_OPS.includes(operation)) return { status: 'FAIL', reasonCode: 'VALIDATION_FAILED', executed: false, message: '未知のactionです。' };
+      const rest = withoutOperation(args);
+      const problems = validateAction(ENTRA_READ_SCHEMAS[operation], rest);
+      if (problems.length) return { status: 'FAIL', reasonCode: 'VALIDATION_FAILED', executed: false, message: problems.join('、') };
+      if (!entraAdapter.configured) return notConfigured('entra', 'Managed Identity または証明書で Graph の認証を構成する。');
+      try {
+        return { status: 'PASS', executed: true, operation, ...(await entraAdapter.call(operation, rest)) };
+      } catch (error) {
+        return { ...classifyGraphError(error, operation), operation };
+      }
+    },
+    entra_write_manage: async (args) => entraWriter.run(args.operation, withoutOperation(args)),
+    power_platform_manage: async (args) => {
+      const operation = args.operation;
+      if (!PP_READ_OPS.includes(operation)) return { status: 'FAIL', reasonCode: 'VALIDATION_FAILED', executed: false, message: '未知のactionです。' };
+      const rest = withoutOperation(args);
+      const problems = validateAction(PP_READ_SCHEMAS[operation], rest);
+      if (problems.length) return { status: 'FAIL', reasonCode: 'VALIDATION_FAILED', executed: false, message: problems.join('、') };
+      if (!powerPlatform.configured) return notConfigured('powerPlatform', 'Power Platform 管理 API の認証（管理者の委任または証明書）を構成する。');
+      try {
+        return { status: 'PASS', executed: true, operation, environmentId: powerPlatform.pinnedEnvironmentId, ...(await powerPlatform.call(operation, rest)) };
+      } catch (error) {
+        const base = classifyGraphError(error, operation);
+        return { ...base, operation, environmentId: powerPlatform.pinnedEnvironmentId };
+      }
+    }
+  });
+
   // 監査が必要なツールは、開始の監査を保存できた場合にのみ実行する。完了の監査が保存できない場合は FAIL とする。
   function finalize(name, correlationId, result) {
     const base = { status: 'FAIL', executed: false, ...result };
@@ -1141,7 +1267,7 @@ function createOperationsMcp(config = {}, deps = {}) {
       }
       if (method === 'ping') return rpcResult({});
       if (method === 'tools/list') {
-        return rpcResult({ tools: CATALOG.map((entry) => publicToolFor(entry)) });
+        return rpcResult({ tools: CATALOG.filter((entry) => !INTERNAL_ONLY_TOOL_NAMES.includes(entry.name)).map((entry) => publicToolFor(entry)) });
       }
       if (method === 'tools/call') {
         const name = params && params.name;
@@ -1169,6 +1295,8 @@ module.exports = {
   TOOL_DEFS: CATALOG.map(publicMeta),
   ALL_TOOL_NAMES,
   INTEGRATED_TOOL_NAMES,
+  INTERNAL_ONLY_TOOL_NAMES,
+  INTERNAL_ONLY_TOOLS,
   OPERATIONS_PUBLIC_TOOLS,
   OPERATION_TYPES,
   APPROVAL_REQUIRED_TYPES,

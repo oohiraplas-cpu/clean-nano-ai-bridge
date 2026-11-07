@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
-const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
+const { publishedToolsFor, resolveVisibleCall, FACADES } = require('./toolVisibility');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -35,7 +35,7 @@ const { EvidenceCaptureEngine } = require('./evidenceCaptureEngine');
 const { RuntimeEvidenceEngine } = require('./runtimeEvidenceEngine');
 const { DispatchEngine } = require('./dispatchEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
-const { createOperationsMcp, OPERATIONS_PUBLIC_TOOLS, INTEGRATED_TOOL_NAMES } = require('./operationsMcp');
+const { createOperationsMcp, OPERATIONS_PUBLIC_TOOLS, INTEGRATED_TOOL_NAMES, INTERNAL_ONLY_TOOLS } = require('./operationsMcp');
 
 // Clean Nano Operations の実行器は config ごとに1つ作る（同じ config の中では一時ストアを共有する）。
 const operationsRuntimes = new WeakMap();
@@ -1635,11 +1635,14 @@ const MCP_PUBLIC_TOOLS_BASE = Object.freeze([
 ]);
 
 // Internal catalog: the existing tools plus the Clean Nano Operations tools (health_check is shared, not duplicated).
-const MCP_PUBLIC_TOOLS = Object.freeze([...MCP_PUBLIC_TOOLS_BASE, ...OPERATIONS_PUBLIC_TOOLS]);
+// 内部カタログ（facade の対象を含む）。公開一覧は PUBLISHED_TOOLS で決まる。
+const MCP_PUBLIC_TOOLS = Object.freeze([...MCP_PUBLIC_TOOLS_BASE, ...OPERATIONS_PUBLIC_TOOLS, ...INTERNAL_ONLY_TOOLS]);
 
 // External tools/list (CNAI and other MCP clients). Internal catalog stays in MCP_PUBLIC_TOOLS.
 // Clean Nano Operations tools are published directly (not as facades) so that the existing /mcp connection discovers them.
-const PUBLISHED_TOOLS = Object.freeze([...publishedToolsFor(MCP_PUBLIC_TOOLS), ...OPERATIONS_PUBLIC_TOOLS]);
+// facade の対象になった内部ツールは、公開一覧では facade 経由でのみ見せる（tools/call では従来どおり直接呼べる）。
+const FACADE_TARGET_NAMES = new Set(FACADES.flatMap((f) => Object.values(f.ops).map((op) => op.tool)));
+const PUBLISHED_TOOLS = Object.freeze([...publishedToolsFor(MCP_PUBLIC_TOOLS), ...OPERATIONS_PUBLIC_TOOLS.filter((tool) => !FACADE_TARGET_NAMES.has(tool.name))]);
 
 async function tasksPayload(store) {
   const tasks = await store.list();
