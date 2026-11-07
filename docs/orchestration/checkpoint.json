@@ -7,20 +7,22 @@
     "ENTRA_READ",
     "ENTRA_WRITE",
     "POWER_PLATFORM_READ",
+    "POWER_AUTOMATE_READ",
+    "POWER_AUTOMATE_WRITE",
     "SHAREPOINT_LIVE_READ",
+    "SHAREPOINT_LIVE_WRITE",
+    "PERSISTENT_STORE",
     "WEBHOOK_MIGRATION",
     "KEY_ROTATION_RUNBOOK",
     "AZURE_DIAGNOSTIC"
   ],
   "runningTasks": [],
-  "readyTasks": [
-    "POWER_AUTOMATE_READ",
-    "PERSISTENT_STORE"
-  ],
+  "readyTasks": [],
   "blockedTasks": [
     "ENTRA_READ",
     "ENTRA_WRITE",
     "POWER_PLATFORM_READ",
+    "POWER_AUTOMATE_READ",
     "POWER_AUTOMATE_WRITE",
     "EMPLOYEE_REGISTRATION_E2E",
     "SHAREPOINT_LIVE_READ",
@@ -30,15 +32,16 @@
     "KEY_ROTATION_RUNBOOK",
     "AZURE_DIAGNOSTIC"
   ],
-  "lastGoodCommit": "90e112d",
-  "testStatus": "npm test 1979 PASS (local)",
+  "lastGoodCommit": "6bf863a",
+  "testStatus": "npm test 2012 PASS (local, before this commit)",
   "ciStatus": "not_checked",
   "requiredHumanActions": [
     "Graph アプリに必要な Application 権限を付与し管理者同意を得る（実環境の検証用）",
     "書込み対象ごとの明示承認（approvedByHuman）の運用を決める。実書込みは行わない",
     "Power Platform 管理API を呼べるトークン取得経路（Managed Identity 等）を用意する",
+    "Dataverse（対象環境）へのフロー参照権限を持つ接続を用意する（実環境の検証用）",
     "フローの有効化・変更の実施承認（本番影響の判断）",
-    "実社員データを使う登録テストの実施承認（テスト用アカウントの指定）",
+    "対象フロー（CN_社員新規登録_Forms取込）の定義を環境から読取り専用で取得する（flow_definition_get の実環境実行、または pac による export）。取得後にモックE2Eを作成する",
     "Graph の Sites.Read.All 相当の権限と対象サイトの同意",
     "対象リストへの書込み承認と、テスト用項目の指定",
     "Azure Storage または SharePoint 監査リストへの接続情報（ID基盤の権限）を用意する",
@@ -46,18 +49,14 @@
     "旧キーの失効は利用ゼロの確認後に、人間が承認して行う",
     "GitHub Actions の OIDC 連携（フェデレーション資格情報）と、閲覧用ロールの付与"
   ],
-  "timestamp": "2026-11-07T11:25:12.166Z",
+  "timestamp": "2026-11-07T11:30:44.400Z",
   "completionPercent": {
-    "code": 60.4,
+    "code": 90.6,
     "live": 0
   },
   "criticalPath": [
-    "POWER_AUTOMATE_READ",
-    "POWER_AUTOMATE_WRITE",
     "EMPLOYEE_REGISTRATION_E2E"
   ],
   "deferredTasks": [],
-  "nextAutoTasks": [
-    "POWER_AUTOMATE_READ"
-  ]
+  "nextAutoTasks": []
 }

@@ -31,7 +31,8 @@ function buildStatus(repoRoot = REPO_ROOT) {
     blocked,
     humanActionBundle: bundle,
     deferredTasks: tasks.filter((t) => t.status === 'DEFERRED').map((t) => t.id),
-    nextAutoTasks: tasks.filter((t) => t.status === 'READY' && !(t.liveStatus === 'BLOCKED' && t.humanGate)).map((t) => t.id)
+    // 次に自動で進められるのは、依存が満たされたコード側のタスク。実環境の人間操作待ち（liveStatus）は止めない。
+    nextAutoTasks: tasks.filter((t) => t.status === 'READY').map((t) => t.id)
   };
 }
 

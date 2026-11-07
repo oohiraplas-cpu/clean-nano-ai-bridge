@@ -111,6 +111,12 @@ test('blocked items carry the human gate reason so they can be deduplicated', ()
   assert.equal(items[0].actionKey, 'SAME');
 });
 
+test('nextAutoTasks lists ready code-side work even when its live step is blocked on a human', () => {
+  const status = buildStatus(REPO_ROOT);
+  const ready = status.tasks.filter((t) => t.status === 'READY').map((t) => t.id);
+  assert.deepEqual(status.nextAutoTasks, ready);
+});
+
 test('buildStatus returns the machine-readable state without secrets or live claims', () => {
   const status = buildStatus(REPO_ROOT);
   assert.equal(status.schema, 'clean-nano-remaining-work/1');

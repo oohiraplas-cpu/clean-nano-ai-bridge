@@ -61,15 +61,16 @@ const REMAINING_TASKS = Object.freeze([
     id: 'POWER_AUTOMATE_READ', lane: 'lane3', goal: 'Power Automate のフロー参照（一覧・定義・接続参照・検証）を実装する',
     deps: ['POWER_PLATFORM_READ'], weight: 4, estimatedEffort: 'M', requiredCapabilities: ['node', 'graph-mock'],
     affectedFiles: ['src/operations/powerAutomateAdapter.js'],
-    evidenceFiles: ['src/operations/powerAutomateAdapter.js'],
+    evidenceFiles: ['src/operations/powerAutomateAdapter.js', 'test/powerAutomateAdapter.test.js'],
     selectiveTests: ['test/powerAutomateAdapter.test.js'], fullRegressionRequired: true, rollbackAvailable: true,
-    humanGate: null, additionalCost: 'なし', system: 'powerplatform', liveStatus: 'NOT_VERIFIED'
+    humanGate: { reasonCode: 'POWER_AUTOMATE_LIVE_READ', action: 'Dataverse（対象環境）へのフロー参照権限を持つ接続を用意する（実環境の検証用）' },
+    additionalCost: 'なし', system: 'powerplatform', liveStatus: 'BLOCKED'
   },
   {
     id: 'POWER_AUTOMATE_WRITE', lane: 'lane3', goal: 'Power Automate の変更を snapshot・検証・ロールバック境界の内側でのみ行う',
     deps: ['POWER_AUTOMATE_READ', 'PERSISTENT_STORE'], weight: 5, estimatedEffort: 'L', requiredCapabilities: ['node', 'persistent-store'],
     affectedFiles: ['src/operations/powerAutomateAdapter.js'],
-    evidenceFiles: ['src/operations/powerAutomateWrite.js'],
+    evidenceFiles: ['src/operations/powerAutomateWrite.js', 'test/powerAutomateWrite.test.js'],
     selectiveTests: ['test/powerAutomateWrite.test.js'], fullRegressionRequired: true, rollbackAvailable: true,
     humanGate: { reasonCode: 'POWER_AUTOMATE_LIVE_APPROVAL', action: 'フローの有効化・変更の実施承認（本番影響の判断）' },
     additionalCost: 'なし', system: 'powerplatform', liveStatus: 'BLOCKED'
@@ -80,7 +81,8 @@ const REMAINING_TASKS = Object.freeze([
     affectedFiles: ['test/employeeRegistrationE2E.test.js'],
     evidenceFiles: ['test/employeeRegistrationE2E.test.js'],
     selectiveTests: ['test/employeeRegistrationE2E.test.js'], fullRegressionRequired: true, rollbackAvailable: true,
-    humanGate: { reasonCode: 'E2E_LIVE_RUN_APPROVAL', action: '実社員データを使う登録テストの実施承認（テスト用アカウントの指定）' },
+    blockedByHuman: true,
+    humanGate: { reasonCode: 'FLOW_DEFINITION_NOT_IN_REPO', action: '対象フロー（CN_社員新規登録_Forms取込）の定義を環境から読取り専用で取得する（flow_definition_get の実環境実行、または pac による export）。取得後にモックE2Eを作成する' },
     additionalCost: 'なし', system: 'employee', liveStatus: 'BLOCKED'
   },
   {
@@ -105,7 +107,7 @@ const REMAINING_TASKS = Object.freeze([
     id: 'PERSISTENT_STORE', lane: 'lane4', goal: '永続ストア（Azure Storage → SharePoint監査 → ファイル）の自動選択を実装する',
     deps: [], weight: 4, estimatedEffort: 'M', requiredCapabilities: ['node'],
     affectedFiles: ['src/persistence/storeSelect.js'],
-    evidenceFiles: ['src/persistence/storeSelect.js'],
+    evidenceFiles: ['src/persistence/storeSelect.js', 'test/persistentStore.test.js'],
     selectiveTests: ['test/persistentStore.test.js'], fullRegressionRequired: true, rollbackAvailable: true,
     humanGate: { reasonCode: 'PERSISTENT_STORE_LIVE_CONNECTION', action: 'Azure Storage または SharePoint 監査リストへの接続情報（ID基盤の権限）を用意する' },
     additionalCost: 'なし', system: 'store', liveStatus: 'BLOCKED'
@@ -153,6 +155,8 @@ function codeStatusOf(def, repoRoot, completedIds) {
   // 証跡があっても、依存が未完了なら COMPLETE にしない（依存順の前提を守る）。
   if (evidenceOk && depsOk) return 'COMPLETE';
   if (def.deferred) return 'DEFERRED';
+  // 人間（または実環境の読取り）でしか得られない材料が無いタスクは、依存が揃っていても BLOCKED とする。
+  if (def.blockedByHuman && depsOk) return 'BLOCKED';
   return depsOk ? 'READY' : 'PENDING';
 }
 
