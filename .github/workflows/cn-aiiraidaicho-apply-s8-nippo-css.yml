@@ -47,6 +47,20 @@ jobs:
         with:
           pac-version-override: 2.4.1
 
+      - name: Locate the pac executable
+        run: |
+          set -e
+          echo "PACPATH=$POWERPLATFORMTOOLS_PACPATH"
+          PAC=$(find "$POWERPLATFORMTOOLS_PACPATH" -maxdepth 5 -type f -name pac 2>/dev/null | head -n 1)
+          if [ -z "$PAC" ]; then
+            ls -R "$POWERPLATFORMTOOLS_PACPATH" 2>/dev/null | head -50
+            echo "::error::pac executable not found under PACPATH. Nothing was changed."
+            exit 1
+          fi
+          chmod +x "$PAC" || true
+          echo "PAC=$PAC" >> "$GITHUB_ENV"
+          "$PAC" help 2>&1 | head -3
+
       - name: Export current solution (read-only)
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
@@ -87,7 +101,7 @@ jobs:
           MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
           test -n "$MSAPP"
           echo "MSAPP=$MSAPP" >> "$GITHUB_ENV"
-          pac canvas unpack --msapp "$MSAPP" --sources out/src --layout SourceCode --overwrite
+          "$PAC" canvas unpack --msapp "$MSAPP" --sources out/src --layout SourceCode --overwrite
           cp -r out/src out/src_base
 
       - name: Patch the S8_Nippo style (exactly one match or stop)
@@ -111,8 +125,8 @@ jobs:
       - name: Pack canvas app and verify only S8_Nippo changed
         run: |
           set -e
-          pac canvas pack --sources out/src --msapp "$MSAPP" --layout SourceCode --overwrite
-          pac canvas unpack --msapp "$MSAPP" --sources out/src_check --layout SourceCode --overwrite
+          "$PAC" canvas pack --sources out/src --msapp "$MSAPP" --layout SourceCode --overwrite
+          "$PAC" canvas unpack --msapp "$MSAPP" --sources out/src_check --layout SourceCode --overwrite
           python3 - <<'PY'
           import difflib, pathlib
           base, chk = pathlib.Path('out/src_base'), pathlib.Path('out/src_check')
