@@ -79,10 +79,12 @@ const {
   validateCanEditUserInfoParams,
   validateCanDeleteUserInfoParams,
   validateGenerateUIControlStateParams,
+  validateGetEmployeeTenureParams,
   validatePrepareExecutionPackageParams
 } = require('./bridgeExtensionsValidation');
 const { PowerPlatformRequestHandler, validateExecutePowerPlatformRequestParams } = require('./powerPlatformRequestHandler');
 const { UserProtectionService } = require('./userProtectionService');
+const { calculateEmployeeTenure } = require('./employeeTenure');
 const {
   getBridgeCapabilities,
   checkDependencies,
@@ -169,7 +171,7 @@ const MCP_METHODS = Object.freeze([
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
   'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
-  'create_employee_ledger_entry', 'update_employee_ledger_entry',
+  'create_employee_ledger_entry', 'update_employee_ledger_entry', 'get_employee_tenure',
   'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
   'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
   'get_permissions', 'update_permissions',
@@ -769,6 +771,20 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['user', 'currentUserEmail'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'get_employee_tenure',
+    description: '社員登録（入社日）からの経過期間（年・か月・日、通算日数）を計算して返します。基準日省略時は実行日。入社前は status:入社前 を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        hireDate: { type: 'string', description: '入社日（YYYY-MM-DD）' },
+        asOf: { type: 'string', description: '基準日（YYYY-MM-DD、省略時は実行日）' }
+      },
+      required: ['hireDate'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
   },
   {
     name: 'get_bridge_capabilities',
@@ -2117,6 +2133,13 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const paramError = validateGenerateUIControlStateParams(params);
     if (paramError) throw requestError(paramError);
     return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
+  }
+  if (method === 'get_employee_tenure') {
+    const paramError = validateGetEmployeeTenureParams(params);
+    if (paramError) throw requestError(paramError);
+    const tenure = calculateEmployeeTenure(params.hireDate, params.asOf);
+    if (tenure.error) throw requestError(tenure.error);
+    return tenure;
   }
   if (method === 'get_bridge_capabilities') {
     return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18', deploymentSha: config.deploymentSha || null });
