@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const test = require('node:test');
 const { getConfig } = require('../src/config');
 
@@ -55,7 +56,10 @@ test('デプロイ連携の設定を環境変数で上書きできる（URL末�
   assert.equal(deployment.productionBaseUrl, 'https://p.example.com');
   assert.equal(deployment.healthAttempts, 5);
   assert.equal(deployment.healthRetryDelayMs, 0);
-  assert.equal(deployment.historyPath, '/tmp/history.jsonl');
+  // path.resolve() is platform-aware (it anchors a POSIX-style absolute path to the current
+  // drive on Windows), so the expected value must go through the same transform as config.js
+  // rather than asserting a literal POSIX string.
+  assert.equal(deployment.historyPath, path.resolve('/tmp/history.jsonl'));
 });
 
 test('デプロイ用GitHubトークンはPower Appsソース用トークンを流用しない', () => {

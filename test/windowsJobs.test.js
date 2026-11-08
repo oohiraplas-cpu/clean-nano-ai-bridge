@@ -29,8 +29,8 @@ const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).sl
 
 // ---------- existing surface is preserved ----------
 
-test('the 24 published tools and the existing MCP surface are preserved', () => {
-  assert.equal(PUBLISHED_TOOLS.length, 24);
+test('the 25 published tools and the existing MCP surface are preserved', () => {
+  assert.equal(PUBLISHED_TOOLS.length, 25);
   const published = PUBLISHED_TOOLS.map((tool) => tool.name);
   for (const name of ['system_health', 'canvas_resolve', 'canvas_read', 'canvas_media', 'canvas_edit', 'canvas_save', 'canvas_verify', 'canvas_publish',
     'canvas_rollback', 'audit_get', 'sharepoint', 'power_automate', 'tasks', 'github_azure', 'governance', 'runtime_capture', 'deployment', 'user_access',

@@ -44,11 +44,28 @@ class WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / 'app.msapp'
             with zipfile.ZipFile(archive, 'w') as package:
-                package.writestr(entry, 'Screens: {}')
+                # ZipInfo(str) normalizes os.sep to '/' in its constructor, which would
+                # silently turn this literal backslash entry into a forward-slash one on
+                # Windows before it's even written. Set .filename directly after
+                # construction (plain attribute assignment skips that normalization) so the
+                # fixture holds the exact literal entry on every host OS.
+                info = zipfile.ZipInfo('x')
+                info.filename = entry
+                package.writestr(info, 'Screens: {}')
             self.assertTrue(worker.valid_source_entry(entry))
-            self.assertEqual(worker.extract_source(archive, entry)[0], 'Screens: {}')
-            with self.assertRaises(RuntimeError):
-                worker.extract_source(archive, 'Src/S1_Home.pa.yaml')
+            # Production runs this script in a Linux container (os.sep == '/'), where
+            # reading the archive never alters this backslash entry. On Windows, CPython's
+            # zipfile unconditionally rebuilds every ZipInfo from the central directory via
+            # ZipInfo(name) when reading (see _RealGetContents), which re-triggers the
+            # os.sep normalization on *read* regardless of what bytes are actually stored in
+            # the archive - so the entry would be seen as 'Src/S1_Home.pa.yaml' even though
+            # the fixture above genuinely wrote the literal backslash. Patching os.sep here
+            # makes the read path behave like production on every host OS; it is a no-op on
+            # Linux, where os.sep is already '/'.
+            with patch('os.sep', '/'):
+                self.assertEqual(worker.extract_source(archive, entry)[0], 'Screens: {}')
+                with self.assertRaises(RuntimeError):
+                    worker.extract_source(archive, 'Src/S1_Home.pa.yaml')
         for entry in [r'Src\..\Home.pa.yaml', r'Src\\Home.pa.yaml', '/Src/Home.pa.yaml', 'Src/./Home.pa.yaml', 'Src/Home.pa.yaml\0']:
             self.assertFalse(worker.valid_source_entry(entry))
 

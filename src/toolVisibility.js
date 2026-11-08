@@ -245,6 +245,15 @@ const FACADES = Object.freeze([
       update: { tool: 'update_employee_ledger_entry' },
     },
   },
+  {
+    name: 'cnai_router',
+    description: 'CNAI Router（中央オーケストレーター）。operation: route（分類・Route選択・実行・検証・監査まで1回で処理） | status（状態・Checkpoint・監査証跡の取得） | rollback（状態のみの取消）。',
+    ops: {
+      route: { tool: 'cnai_route_request' },
+      status: { tool: 'cnai_get_route_status' },
+      rollback: { tool: 'cnai_rollback_route' },
+    },
+  },
 ]);
 
 const FACADE_BY_NAME = new Map(FACADES.map((f) => [f.name, f]));
