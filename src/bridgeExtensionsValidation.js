@@ -231,6 +231,16 @@ function validateGenerateUIControlStateParams(params) {
   return null;
 }
 
+function validateGetEmployeeTenureParams(params) {
+  if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
+  const unknown = unknownProperty(params, ['hireDate', 'asOf']);
+  if (unknown) return unknown;
+  const error = requiredString(params, 'hireDate');
+  if (error) return error;
+  if (params.asOf !== undefined && typeof params.asOf !== 'string') return 'asOfは文字列である必要があります';
+  return null;
+}
+
 function validatePrepareExecutionPackageParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
   const unknown = unknownProperty(params, ['appName', 'appId', 'environmentId', 'stateSessionId', 'stateContext', 'objective', 'isolatedCommit']);
@@ -275,5 +285,6 @@ module.exports = {
   validateCanEditUserInfoParams,
   validateCanDeleteUserInfoParams,
   validateGenerateUIControlStateParams,
+  validateGetEmployeeTenureParams,
   validatePrepareExecutionPackageParams
 };

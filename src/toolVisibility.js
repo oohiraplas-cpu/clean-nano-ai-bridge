@@ -239,10 +239,11 @@ const FACADES = Object.freeze([
   },
   {
     name: 'employee_ledger',
-    description: '社員台帳の登録・更新（既存機能）。operation: create | update。',
+    description: '社員台帳の登録・更新（既存機能）と登録後の経過期間の計算。operation: create | update | tenure（読み取りのみ。hireDateから経過年月日を返す）。',
     ops: {
       create: { tool: 'create_employee_ledger_entry' },
       update: { tool: 'update_employee_ledger_entry' },
+      tenure: { tool: 'get_employee_tenure' },
     },
   },
 ]);
