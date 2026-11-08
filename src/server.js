@@ -6,6 +6,7 @@ const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
 const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
 const windowsJobs = require('./windowsJobs');
+const cnaiRouter = require('./cnaiRouter');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -165,6 +166,7 @@ const MCP_METHODS = Object.freeze([
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
   'cnai_submit_windows_job',
+  'cnai_route_request', 'cnai_get_route_status', 'cnai_rollback_route',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
@@ -362,6 +364,48 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         riskLevel: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'ジョブのリスクレベル' }
       },
       required: ['action', 'workspace', 'riskLevel'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_route_request',
+    description: 'CNAI Routerへ1件の依頼を投入し、分類・Route選択・ポリシーゲート・実行・検証・監査・Checkpointまでを1回で処理します。未確認の結果はCOMPLETEDとして返しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        requestType: { type: 'string', description: '依頼の種別（任意の短い説明）' },
+        platformHint: { type: 'string', description: 'microsoft365 / sharepoint / powerapps / powerautomate / operationsmcp / windows / code / chatgpt 等のヒント' },
+        route: { type: 'string', enum: cnaiRouter.ROUTES, description: 'Routeを明示指定する場合（省略時はplatformHintから決定）' },
+        riskLevel: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: '省略時はLOW' },
+        requiredCapability: { type: 'string', description: 'Premium/外部AI Routeが使えない場合に探す無料代替の判定キー' },
+        allowPaid: { type: 'boolean', description: '明示的に課金Routeの実行を許可する場合のみtrue（既定false）' },
+        costHint: { type: 'string', enum: ['FREE', 'PAID'], description: '外部AI Routeのコスト区分の既知情報（任意）' },
+        idempotencyKey: { type: 'string', description: '同一キーの二重投入を防止する識別子（任意）' },
+        correlationId: { type: 'string', description: '既存の追跡IDを引き継ぐ場合（任意）' },
+        payload: { description: '実行対象への入力（秘密値はマスクして保存されます）' },
+        workspace: { type: 'string', description: 'windowsExecutor Route向けの作業対象パス（任意）' }
+      },
+      required: ['requestType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_get_route_status',
+    description: 'CNAI Routerの依頼状態・Checkpoint・監査証跡を取得します（読み取りのみ）。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string' } },
+      required: ['requestId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_rollback_route',
+    description: 'CNAI Routerの依頼をロールバック（状態のみ）します。実行済みの外部副作用そのものは取り消しません。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string' }, reason: { type: 'string' } },
+      required: ['requestId'],
       additionalProperties: false
     }
   },
@@ -1749,6 +1793,22 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     const { taskId, action, workspace, riskLevel } = params;
     return windowsJobs.submitWindowsJob(windowsJobs.defaultState, { taskId, action, workspace, riskLevel }, 'mcp');
   }
+  if (method === 'cnai_route_request') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    return cnaiRouter.routeRequest(cnaiRouter.defaultState, params);
+  }
+  if (method === 'cnai_get_route_status') {
+    if (!params || typeof params.requestId !== 'string') throw requestError('requestIdは必須です');
+    return {
+      status: cnaiRouter.getStatus(cnaiRouter.defaultState, params.requestId),
+      checkpoint: cnaiRouter.getCheckpoint(cnaiRouter.defaultState, params.requestId),
+      audit: cnaiRouter.getAuditTrail(cnaiRouter.defaultState, params.requestId)
+    };
+  }
+  if (method === 'cnai_rollback_route') {
+    if (!params || typeof params.requestId !== 'string') throw requestError('requestIdは必須です');
+    return cnaiRouter.rollbackRequest(cnaiRouter.defaultState, params.requestId, params.reason);
+  }
   if (method === 'verify_github_ci_artifact') {
     if (!config.mcpApiKey) return { status: 'blocked', reason: 'mcp_authentication_required', mayEditDraft: false, mayMerge: false, mayDeploy: false };
     return bridgeServices.ciArtifact.verify(params);
@@ -3041,6 +3101,31 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   app.post('/job/checkpoint', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.checkpointWindowsJob(jobState, req.body || {}) })));
   app.post('/job/result', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.resultWindowsJob(jobState, req.body || {}) })));
   app.get('/job/:taskId', jobAuth, jobRoute((req) => ({ taskId: req.params.taskId, job: windowsJobs.getWindowsJob(jobState, req.params.taskId) })));
+
+  // CNAI Router: classify -> route -> dispatch -> verify -> audit -> checkpoint, in one call.
+  // Same auth posture as the Windows Executor/job routes (fail-closed 503 with no MCP_API_KEY).
+  app.post('/router/request', jobAuth, async (req, res, next) => {
+    try {
+      return res.status(200).json(await cnaiRouter.routeRequest(cnaiRouter.defaultState, req.body || {}));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+  app.get('/router/request/:id', jobAuth, jobRoute((req) => ({
+    status: cnaiRouter.getStatus(cnaiRouter.defaultState, req.params.id),
+    checkpoint: cnaiRouter.getCheckpoint(cnaiRouter.defaultState, req.params.id),
+    audit: cnaiRouter.getAuditTrail(cnaiRouter.defaultState, req.params.id)
+  })));
+  app.post('/router/request/:id/resume', jobAuth, async (req, res, next) => {
+    try {
+      return res.status(200).json(await cnaiRouter.resumeRequest(cnaiRouter.defaultState, req.params.id, req.body || {}));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+  app.post('/router/request/:id/rollback', jobAuth, jobRoute((req) => cnaiRouter.rollbackRequest(cnaiRouter.defaultState, req.params.id, req.body?.reason)));
 
   // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
   // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
