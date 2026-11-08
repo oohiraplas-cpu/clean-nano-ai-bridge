@@ -5,6 +5,7 @@ const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
 const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
+const windowsJobs = require('./windowsJobs');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -163,6 +164,7 @@ const MCP_METHODS = Object.freeze([
   'get_executive_policy', 'get_executive_brief',
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
+  'cnai_submit_windows_job',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
@@ -345,6 +347,21 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_sourceで正本ソースを観測したstateSessionId（必須・契約2026-10-11）' }
       },
       required: ['stateContext', 'stateSessionId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_submit_windows_job',
+    description: 'CNAI RouterからWindows Executorへ安全にジョブを投入します。LOW/MEDIUMのみ自動受付し、HIGH/CRITICALは人間承認待ち（WAITING_FOR_APPROVAL）になります。同じtaskIdは二重実行されません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'ジョブ識別子。未指定時は自動生成される' },
+        action: { type: 'string', description: '実行するジョブの要約（例: bridge_read_verify）' },
+        workspace: { type: 'string', description: '実行対象のワークスペースまたはパス' },
+        riskLevel: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'ジョブのリスクレベル' }
+      },
+      required: ['action', 'workspace', 'riskLevel'],
       additionalProperties: false
     }
   },
@@ -1727,6 +1744,11 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'cnai_submit_windows_job') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    const { taskId, action, workspace, riskLevel } = params;
+    return windowsJobs.submitWindowsJob(windowsJobs.defaultState, { taskId, action, workspace, riskLevel }, 'mcp');
+  }
   if (method === 'verify_github_ci_artifact') {
     if (!config.mcpApiKey) return { status: 'blocked', reason: 'mcp_authentication_required', mayEditDraft: false, mayMerge: false, mayDeploy: false };
     return bridgeServices.ciArtifact.verify(params);
@@ -2991,6 +3013,34 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   });
 
   const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+
+  // Windows Executor / Job API. Same MCP_API_KEY as /mcp, but fail-closed: with no key configured
+  // these routes refuse instead of opening the job queue to anyone.
+  const jobAuth = (req, res, next) => (config.mcpApiKey
+    ? mcpAuth(req, res, next)
+    : res.status(503).json({ error: '認証キーが未設定のため利用できません' }));
+  const jobRoute = (handler) => (req, res, next) => {
+    try {
+      return res.status(200).json(handler(req));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  };
+  const jobState = windowsJobs.defaultState;
+  app.post('/executor/register', jobAuth, jobRoute((req) => windowsJobs.registerExecutor(jobState, req.body || {})));
+  app.post('/executor/heartbeat', jobAuth, jobRoute((req) => windowsJobs.heartbeatExecutor(jobState, req.body || {})));
+  app.post('/job/submit', jobAuth, jobRoute((req) => {
+    const result = windowsJobs.submitWindowsJob(jobState, req.body || {}, 'submit');
+    return { accepted: result.accepted, taskId: result.taskId, status: result.status, ...(result.duplicate ? { duplicate: true } : {}) };
+  }));
+  app.get('/job/pull', jobAuth, jobRoute((req) => {
+    const executorId = typeof req.query.executorId === 'string' ? req.query.executorId : req.query.executor_id;
+    return { accepted: true, ...windowsJobs.pullWindowsJob(jobState, windowsJobs.readExecutorId({ executorId })) };
+  }));
+  app.post('/job/checkpoint', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.checkpointWindowsJob(jobState, req.body || {}) })));
+  app.post('/job/result', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.resultWindowsJob(jobState, req.body || {}) })));
+  app.get('/job/:taskId', jobAuth, jobRoute((req) => ({ taskId: req.params.taskId, job: windowsJobs.getWindowsJob(jobState, req.params.taskId) })));
 
   // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
   // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
