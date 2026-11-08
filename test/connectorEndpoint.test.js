@@ -6,6 +6,7 @@ const test = require('node:test');
 const { createApp, CONNECTOR_READONLY_TOOLS, MCP_METHODS, PUBLISHED_TOOLS } = require('../src/server');
 const { getConfig } = require('../src/config');
 const { DIRECT_TOOL_NAMES } = require('../src/toolVisibility');
+const { COPILOT_TOOL_NAMES } = require('../src/cnaiCopilotEntry');
 
 async function startServer(env = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'connector-endpoint-'));
@@ -45,13 +46,13 @@ test('wrong or missing key is rejected; the master key does not work here and th
   } finally { await close(); }
 });
 
-test('tools/list returns exactly the read-only tools', async () => {
+test('tools/list returns exactly the read-only tools plus the Copilot CNAI entry', async () => {
   const { base, close } = await startServer({ CONNECTOR_API_KEY: 'connector-key-1234' });
   try {
     const res = await post(`${base}/connector/mcp?api_key=connector-key-1234`, rpc('tools/list'));
     assert.equal(res.status, 200);
     const names = (await res.json()).result.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, [...CONNECTOR_READONLY_TOOLS].sort());
+    assert.deepEqual(names, [...CONNECTOR_READONLY_TOOLS, ...COPILOT_TOOL_NAMES].sort());
   } finally { await close(); }
 });
 
