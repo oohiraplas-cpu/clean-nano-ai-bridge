@@ -1,0 +1,43 @@
+name: Bridge コネクタ用キーの診断（読み取り専用・値は出さない）
+# Read-only. Reports ONLY: whether CONNECTOR_API_KEY exists, whether it is a slot setting,
+# the length of its value (never the value), the app state and last-modified time, and slot names.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Report the state of CONNECTOR_API_KEY (no values)
+        run: |
+          set -uo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          echo "app found: $([ -n "$RG" ] && echo yes || echo no)"
+          [ -n "$RG" ] || exit 1
+          echo "--- app"
+          az webapp show --name "$APP_NAME" --resource-group "$RG" --query "{state:state, host:defaultHostName, lastModifiedUtc:lastModifiedTimeUtc}" -o json --only-show-errors
+          echo "--- deployment slots (names only)"
+          az webapp deployment slot list --name "$APP_NAME" --resource-group "$RG" --query "[].name" -o tsv --only-show-errors || echo "(could not list slots)"
+          echo "--- CONNECTOR_API_KEY"
+          COUNT=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='CONNECTOR_API_KEY'] | length(@)" -o tsv --only-show-errors)
+          echo "exists: $([ "$COUNT" = "1" ] && echo yes || echo "no (count=$COUNT)")"
+          if [ "$COUNT" = "1" ]; then
+            echo "slotSetting: $(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='CONNECTOR_API_KEY'] | [0].slotSetting" -o tsv --only-show-errors)"
+            echo "value length (characters): $(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='CONNECTOR_API_KEY'] | [0].value | length(@)" -o tsv --only-show-errors)"
+          fi
+          echo "--- similarly named settings (names only, to catch typos)"
+          az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?contains(to_string(name), 'CONNECTOR') || contains(to_string(name), 'connector')].name" -o tsv --only-show-errors
