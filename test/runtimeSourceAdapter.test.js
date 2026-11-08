@@ -1,8 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { execFileSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const { findPythonInterpreter } = require('./helpers/pythonInterpreter');
 const { PowerAppsRuntimeSourceAdapter } = require('../src/powerAppsRuntimeSource');
 const { compareSources } = require('../src/sourceComparison');
 const { StateContextRegistry, blobSha } = require('../src/stateContext');
@@ -211,8 +212,11 @@ test('MCP cross-session comparison is validation_blocked before runtime export',
   assert.equal(f.counts().exports, 0);
 });
 test('PAC worker archive and subprocess tests pass', () => {
-  const output = execFileSync(process.env.POWERAPPS_RUNTIME_PYTHON || 'python3', [path.join(__dirname, 'runtime_source_worker_test.py')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  assert.match(output, /worker tests passed/);
+  const python = findPythonInterpreter();
+  if (!python) throw new Error('No usable Python 3 interpreter found');
+  const result = spawnSync(python.command, [...python.args, path.join(__dirname, 'runtime_source_worker_test.py')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /worker tests passed/);
 });
 
 
