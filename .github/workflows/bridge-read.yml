@@ -1,0 +1,88 @@
+name: Bridge 読み取りツールの実行（読み取り専用）
+# Calls ONE of the five read-only tools through the production connector endpoint (/connector/mcp)
+# and prints the response. The connector key is read from Azure App Service settings inside the run,
+# masked, and never printed. Nothing is changed: this is read-only by construction (the endpoint
+# only exposes these five tools).
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: "呼ぶ読み取りツール"
+        required: true
+        type: choice
+        default: health_check
+        options:
+          - health_check
+          - resolve_app_target
+          - get_powerapps_app
+          - get_powerapps_state
+          - get_powerapps_source
+      arguments:
+        description: "ツールの引数（JSON。不要なら {}）"
+        required: false
+        default: "{}"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/connector/mcp
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Call the read-only tool (the key is never printed)
+        env:
+          TOOL: ${{ inputs.tool }}
+          ARGS: ${{ inputs.arguments }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='CONNECTOR_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::CONNECTOR_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+          ALLOWED = {'health_check', 'resolve_app_target', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source'}
+          tool = os.environ['TOOL']
+          if tool not in ALLOWED:
+              sys.exit('tool not allowed: ' + tool)
+          try:
+              args = json.loads(os.environ.get('ARGS') or '{}')
+          except ValueError:
+              sys.exit('arguments must be valid JSON')
+          if not isinstance(args, dict):
+              sys.exit('arguments must be a JSON object')
+          body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': tool, 'arguments': args}}).encode()
+          url = os.environ['BASE_URL'] + '?api_key=' + os.environ['KEY']
+          req = urllib.request.Request(url, data=body, headers={'content-type': 'application/json'}, method='POST')
+          try:
+              with urllib.request.urlopen(req, timeout=120) as res:
+                  status, text = res.status, res.read().decode('utf-8', 'replace')
+          except urllib.error.HTTPError as e:
+              status, text = e.code, e.read().decode('utf-8', 'replace')
+          print('tool:', tool)
+          print('HTTP', status)
+          try:
+              data = json.loads(text)
+              result = data.get('result', data)
+              out = json.dumps(result.get('structuredContent', result) if isinstance(result, dict) else result, ensure_ascii=False, indent=2)
+              print('isError:', result.get('isError') if isinstance(result, dict) else None)
+          except ValueError:
+              out = text
+          limit = 30000
+          print(out[:limit] + ('\n... (truncated)' if len(out) > limit else ''))
+          sys.exit(0 if status == 200 else 1)
+          PY
