@@ -1776,3 +1776,48 @@ test('SharePointの新規作成・編集ツールは人間承認なしでは書�
   }
   assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
 });
+
+
+test('OZ MCP facade: authentication, three entries, read and write isolation', async (t) => {
+  const server = await createTestServer([seedTask], { mcpApiKey: 'mcp-secret' });
+  t.after(() => server.close());
+  const url = server.baseUrl + '/mcp';
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+  const call = async (name, operation, payload = {}, extraHeaders = headers) => {
+    const response = await fetch(url, { method: 'POST', headers: extraHeaders,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 31, method: 'tools/call',
+        params: { name, arguments: { operation, payload } } }) });
+    return { http: response.status, body: await response.json() };
+  };
+  const listed = await fetch(url, { method: 'POST', headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 30, method: 'tools/list', params: {} }) });
+  assert.equal(listed.status, 200);
+  const names = (await listed.json()).result.tools.map(tool => tool.name);
+  for (const entry of ['OZ_EXECUTE', 'OZ_QUERY', 'OZ_CONTROL'])
+    assert.equal(names.filter(name => name === entry).length, 1);
+
+  const unauth = await call('OZ_QUERY', 'health_check', {}, { 'content-type': 'application/json' });
+  assert.equal(unauth.http, 401);
+  const wrongKey = await call('OZ_QUERY', 'health_check', {},
+    { 'content-type': 'application/json', 'x-api-key': 'wrong' });
+  assert.equal(wrongKey.http, 401);
+
+  const capabilities = await call('OZ_CONTROL', 'capabilities');
+  assert.equal(capabilities.http, 200);
+  assert.equal(capabilities.body.result.structuredContent.status, 'CONFIRMED');
+
+  const read = await call('OZ_QUERY', 'health_check');
+  assert.equal(read.http, 200);
+  assert.equal(read.body.result.structuredContent.status, 'PASS');
+
+  const deniedQuery = await call('OZ_QUERY', 'create_task', { title: 'never create' });
+  assert.equal(deniedQuery.body.result.structuredContent.reasonCode, 'QUERY_READ_ONLY');
+  assert.equal(deniedQuery.body.result.isError, true);
+
+  const deniedExecute = await call('OZ_EXECUTE', 'create_task',
+    { title: 'never create', writeAuthorized: true, humanApproved: true });
+  assert.equal(deniedExecute.body.result.structuredContent.reasonCode, 'WRITE_LANE_NOT_AUTHORIZED');
+
+  const deniedControl = await call('OZ_CONTROL', 'delete_all');
+  assert.equal(deniedControl.body.result.structuredContent.reasonCode, 'CONTROL_NOT_CONFIGURED');
+});
