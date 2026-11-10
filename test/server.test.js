@@ -1809,7 +1809,7 @@ test('OZ MCP facade: authentication, three entries, read and write isolation', a
       humanApproved: true, costApproved: true });
   assert.equal(forged.body.result.structuredContent.reasonCode, 'WRITE_LANE_NOT_AUTHORIZED');
   const malformed = await call('OZ_QUERY', 'health_check', []);
-  assert.equal(malformed.body.result.structuredContent.status, 'PASS');
+  assert.equal(malformed.body.result.structuredContent.reasonCode, 'INVALID_INPUT');
   const executeRead = await call('OZ_EXECUTE', 'health_check');
   assert.equal(executeRead.body.result.structuredContent.status, 'PASS');
 
