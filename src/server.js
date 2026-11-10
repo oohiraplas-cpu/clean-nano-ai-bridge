@@ -36,6 +36,7 @@ const { RuntimeEvidenceEngine } = require('./runtimeEvidenceEngine');
 const { DispatchEngine } = require('./dispatchEngine');
 const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
 const { createOperationsMcp, OPERATIONS_PUBLIC_TOOLS, INTEGRATED_TOOL_NAMES, INTERNAL_ONLY_TOOLS } = require('./operationsMcp');
+const { createOzRuntime } = require('./oz/runtime');
 
 // Clean Nano Operations の実行器は config ごとに1つ作る（同じ config の中では一時ストアを共有する）。
 const operationsRuntimes = new WeakMap();
@@ -1642,7 +1643,15 @@ const MCP_PUBLIC_TOOLS = Object.freeze([...MCP_PUBLIC_TOOLS_BASE, ...OPERATIONS_
 // Clean Nano Operations tools are published directly (not as facades) so that the existing /mcp connection discovers them.
 // facade の対象になった内部ツールは、公開一覧では facade 経由でのみ見せる（tools/call では従来どおり直接呼べる）。
 const FACADE_TARGET_NAMES = new Set(FACADES.flatMap((f) => Object.values(f.ops).map((op) => op.tool)));
-const PUBLISHED_TOOLS = Object.freeze([...publishedToolsFor(MCP_PUBLIC_TOOLS), ...OPERATIONS_PUBLIC_TOOLS.filter((tool) => !FACADE_TARGET_NAMES.has(tool.name))]);
+const OZ_ENTRY_TOOLS = Object.freeze(['OZ_EXECUTE', 'OZ_QUERY', 'OZ_CONTROL'].map((name) => ({
+  name, description: 'OZ Router shared entry (server-enforced read-only until write gates are verified).',
+  inputSchema: { type: 'object', properties: {
+    operation: { type: 'string', minLength: 1 },
+    payload: { type: 'object' }
+  }, required: ['operation'], additionalProperties: false }
+})));
+const OZ_ENTRY_NAMES = new Set(OZ_ENTRY_TOOLS.map(tool => tool.name));
+const PUBLISHED_TOOLS = Object.freeze([...publishedToolsFor(MCP_PUBLIC_TOOLS), ...OPERATIONS_PUBLIC_TOOLS.filter((tool) => !FACADE_TARGET_NAMES.has(tool.name)), ...OZ_ENTRY_TOOLS]);
 
 async function tasksPayload(store) {
   const tasks = await store.list();
@@ -3043,6 +3052,9 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     handleMcpRequest(req, res, next).catch(next);
   });
 
+  // OZ shares the existing authenticated /mcp endpoint and server-owned authority.
+  const ozRuntime = createOzRuntime(config, { operations: operationsRuntimeFor(config) });
+
   // Clean Nano Operations MCP の互換エイリアス（内部検証用）。同じツールは /mcp の tools/list と tools/call からも使える。
   // 認証鍵が未設定の場合は fail closed とし、認証設定不足として拒否する（値は返さない）。
   const operationsKeyRequired = mcpAuth;
@@ -3526,6 +3538,18 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
         let name;
         let toolParams;
         try {
+          if (OZ_ENTRY_NAMES.has(params.name)) {
+            const result = await ozRuntime.dispatch({
+              entry: params.name,
+              operation: params.arguments?.operation,
+              payload: params.arguments?.payload || {}
+            }, { transportAuthenticated: true });
+            return res.status(200).json(jsonRpcResult(id, {
+              content: [{ type: 'text', text: JSON.stringify(result) }],
+              structuredContent: result,
+              isError: result.status === 'BLOCKED' || result.status === 'FAIL'
+            }));
+          }
           // Published consolidated tools resolve to the internal tool first, so the
           // state-context and approval gates below apply to the real target.
           ({ name, args: toolParams } = resolveVisibleCall(params.name, params.arguments || {}));
