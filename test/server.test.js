@@ -1802,6 +1802,17 @@ test('OZ MCP facade: authentication, three entries, read and write isolation', a
     { 'content-type': 'application/json', 'x-api-key': 'wrong' });
   assert.equal(wrongKey.http, 401);
 
+  // The production endpoint must fail closed when the API key is absent,
+  // including for tool discovery, and caller-supplied authority cannot bypass it.
+  const forged = await call('OZ_EXECUTE', 'create_task',
+    { title: 'never create', transportAuthenticated: true, writeAuthorized: true,
+      humanApproved: true, costApproved: true });
+  assert.equal(forged.body.result.structuredContent.reasonCode, 'WRITE_LANE_NOT_AUTHORIZED');
+  const malformed = await call('OZ_QUERY', 'health_check', []);
+  assert.equal(malformed.body.result.structuredContent.status, 'PASS');
+  const executeRead = await call('OZ_EXECUTE', 'health_check');
+  assert.equal(executeRead.body.result.structuredContent.status, 'PASS');
+
   const capabilities = await call('OZ_CONTROL', 'capabilities');
   assert.equal(capabilities.http, 200);
   assert.equal(capabilities.body.result.structuredContent.status, 'CONFIRMED');
