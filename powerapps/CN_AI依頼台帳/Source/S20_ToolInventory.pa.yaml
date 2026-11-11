@@ -1,0 +1,189 @@
+# ************************************************************************************************
+# Warning: YAML source code for Canvas Apps should only be used to review changes made within Power Apps Studio and for minor edits (Preview).
+# Use the maker portal to create and edit your Power Apps.
+# 
+# The schema file for Canvas Apps is available at https://go.microsoft.com/fwlink/?linkid=2304907
+# 
+# For more information, visit https://go.microsoft.com/fwlink/?linkid=2292623
+# ************************************************************************************************
+Screens:
+  S20_ToolInventory:
+    Properties:
+      Fill: =RGBA(8, 8, 9, 1)
+      OnVisible: |-
+        =If(IsEmpty(colTools), ClearCollect(colTools, {ToolID: 1, Name: "サンプル工具", Category: "工具", Stock: 0, Location: "倉庫", Note: "接続前の画面確認用データ"}))
+    Children:
+      - TI_Title:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(160, 255, 190, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =40
+            Size: =20
+            Text: ="在庫・工具管理"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =12
+      - TI_Back:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderThickness: =1
+            Color: =RGBA(245,245,248,1)
+            Fill: =RGBA(22, 66, 39, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =38
+            OnSelect: =Navigate(S1_Home, ScreenTransition.None)
+            Size: =12
+            Text: ="ホームへ戻る"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =56
+      - TI_Search:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            Color: =RGBA(20, 20, 20, 1)
+            Default: =""
+            Fill: =RGBA(245, 245, 248, 1)
+            Height: =38
+            HintText: ="工具名・分類・保管場所で検索"
+            Size: =12
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =102
+      - TI_Gallery:
+          Control: Gallery@2.15.0
+          Variant: BrowseLayout_Vertical_TwoTextVariant_ver5.0
+          Properties:
+            Height: =230
+            Items: =SortByColumns(Filter(colTools, IsBlank(TI_Search.Text) || TI_Search.Text in Name || TI_Search.Text in Category || TI_Search.Text in Location), "Name", SortOrder.Ascending)
+            TemplateFill: =If(ThisItem.Stock <= 0, RGBA(70, 24, 24, 1), RGBA(18, 48, 31, 1))
+            TemplatePadding: =4
+            TemplateSize: =70
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =148
+          Children:
+            - TI_ItemText:
+                Control: Label@2.5.1
+                Properties:
+                  Color: =RGBA(245, 245, 248, 1)
+                  Height: =64
+                  Size: =12
+                  Text: =ThisItem.Name & "（" & ThisItem.Category & "）" & Char(10) & "在庫 " & ThisItem.Stock & "  ｜  " & ThisItem.Location
+                  Width: =Parent.TemplateWidth - 130
+                  X: =8
+                  Y: =3
+            - TI_Minus:
+                Control: Classic/Button@2.2.0
+                Properties:
+                  Height: =40
+                  OnSelect: |-
+                    =Patch(colTools, ThisItem, {Stock: Max(0, ThisItem.Stock - 1)})
+                  Size: =14
+                  Text: ="－"
+                  Width: =44
+                  X: =Parent.TemplateWidth - 118
+                  Y: =15
+            - TI_Plus:
+                Control: Classic/Button@2.2.0
+                Properties:
+                  Height: =40
+                  OnSelect: |-
+                    =Patch(colTools, ThisItem, {Stock: ThisItem.Stock + 1})
+                  Size: =14
+                  Text: ="＋"
+                  Width: =44
+                  X: =Parent.TemplateWidth - 66
+                  Y: =15
+      - TI_AddTitle:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(190, 190, 196, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =26
+            Size: =12
+            Text: ="工具を追加"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =388
+      - TI_NewName:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            Color: =RGBA(20, 20, 20, 1)
+            Default: =""
+            Fill: =RGBA(245, 245, 248, 1)
+            Height: =38
+            HintText: ="工具名"
+            Size: =12
+            Width: =(Parent.Width - 40) / 2
+            X: =16
+            Y: =416
+      - TI_NewCategory:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            Color: =RGBA(20, 20, 20, 1)
+            Default: =""
+            Fill: =RGBA(245, 245, 248, 1)
+            Height: =38
+            HintText: ="分類"
+            Size: =12
+            Width: =(Parent.Width - 40) / 2
+            X: =24 + (Parent.Width - 40) / 2
+            Y: =416
+      - TI_NewStock:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            Color: =RGBA(20, 20, 20, 1)
+            Default: =""
+            Fill: =RGBA(245, 245, 248, 1)
+            Height: =38
+            HintText: ="在庫数"
+            Size: =12
+            Width: =(Parent.Width - 40) / 2
+            X: =16
+            Y: =460
+      - TI_NewLocation:
+          Control: Classic/TextInput@2.3.2
+          Properties:
+            Color: =RGBA(20, 20, 20, 1)
+            Default: =""
+            Fill: =RGBA(245, 245, 248, 1)
+            Height: =38
+            HintText: ="保管場所"
+            Size: =12
+            Width: =(Parent.Width - 40) / 2
+            X: =24 + (Parent.Width - 40) / 2
+            Y: =460
+      - TI_Add:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderThickness: =1
+            Color: =RGBA(245,245,248,1)
+            Fill: =RGBA(22, 66, 39, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =44
+            OnSelect: |-
+              =If(
+              IsBlank(Trim(TI_NewName.Text)) || !IsNumeric(TI_NewStock.Text) || Value(TI_NewStock.Text) < 0,
+                Notify("工具名と0以上の在庫数を入力してください。", NotificationType.Error),
+                Collect(colTools, {ToolID: Coalesce(Max(colTools, ToolID), 0) + 1, Name: Trim(TI_NewName.Text), Category: Trim(TI_NewCategory.Text), Stock: Value(TI_NewStock.Text), Location: Trim(TI_NewLocation.Text), Note: ""});
+                Reset(TI_NewName); Reset(TI_NewCategory); Reset(TI_NewStock); Reset(TI_NewLocation);
+                Notify("追加しました。", NotificationType.Success)
+              )
+            Size: =12
+            Text: ="追加"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =506
+      - TI_Notice:
+          Control: Label@2.5.1
+          Properties:
+            Color: =RGBA(190, 190, 196, 1)
+            Height: =48
+            Size: =10
+            Text: ="※ 現在はアプリ内の一時データです。SharePointリスト接続後に永続化されます。"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =560
