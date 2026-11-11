@@ -116,3 +116,20 @@ test('invalid JSON on the connector route is a JSON-RPC parse error', async () =
     assert.equal((await res.json()).error.code, -32700);
   } finally { await close(); }
 });
+
+test('/mcp is fail-closed (503) when MCP_API_KEY is not configured, and still works with the key', async (t) => {
+  const { createApp } = require('../src/server');
+  const { getConfig } = require('../src/config');
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  const open = createApp(getConfig({})).listen(0, '127.0.0.1');
+  await new Promise((r) => open.once('listening', r));
+  t.after(() => open.close());
+  const noKey = await fetch(`http://127.0.0.1:${open.address().port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+  assert.equal(noKey.status, 503);
+  const keyed = createApp(getConfig({ MCP_API_KEY: 'k'.repeat(32) })).listen(0, '127.0.0.1');
+  await new Promise((r) => keyed.once('listening', r));
+  t.after(() => keyed.close());
+  const base = `http://127.0.0.1:${keyed.address().port}/mcp`;
+  assert.equal((await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body })).status, 401);
+  assert.equal((await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'k'.repeat(32) }, body })).status, 200);
+});

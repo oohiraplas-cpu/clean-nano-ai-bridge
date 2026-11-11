@@ -3072,7 +3072,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     } catch (error) { return next(error); }
   });
 
-  const mcpAuth = apiKeyMiddleware(() => config.mcpApiKey);
+  const mcpKeyAuth = apiKeyMiddleware(() => config.mcpApiKey);
+  // Fail-closed: with no MCP_API_KEY configured, /mcp refuses (503) instead of being open to anyone.
+  const mcpAuth = (req, res, next) => (config.mcpApiKey
+    ? mcpKeyAuth(req, res, next)
+    : res.status(503).json({ error: '認証キーが未設定のため利用できません' }));
 
   // Windows Executor / Job API. Same MCP_API_KEY as /mcp, but fail-closed: with no key configured
   // these routes refuse instead of opening the job queue to anyone.

@@ -71,7 +71,7 @@ test('binary media export stays Base64 and import creates new canonical files wi
 
 test('MCP image editing requires a registered source session, rejects drift, and verifies Git without claiming publication', async t => {
   let content = SOURCE, commit = 'a'.repeat(40), writes = 0;
-  const config = getConfig({});
+  const config = getConfig({ MCP_API_KEY: 'test-mcp-key' });
   config.enforceStateManager = false; // Image writes stay fail-closed even in legacy mode.
   const gitStore = {
     canonicalBranch: 'main',
@@ -90,7 +90,7 @@ test('MCP image editing requires a registered source session, rejects drift, and
   await new Promise(resolve => server.once('listening', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   async function call(name, args, session = 'image-session') {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'Mcp-Session-Id': session }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key', 'Mcp-Session-Id': session }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
     return (await response.json()).result;
   }
   const params = { ...PARAMS, branch: 'main' };
