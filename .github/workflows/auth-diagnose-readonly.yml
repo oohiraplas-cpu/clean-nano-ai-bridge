@@ -1,0 +1,50 @@
+name: 認証設定の診断（読み取り専用・値は出さない）
+# Read-only. For each App Service it reports ONLY: whether Easy Auth is enabled, whether unauthenticated
+# requests are allowed or rejected, excluded paths, the configured client ID / issuer tenant (identifiers, not
+# secrets), allowed audiences, and whether the API key App Settings exist (name + value length, never the value).
+# It changes nothing. Apps this identity cannot see are reported as "not found / no access".
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Report auth configuration (no secret values)
+        run: |
+          set -uo pipefail
+          check() {
+            APP="$1"; KEYS="$2"
+            echo "=== $APP"
+            RG=$(az webapp list --query "[?name=='$APP'].resourceGroup | [0]" -o tsv --only-show-errors 2>/dev/null)
+            if [ -z "$RG" ]; then echo "not found / no access"; return; fi
+            echo "--- host / state"
+            az webapp show --name "$APP" --resource-group "$RG" --query "{host:defaultHostName, state:state}" -o json --only-show-errors
+            echo "--- Easy Auth (authsettingsV2; identifiers only)"
+            az webapp auth show --name "$APP" --resource-group "$RG" --only-show-errors \
+              --query "{enabled:platform.enabled, requireAuthentication:globalValidation.requireAuthentication, unauthenticatedClientAction:globalValidation.unauthenticatedClientAction, excludedPaths:globalValidation.excludedPaths, clientId:identityProviders.azureActiveDirectory.registration.clientId, openIdIssuer:identityProviders.azureActiveDirectory.registration.openIdIssuer, allowedAudiences:identityProviders.azureActiveDirectory.validation.allowedAudiences, allowedApplications:identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedApplications}" -o json || echo "(could not read auth settings)"
+            echo "--- API key settings (existence and length only)"
+            for K in $KEYS; do
+              COUNT=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | length(@)" -o tsv --only-show-errors)
+              if [ "$COUNT" = "1" ]; then
+                LEN=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | [0].value | length(@)" -o tsv --only-show-errors)
+                echo "$K: set (length $LEN)"
+              else
+                echo "$K: NOT SET"
+              fi
+            done
+          }
+          check clean-nano-ai-bridge "MCP_API_KEY CONNECTOR_API_KEY WEBHOOK_API_KEY"
+          check clean-nano-oz-router "OZ_ROUTER_API_KEY"
+          check cn-engineering-mcp "CN_MCP_API_KEY CN_ENTRA_TENANT_ID CN_ENTRA_AUDIENCE CN_BRIDGE_BASE_URL"
