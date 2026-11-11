@@ -146,6 +146,21 @@ Screens:
             Width: =(Parent.Width - 40) / 2
             X: =24 + (Parent.Width - 40) / 2
             Y: =426
+      - S1_Tools:
+          Control: Classic/Button@2.2.0
+          Properties:
+            BorderColor: =RGBA(126, 65, 160, 1)
+            BorderThickness: =1
+            Color: =RGBA(245,245,248,1)
+            Fill: =RGBA(22, 66, 39, 1)
+            FontWeight: =FontWeight.Bold
+            Height: =58
+            OnSelect: =Navigate(S20_ToolInventory, ScreenTransition.None)
+            Size: =13
+            Text: ="在庫・工具管理"
+            Width: =Parent.Width - 32
+            X: =16
+            Y: =494
       - S1_StatusCard:
           Control: Rectangle@2.3.0
           Properties:
@@ -155,7 +170,7 @@ Screens:
             Height: =92
             Width: =Parent.Width - 32
             X: =16
-            Y: =500
+            Y: =566
       - S1_Status:
           Control: Label@2.5.1
           Properties:
@@ -165,4 +180,4 @@ Screens:
             Text: ="今月の実績" & Char(10) & "出勤 " & CountRows(Distinct(colAttend, Text(StartAt, "yyyymmdd"))) & "日  ｜  " & Text(gblMonth, "yyyy年m月")
             Width: =Parent.Width - 64
             X: =32
-            Y: =510
+            Y: =576
