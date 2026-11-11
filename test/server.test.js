@@ -64,7 +64,7 @@ async function createTestServer(tasks, options = {}) {
 const seedTask = { id: 'task-1', title: 'テスト', status: '未着手', retry_count: 0 };
 
 test('必須APIと状態制御を提供する', async (t) => {
-  const server = await createTestServer([seedTask]);
+  const server = await createTestServer([seedTask], { webhookApiKey: 'webhook-secret' });
   t.after(() => server.close());
   const health = await fetch(`${server.baseUrl}/health`);
   assert.equal(health.status, 200);
@@ -76,7 +76,7 @@ test('必須APIと状態制御を提供する', async (t) => {
   assert.equal((await next.json()).task.id, 'task-1');
 
   const webhook = await fetch(`${server.baseUrl}/webhooks/copilot`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'webhook-secret' },
     body: JSON.stringify({ id: 'task-2', title: 'Webhook task' })
   });
   assert.equal(webhook.status, 202);
@@ -1775,4 +1775,17 @@ test('SharePointの新規作成・編集ツールは人間承認なしでは書�
     assert.equal(body.result.isError, true, `${name} should reject missing human approval`);
   }
   assert.deepEqual(graphWrites, [], 'no SharePoint write requests should be issued without approval');
+});
+
+test('webhooks are fail-closed (503) when WEBHOOK_API_KEY is not configured', async (t) => {
+  const server = await createTestServer([seedTask]);
+  t.after(() => server.close());
+  for (const path of ['/webhooks/claude-code', '/webhooks/copilot']) {
+    const res = await fetch(`${server.baseUrl}${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'x', title: 'y' })
+    });
+    assert.equal(res.status, 503);
+  }
+  const tasks = await fetch(`${server.baseUrl}/api/tasks`);
+  assert.equal((await tasks.json()).count, 1);
 });

@@ -3050,7 +3050,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     try { return res.status(200).json(await nextPayload(store)); } catch (error) { return next(error); }
   });
 
-  const webhookAuth = apiKeyMiddleware(() => config.webhookApiKey);
+  const webhookKeyAuth = apiKeyMiddleware(() => config.webhookApiKey);
+  // Fail-closed: with no WEBHOOK_API_KEY configured, webhooks refuse (503) instead of accepting tasks from anyone.
+  const webhookAuth = (req, res, next) => (config.webhookApiKey
+    ? webhookKeyAuth(req, res, next)
+    : res.status(503).json({ error: '認証キーが未設定のため利用できません' }));
   for (const path of ['/webhooks/claude-code', '/webhooks/copilot']) {
     app.post(path, webhookAuth, async (req, res, next) => {
       const errorMessage = validateTaskInput(req.body, { requireTitle: true });
