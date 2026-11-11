@@ -1,0 +1,33 @@
+name: Production Bridge read-only verification
+on:
+  push:
+    branches: [feature/add-nine-mcp-tools]
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [smoke, baseline]
+        default: smoke
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+      - name: Verify metadata, health and MCP without business mutations
+        env:
+          VERIFICATION_MODE: ${{ github.event_name == 'push' && 'baseline' || inputs.mode }}
+        run: node scripts/verify-production-bridge.js

@@ -1,0 +1,85 @@
+name: Bridge コネクタ用キーの設定（初回のみ・承認文言が必要）
+# Creates CONNECTOR_API_KEY in the production App Service settings. The key exists ONLY in Azure
+# (and in the masked memory of this run): it is never printed, never uploaded, never put in an
+# artifact or a summary. The human reads it afterwards in the Azure portal
+# (Settings -> Environment variables -> show value) and pastes it into the claude.ai connector URL.
+# The workflow refuses to overwrite an existing key.
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "人間の承認文言 SET-CONNECTOR-KEY をそのまま入力"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/connector/mcp
+
+jobs:
+  set-key:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require human approval phrase
+        if: ${{ inputs.approval != 'SET-CONNECTOR-KEY' }}
+        run: |
+          echo "::error::The human approval phrase is required. Nothing was changed."
+          exit 1
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Guard - app exists and the key is not set yet
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          echo "RG=$RG" >> "$GITHUB_ENV"
+          COUNT=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='CONNECTOR_API_KEY'] | length(@)" -o tsv --only-show-errors)
+          if [ "$COUNT" != "0" ]; then
+            echo "::error::CONNECTOR_API_KEY already exists. Refusing to overwrite. Nothing was changed."
+            exit 1
+          fi
+          echo "guard ok: app found, key not set yet"
+
+      - name: Generate the key and write it to Azure only (never printed or uploaded)
+        run: |
+          set -euo pipefail
+          KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+          echo "::add-mask::$KEY"
+          az webapp config appsettings set --name "$APP_NAME" --resource-group "$RG" --settings "CONNECTOR_API_KEY=$KEY" --only-show-errors -o none
+          # Kept only on this ephemeral runner, only for the verification step; removed at the end.
+          umask 077
+          printf '%s' "$KEY" > "$RUNNER_TEMP/ck"
+          echo "setting written to Azure"
+
+      - name: Verify the endpoint (statuses only; the key is never printed)
+        run: |
+          set -uo pipefail
+          KEY=$(cat "$RUNNER_TEMP/ck")
+          echo "::add-mask::$KEY"
+          BODY='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+          code=""
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d "$BODY" "$BASE_URL" || true)
+            echo "attempt $i, without key: HTTP $code"
+            [ "$code" = "401" ] && break
+            sleep 10
+          done
+          [ "$code" = "401" ] || { echo "::error::The endpoint did not become active (expected 401 without a key)."; exit 1; }
+          with=$(curl -s -o "$RUNNER_TEMP/resp.json" -w '%{http_code}' -X POST -H 'content-type: application/json' -d "$BODY" "${BASE_URL}?api_key=${KEY}" || true)
+          echo "with the key: HTTP $with"
+          [ "$with" = "200" ] || { echo "::error::The key was not accepted (expected 200)."; exit 1; }
+          python3 -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/resp.json")); print("read-only tools exposed:", sorted(t["name"] for t in d["result"]["tools"]))'
+
+      - name: Remove the temporary key file from the runner
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/ck" "$RUNNER_TEMP/resp.json"

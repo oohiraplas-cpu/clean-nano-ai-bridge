@@ -1,0 +1,227 @@
+name: clean nano kk S8_Nippo 日報PDF CSS 反映（既定はドライラン）
+# Scope: replaces ONLY the <style> text of S8_Nippo in the canvas app of solution CN_AIIraiDaicho.
+# - mode=dry-run (default): export -> patch -> pack -> verify diff. Never imports.
+# - mode=apply: additionally imports the patched solution. Requires the human approval phrase.
+# Roll back by importing the backup solution zip (artifact of cn-aiiraidaicho-backup-manual.yml).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run: 取り込まずに検証だけ / apply: 取り込み（人間の承認が必要）"
+        required: true
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - apply
+      approval:
+        description: "applyのときだけ、人間の承認文言 APPLY-S8-NIPPO-CSS をそのまま入力"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  ENVIRONMENT_URL: https://org0bbb24c5.crm7.dynamics.com
+  SOLUTION_NAME: CN_AIIraiDaicho
+  APP_ID: 9cb3b23b-aa1a-4a45-a73e-24c78a2c2252
+  TENANT_ID: aa0b99c9-b756-4611-970a-6c31013c42e3
+  EXPECTED_APP_DISPLAY_NAME: clean nano kk
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require human approval phrase for apply
+        if: ${{ inputs.mode == 'apply' && inputs.approval != 'APPLY-S8-NIPPO-CSS' }}
+        run: |
+          echo "::error::apply requires the human approval phrase. Nothing was changed."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          pac-version-override: 2.4.1
+
+      - name: Locate the pac executable
+        run: |
+          set -e
+          echo "PACPATH=$POWERPLATFORMTOOLS_PACPATH"
+          PAC=$(find "$POWERPLATFORMTOOLS_PACPATH" -maxdepth 5 -type f -name pac 2>/dev/null | head -n 1)
+          if [ -z "$PAC" ]; then
+            ls -R "$POWERPLATFORMTOOLS_PACPATH" 2>/dev/null | head -50
+            echo "::error::pac executable not found under PACPATH. Nothing was changed."
+            exit 1
+          fi
+          chmod +x "$PAC" || true
+          echo "PAC=$PAC" >> "$GITHUB_ENV"
+          "$PAC" help 2>&1 | head -3
+
+      - name: Export current solution (read-only)
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ env.APP_ID }}
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: ${{ env.TENANT_ID }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          solution-output-file: out/base.zip
+
+      - name: Guard - solution, single app, display name
+        run: |
+          python3 - <<'PY'
+          import io, json, zipfile
+          with zipfile.ZipFile('out/base.zip') as z:
+              if z.testzip(): raise SystemExit('Invalid solution archive')
+              if '<UniqueName>CN_AIIraiDaicho</UniqueName>' not in z.read('solution.xml').decode('utf-8-sig'):
+                  raise SystemExit('Unexpected solution unique name')
+              apps = [n for n in z.namelist() if n.startswith('CanvasApps/') and n.endswith('.msapp')]
+              if len(apps) != 1: raise SystemExit(f'Expected exactly one canvas app; got {len(apps)}')
+              with zipfile.ZipFile(io.BytesIO(z.read(apps[0]))) as app:
+                  name = json.loads(app.read('Properties.json')).get('Name')
+                  if name != 'clean nano kk': raise SystemExit('Unexpected Canvas App display name: ' + repr(name))
+          print('guard ok')
+          PY
+
+      - name: Unpack solution
+        uses: microsoft/powerplatform-actions/unpack-solution@v1
+        with:
+          solution-file: out/base.zip
+          solution-folder: out/solution
+          solution-type: Unmanaged
+          overwrite-files: true
+
+      - name: Unpack canvas app, keep a pristine copy
+        run: |
+          set -e
+          MSAPP=$(find out/solution -iname "*.msapp" | head -n 1)
+          test -n "$MSAPP"
+          echo "MSAPP=$MSAPP" >> "$GITHUB_ENV"
+          rm -rf out/src out/src_base
+          "$PAC" canvas unpack --msapp "$MSAPP" --sources out/src
+          echo "unpacked files (first 60):"
+          find out/src -type f | sed 's#^out/src/##' | sort | head -60
+          cp -r out/src out/src_base
+
+      - name: Patch the S8_Nippo style (exactly one match or stop)
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          OLD = "<style>body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:20px;font-size:13px}table{border-collapse:collapse;width:100%;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style>"
+          NEW = "<style>@page{size:A4 portrait;margin:12mm}body{font-family:'Yu Gothic','MS Gothic',sans-serif;color:#1F2A5A;margin:10px;font-size:13px}table{border-collapse:collapse;width:100%;table-layout:fixed;margin-top:-1px}td{border:1px solid #1F2A5A;padding:6px;word-break:break-all;overflow-wrap:anywhere}.l{width:56px;font-size:11px;text-align:center}.v{color:#1A3C8C;font-size:15px}.ln td{height:24px}</style>"
+          src = pathlib.Path('out/src')
+          targets = [src / 'Src' / 'S8_Nippo.fx.yaml', src / 'Other' / 'Src' / 'S8_Nippo.pa.yaml']
+          texts, counts = {}, {}
+          for t in targets:
+              if not t.is_file():
+                  print('candidates:', sorted(str(f) for f in src.rglob('S8_Nippo*')))
+                  raise SystemExit(f'Missing expected source file: {t}')
+              texts[t] = t.read_text(encoding='utf-8')
+              counts[t] = (texts[t].count(OLD), texts[t].count(NEW))
+          for t in targets:
+              print(f'{t}: old={counts[t][0]} new={counts[t][1]}')
+          if all(counts[t] == (0, 1) for t in targets):
+              raise SystemExit('Already applied: the new style is already present. Nothing to do.')
+          if not all(counts[t][0] == 1 for t in targets):
+              raise SystemExit('Old style must match exactly once in BOTH files. Nothing was changed.')
+          for t in targets:
+              t.write_text(texts[t].replace(OLD, NEW, 1), encoding='utf-8')
+          print('patched exactly one occurrence in each of the 2 files')
+          PY
+
+      - name: Pack canvas app and verify only S8_Nippo changed
+        run: |
+          set -e
+          rm -rf out/src_check out/packed.msapp
+          "$PAC" canvas pack --sources out/src --msapp out/packed.msapp
+          test -s out/packed.msapp
+          cp out/packed.msapp "$MSAPP"
+          "$PAC" canvas unpack --msapp out/packed.msapp --sources out/src_check
+          python3 - <<'PY'
+          import difflib, pathlib
+          base, chk = pathlib.Path('out/src_base'), pathlib.Path('out/src_check')
+          rel = lambda root: {str(p.relative_to(root)): p for p in root.rglob('*') if p.is_file()}
+          a, b = rel(base), rel(chk)
+          changed = sorted(k for k in set(a) | set(b) if k not in a or k not in b or a[k].read_bytes() != b[k].read_bytes())
+          yaml_changed = [k for k in changed if k.endswith(('.pa.yaml', '.fx.yaml'))]
+          other_changed = [k for k in changed if not k.endswith(('.pa.yaml', '.fx.yaml'))]
+          report = ['changed yaml: ' + repr(yaml_changed), 'changed non-yaml (informational): ' + repr(other_changed)]
+          report += ['changed yaml files: ' + repr(yaml_changed)]
+          pathlib.Path('out').mkdir(exist_ok=True)
+          bad = [k for k in yaml_changed if 'S8_Nippo' not in k]
+          if bad or len(yaml_changed) != 2:
+              pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
+              print('\n'.join(report))
+              raise SystemExit('Unexpected set of changed source files: ' + repr(yaml_changed))
+          for k in yaml_changed:
+              diff = list(difflib.unified_diff(a[k].read_text(encoding='utf-8').splitlines(), b[k].read_text(encoding='utf-8').splitlines(), lineterm='', n=0))
+              minus = [l for l in diff if l.startswith('-') and not l.startswith('---')]
+              plus = [l for l in diff if l.startswith('+') and not l.startswith('+++')]
+              report.append(f'{k}: changed lines -{len(minus)} +{len(plus)}')
+              if len(minus) != 1 or len(plus) != 1:
+                  pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
+                  print('\n'.join(report))
+                  raise SystemExit(f'{k}: diff is not exactly one line')
+          pathlib.Path('out/diff-report.txt').write_text('\n'.join(report), encoding='utf-8')
+          print('\n'.join(report))
+          PY
+
+      - name: Pack solution
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: out/solution
+          solution-file: out/CN_AIIraiDaicho-patched.zip
+          solution-type: Unmanaged
+
+      - name: Upload patched solution and diff report
+        uses: actions/upload-artifact@v4
+        with:
+          name: CN_AIIraiDaicho-patched-and-report
+          path: |
+            out/CN_AIIraiDaicho-patched.zip
+            out/diff-report.txt
+          retention-days: 30
+
+      - name: Import patched solution (apply only)
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'APPLY-S8-NIPPO-CSS' }}
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ env.APP_ID }}
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: ${{ env.TENANT_ID }}
+          solution-file: out/CN_AIIraiDaicho-patched.zip
+          force-overwrite: true
+
+      - name: Re-export and verify the new style is live in the environment (apply only)
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'APPLY-S8-NIPPO-CSS' }}
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ env.ENVIRONMENT_URL }}
+          app-id: ${{ env.APP_ID }}
+          client-secret: ${{ secrets.POWER_PLATFORM_CLIENT_SECRET }}
+          tenant-id: ${{ env.TENANT_ID }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          solution-output-file: out/after.zip
+
+      - name: Verify after import (apply only)
+        if: ${{ inputs.mode == 'apply' && inputs.approval == 'APPLY-S8-NIPPO-CSS' }}
+        run: |
+          python3 - <<'PY'
+          import io, zipfile
+          NEW_MARK = "<style>@page{size:A4 portrait;margin:12mm}"
+          with zipfile.ZipFile('out/after.zip') as z:
+              apps = [n for n in z.namelist() if n.startswith('CanvasApps/') and n.endswith('.msapp')]
+              if len(apps) != 1: raise SystemExit('Expected exactly one canvas app after import')
+              with zipfile.ZipFile(io.BytesIO(z.read(apps[0]))) as app:
+                  names = [n for n in app.namelist() if n.replace('\\', '/').endswith('Src/S8_Nippo.pa.yaml')]
+                  if len(names) != 1: raise SystemExit('S8_Nippo.pa.yaml not found exactly once after import')
+                  text = app.read(names[0]).decode('utf-8')
+          count = text.count(NEW_MARK)
+          print(f'::notice title=After import::new style occurrences in environment = {count}')
+          if count != 1: raise SystemExit('The new style was not found exactly once in the environment after import')
+          PY

@@ -3,6 +3,7 @@
  */
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
+const { PowerAppsRuntimeSourceAdapter } = require('./powerAppsRuntimeSource');
 
 // 上流(Entra ID / Power Apps管理API / Dataverse)の失敗を、秘密値を含めずに
 // HTTP status・error code・error message・失敗工程付きのErrorにする。
@@ -146,9 +147,18 @@ class PowerAppsStore {
     this._fetch = config.fetchImpl || fetch;
     this._tokenCache = new TokenCache();
     this._dataverseTokenCache = new TokenCache();
+    this._bapTokenCache = new TokenCache();
     this._cache = new ResponseCache(config.cacheTtlMs || 300000);
     this._metrics = new Metrics();
     this._retry = new RetryStrategy();
+    this._runtimeSource = new PowerAppsRuntimeSourceAdapter({
+      ...config.runtimeSource, appId: this.appId, environmentId: this.environmentId,
+      canonicalBranch: config.githubBranch || 'main'
+    }, config.runtimeSourceWorker);
+  }
+
+  async getSourceFile(relativePath, options) {
+    return this._runtimeSource.getSourceFile(relativePath, options);
   }
 
   async _managementFetch(path, options = {}) {
@@ -165,7 +175,11 @@ class PowerAppsStore {
         throw await buildUpstreamError('Power Apps管理API呼び出し', response);
       }
       this._metrics.record(duration, true, false);
-      return response.status === 204 ? null : response.json();
+      // Power Apps publish may return a successful 2xx response with an empty
+      // body (not only 204). Do not force JSON parsing when there is no body.
+      if (response.status === 204) return null;
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
     });
   }
 
@@ -194,6 +208,15 @@ class PowerAppsStore {
       const text = await response.text();
       return text ? JSON.parse(text) : null;
     });
+  }
+
+  // 他のService（権限管理など）が、既存の認証・リトライ・エラー整形を再利用するための公開ラッパー。
+  async managementRequest(path, options = {}) {
+    return this._managementFetch(path, options);
+  }
+
+  async dataverseRequest(path, options = {}) {
+    return this._dataverseFetch(path, options);
   }
 
   async _getCanvasRecord() {
@@ -245,6 +268,42 @@ class PowerAppsStore {
     } catch (error) {
       console.error('ログ記録失敗', error.message);
     }
+  }
+
+  // Environment一覧（Power Platform管理API）。権限不足なら呼び出し側でconfig値にフォールバックする。
+  async listEnvironments() {
+    const token = await this._bapTokenCache.getToken(this._fetch, this.tokenUrl, this.clientId, this.clientSecret, 'https://api.bap.microsoft.com/.default');
+    const response = await this._fetch('https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01', {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json' }
+    });
+    if (!response.ok) throw await buildUpstreamError('Environment一覧取得(BAP API)', response);
+    const data = await response.json();
+    return (data.value || []).map((e) => ({
+      environmentId: e.name,
+      displayName: e.properties?.displayName || null,
+      type: e.properties?.environmentSku || null
+    }));
+  }
+
+  // 対象のApp ID・Environment IDを引数で指定して読み取る（単一アプリ固定の this.appId を使わない）。
+  async getAppInfoForEnvironment({ appId, environmentId }) {
+    const missing = [];
+    if (!this.tenantId) missing.push('POWERAPPS_TENANT_ID/AZURE_TENANT_ID');
+    if (!this.clientId) missing.push('POWERAPPS_CLIENT_ID/AZURE_CLIENT_ID');
+    if (!this.clientSecret) missing.push('POWERAPPS_CLIENT_SECRET/AZURE_CLIENT_SECRET');
+    if (missing.length) {
+      const error = new Error(`Bridge設定が不足しています: ${missing.join(', ')}`);
+      error.upstream = { step: 'Bridge環境変数の読み込み', httpStatus: null, errorCode: 'ConfigMissing', errorMessage: error.message };
+      throw error;
+    }
+    const path = `/providers/Microsoft.PowerApps/scopes/admin/environments/${encodeURIComponent(environmentId)}/apps/${encodeURIComponent(appId)}?api-version=2016-11-01`;
+    const data = await this._managementFetch(path);
+    return {
+      appId,
+      environmentId,
+      displayName: data.properties?.displayName || 'Unknown',
+      publisher: data.properties?.publisher || 'Unknown'
+    };
   }
 
   async getAppInfo() {
@@ -366,8 +425,8 @@ class PowerAppsStore {
     const operationId = crypto.randomUUID();
     try {
       const before = await this.getAppState();
-      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2016-11-01`;
-      await this._managementFetch(path, { method: 'POST', body: JSON.stringify({ strategy: 'immediate' }) });
+      const path = `/providers/Microsoft.PowerApps/apps/${this.appId}/publish?api-version=2018-10-01`;
+      await this._managementFetch(path, { method: 'POST' });
       this._cache.invalidate(this.appId);
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, {
         status: 'success',
@@ -376,7 +435,13 @@ class PowerAppsStore {
       return { status: 'ok', operationId, appId: this.appId, message: '公開に成功しました。' };
     } catch (error) {
       await this._recordOperation(operationId, 'publish', this.environmentId, this.appId, { status: 'error', error: error.message });
-      throw error;
+      return {
+        status: 'error',
+        operationId,
+        appId: this.appId,
+        error: String(error.message).slice(0, 500),
+        ...(error.upstream ? { details: error.upstream } : {})
+      };
     }
   }
 

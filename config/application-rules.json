@@ -1,0 +1,45 @@
+{
+  "_note": "ユーザー確認済みの事実のみを記載する。Power AppsソースはGitHub/mainの既存ソースを正本として保持し、Git履歴を残す。App ID・Environmentは実環境から取得する。",
+  "publishApprover": {
+    "name": "野口英光",
+    "title": "代表取締役",
+    "basis": "ユーザー申告（解体工カレンダー公開の承認者として確定）"
+  },
+  "apps": {
+    "CN_AI依頼台帳": {
+      "aliases": [
+        "CNAI依頼台帳",
+        "AI依頼台帳",
+        "依頼台帳",
+        "解体工カレンダー",
+        "CN_解体工カレンダー",
+        "clean nano kk"
+      ],
+      "gitRoot": "powerapps/CN_AI依頼台帳/Source",
+      "sourceControl": {
+        "provider": "GitHub",
+        "organization": "oohiraplas-cpu",
+        "project": null,
+        "repository": "clean-nano-ai-bridge",
+        "branch": "main",
+        "folder": "powerapps/CN_AI依頼台帳/Source",
+        "observedAt": "2026-10-07",
+        "basis": "ユーザー指示によりAzure DevOps経路を廃止し、GitHubの既存Power Appsソースを正本として保持する。",
+        "bridgeMirrorRepository": "oohiraplas-cpu/clean-nano-ai-bridge",
+        "bridgeMirrorState": "active",
+        "holdReason": null,
+        "bridgeRole": "source_and_code",
+        "powerAppsAuthority": "github_only",
+        "legacyPowerAppsGitHubAdapter": "enabled"
+      },
+      "notes": "GitHub/main の既存 powerapps/CN_AI依頼台帳/Source を正本として保持。変更履歴はGit commitで保存。fallback/過去branchへの書込みは禁止し、branch不一致時はFail-Closed。"
+    },
+    "CN_CompanyOS_電子日報_スマホ_v1": {
+      "aliases": [
+        "電子日報アプリ",
+        "CN_CompanyOS"
+      ],
+      "notes": "gitRootは未確認のため記載しない"
+    }
+  }
+}

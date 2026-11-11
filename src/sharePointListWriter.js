@@ -30,7 +30,7 @@ class SharePointListWriter {
     this._tokenExpiresAt = 0;
   }
 
-  _assertConfig() {
+  _assertAuthConfig() {
     const missingEnvNames = [];
     if (!this.tenantId) missingEnvNames.push('SHAREPOINT_TENANT_ID');
     if (!this.clientId) missingEnvNames.push('SHAREPOINT_CLIENT_ID');
@@ -38,6 +38,10 @@ class SharePointListWriter {
     if (missingEnvNames.length) {
       throw new Error(`SharePoint設定が不足しています: ${missingEnvNames.join(', ')}`);
     }
+  }
+
+  _assertConfig() {
+    this._assertAuthConfig();
     if (!this.fieldMap || Object.keys(this.fieldMap).length === 0) {
       throw new Error('fieldMapが指定されていません。列内部名を推測せず、実環境で確認した値をconfig.fieldMapで渡してください。');
     }
@@ -75,6 +79,50 @@ class SharePointListWriter {
       throw new Error(`SharePoint Graph APIエラー (${response.status}): ${detail.slice(0, 200)}`);
     }
     return response.status === 204 ? null : response.json();
+  }
+
+  // 新しいSharePointリストを作成する。呼び出し元で人間承認を必ず検証すること。
+  async createList(siteId, displayName, template = 'genericList') {
+    this._assertAuthConfig();
+    if (!siteId || !displayName || !displayName.trim()) throw new Error('siteIdとdisplayNameは必須です');
+    if (displayName.length > 255) throw new Error('displayNameは255文字以内で指定してください');
+    if (template !== 'genericList') throw new Error('許可されているtemplateはgenericListのみです');
+    return this._graphFetch(`/sites/${siteId}/lists`, {
+      method: 'POST',
+      body: JSON.stringify({ displayName: displayName.trim(), list: { template } })
+    });
+  }
+
+  // 指定されたSharePoint内部列名でアイテムを作成する。内部名は呼び出し側が明示する。
+  async createItemFields(siteId, listId, fields) {
+    this._assertAuthConfig();
+    if (!siteId || !listId) throw new Error('siteIdとlistIdは必須です');
+    this._validateDirectFields(fields);
+    return this._graphFetch(`/sites/${siteId}/lists/${listId}/items`, {
+      method: 'POST', body: JSON.stringify({ fields })
+    });
+  }
+
+  // 指定されたSharePoint内部列名で既存アイテムを部分更新する。削除は提供しない。
+  async updateItemFields(siteId, listId, itemId, fields) {
+    this._assertAuthConfig();
+    if (!siteId || !listId || !itemId) throw new Error('siteId・listId・itemIdは必須です');
+    this._validateDirectFields(fields);
+    await this._graphFetch(`/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
+      method: 'PATCH', body: JSON.stringify(fields)
+    });
+    return { itemId, updatedFieldNames: Object.keys(fields) };
+  }
+
+  _validateDirectFields(fields) {
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields) || Object.keys(fields).length === 0) {
+      throw new Error('fieldsは1件以上の列内部名と値を持つオブジェクトで指定してください');
+    }
+    const blocked = new Set(['id', 'createdDateTime', 'lastModifiedDateTime', 'createdBy', 'lastModifiedBy', 'contentType']);
+    for (const [name, value] of Object.entries(fields)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || blocked.has(name)) throw new Error(`更新不可または不正な列内部名です: ${name}`);
+      if (value === undefined) throw new Error(`列値が未定義です: ${name}`);
+    }
   }
 
   // record: { 業務キー: 値, ... }。fieldMapに存在しないキーは無視する（未知の列への

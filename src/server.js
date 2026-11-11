@@ -1,16 +1,44 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
+const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
+const platformManage = require('./platformManage');
+const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
+const windowsJobs = require('./windowsJobs');
+const cnaiRouter = require('./cnaiRouter');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
+const { getAgentRegistry } = require('./agentRegistry');
+const { ExecutionQueue } = require('./executionQueue');
+const { ApprovalLedger } = require('./approvalLedger');
 const { TaskStore } = require('./taskStore');
 const { SharePointTaskStore } = require('./sharePointTaskStore');
 const { PowerAppsStore } = require('./powerAppsStore');
 const { PowerAppsGitStore } = require('./powerAppsGitStore');
+const { editImageSource, validateImageParams } = require('./powerAppsImages');
 const { SharePointReader } = require('./sharePointReader');
 const { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP } = require('./sharePointListWriter');
 const { PowerAutomateRunner } = require('./powerAutomateRunner');
+const { PaymentMonitorService } = require('./paymentMonitorService');
+const { SharePointSiteDiscovery } = require('./sharePointSiteDiscovery');
+const { DeploymentService } = require('./deploymentService');
+const { createGitHubCiArtifactService } = require('./githubCiArtifactService');
+const { createAzureMetadataReader } = require('./azureMetadataReader');
+const { sanitizeMetadataFailures } = require('./azureMetadataFailures');
+const { createGithubReadTools } = require('./githubReadTools');
+const { createAzureReadTools } = require('./azureReadTools');
+const { PermissionsService } = require('./permissionsService');
+const { DoneEngine } = require('./doneEngine');
+const { ProhibitedOperationsEngine } = require('./prohibitedOperationsEngine');
+const { ReuseEngine } = require('./reuseEngine');
+const { EvidenceCaptureEngine } = require('./evidenceCaptureEngine');
+const { RuntimeEvidenceEngine } = require('./runtimeEvidenceEngine');
+const { DispatchEngine } = require('./dispatchEngine');
+const { notConfiguredError, upstreamResponseError, bridgeError } = require('./errors');
+const { validateChange, verifySaveResult } = require('./powerAppsChangeValidation');
+const { runStaticTests } = require('./powerAppsStaticTests');
 const {
   validateMcpInput,
   validateStatusInput,
@@ -27,40 +55,162 @@ const {
   validateSavePowerAppsAppParams,
   validatePublishPowerAppsAppParams,
   validateGetPowerAppsOperationResultParams,
-  validateGetPowerAppsSourceParams
+  validateGetPowerAppsSourceParams,
+  validateValidatePowerAppsChangeParams,
+  validateRunPowerAppsTestsParams,
+  validateVerifySaveResultParams
 } = require('./powerAppsValidation');
 const {
   validateGetSharePointListParams,
+  validateGetSharePointColumnsParams,
+  validateEnsureSharePointColumnsParams,
   validateRunPowerAutomateFlowParams,
   validateCreateEmployeeLedgerEntryParams,
-  validateUpdateEmployeeLedgerEntryParams
+  validateUpdateEmployeeLedgerEntryParams,
+  validateDeployToTestParams,
+  validateVerifyDeploymentParams,
+  validateGetDeploymentLogsParams,
+  validateRollbackDeploymentParams,
+  validateGetPermissionsParams,
+  validateUpdatePermissionsParams,
+  validateLockUserInfoParams,
+  validateValidatePasskeyParams,
+  validateGetUserLockStatusParams,
+  validateCanViewUserInfoParams,
+  validateCanEditUserInfoParams,
+  validateCanDeleteUserInfoParams,
+  validateGenerateUIControlStateParams,
+  validatePrepareExecutionPackageParams
 } = require('./bridgeExtensionsValidation');
+const { PowerPlatformRequestHandler, validateExecutePowerPlatformRequestParams } = require('./powerPlatformRequestHandler');
+const { UserProtectionService } = require('./userProtectionService');
+const {
+  getBridgeCapabilities,
+  checkDependencies,
+  comparePowerAppsWithGit,
+  validatePowerAppsSource,
+  createCommonResponse
+} = require('./bridgeCapabilities');
+const {
+  getExecutivePolicy,
+  getExecutiveBrief,
+  getSharePointListSchema,
+  listRegisteredPowerAutomateFlows,
+  getPowerAutomateRunResult,
+  inspectPowerAppsStructure
+} = require('./bridgeEnhancedFeatures');
+const { AppTargetResolver } = require('./bridgeKnowledgeExtraction');
+const { discoverPowerAppsStructure, resolveAppTargetById } = require('./powerAppsDiscovery');
+const { prepareExecutionPackage, EXECUTION_CONTRACT_SCHEMA } = require('./prepareExecutionPackage');
+const { STATE_CONTEXT_SCHEMA, StateContextRegistry, contextError, blobSha } = require('./stateContext');
+const { readPacEvidenceWithRegisteredState } = require('./pacStateEvidence');
+const { PowerAppsRuntimeSourceAdapter } = require('./powerAppsRuntimeSource');
+const {
+  FAIL_CLOSED_TOOLS,
+  validateStateContext,
+  createStateValidationError,
+  extractStateContext,
+  enrichResponseWithState
+} = require('./stateManager');
+
+const resolverCache = new WeakMap();
+function getResolver(powerAppsStore, powerAppsGitStore) {
+  if (!resolverCache.has(powerAppsStore)) {
+    resolverCache.set(powerAppsStore, new AppTargetResolver({ powerAppsStore, powerAppsGitStore }));
+  }
+  return resolverCache.get(powerAppsStore);
+}
 
 function createDefaultStore(config) {
   if (config.taskStoreBackend === 'sharepoint') return new SharePointTaskStore(config.sharepoint);
   return new TaskStore(config.tasksFile);
 }
 
+// Tool contract revision for publish_powerapps_app (stateSessionId required; SHA semantics fixed).
+const PUBLISH_CONTRACT_VERSION = '2026-10-11';
+
+function publishGateError(failures, status, code) {
+  const error = new Error(`公開ゲート拒否: ${failures.join('; ')}`);
+  error.status = status;
+  error.payload = { status: code, failures, contractVersion: PUBLISH_CONTRACT_VERSION };
+  return error;
+}
+
 function apiKeyMiddleware(getKey) {
   return (req, res, next) => {
     const expected = getKey();
     if (!expected) return next();
-    const actual = req.get('x-api-key') || '';
-    const valid = actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+
+    // Copilot Studio MCP connections can send API keys either in a header or
+    // in the query string. Some MCP clients also use Authorization: Bearer.
+    // Accept the same configured secret through these transports without
+    // changing the secret itself or weakening the comparison.
+    const authorization = req.get('authorization') || '';
+    const bearer = authorization.match(/^Bearer\s+(.+)$/i);
+    const candidates = [
+      req.get('x-api-key'),
+      bearer ? bearer[1] : '',
+      typeof req.query?.['x-api-key'] === 'string' ? req.query['x-api-key'] : '',
+      typeof req.query?.api_key === 'string' ? req.query.api_key : ''
+    ].filter((value) => typeof value === 'string' && value.length > 0);
+
+    const valid = candidates.some((actual) => actual.length === expected.length
+      && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected)));
     if (!valid) return res.status(401).json({ error: '認証に失敗しました' });
     return next();
   };
 }
 
 const MCP_METHODS = Object.freeze([
+  'get_executive_policy', 'get_executive_brief',
   'health_check', 'get_tasks', 'get_next_task',
   'create_task', 'update_task_status', 'get_task_result',
+  'cnai_submit_windows_job',
+  'cnai_route_request', 'cnai_get_route_status', 'cnai_rollback_route',
   'get_powerapps_app', 'get_powerapps_state', 'update_powerapps_app',
   'save_powerapps_app', 'publish_powerapps_app', 'get_powerapps_operation_result',
   'get_powerapps_source',
-  'get_sharepoint_list', 'run_power_automate_flow',
-  'create_employee_ledger_entry', 'update_employee_ledger_entry'
+  'get_sharepoint_list', 'list_sharepoint_lists', 'create_sharepoint_list', 'create_sharepoint_list_item', 'update_sharepoint_list_item', 'get_sharepoint_columns', 'ensure_sharepoint_columns', 'run_power_automate_flow',
+  'create_employee_ledger_entry', 'update_employee_ledger_entry',
+  'validate_powerapps_change', 'run_powerapps_tests', 'verify_save_result',
+  'deploy_to_test', 'verify_deployment', 'get_deployment_logs', 'rollback_deployment',
+  'get_permissions', 'update_permissions',
+  'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
+  'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
+  'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
+  'list_power_apps', 'list_environments', 'list_git_branches', 'list_github_commits', 'get_github_file', 'list_github_pull_requests', 'list_github_workflow_runs', 'get_azure_subscription', 'get_azure_app_service', 'list_azure_app_service_slots', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback', ...platformManage.TOOL_NAMES,
+  'check_payment_status',
+  'discover_sharepoint_ai4_resources',
+  'prepare_powerapps_execution',
+  'execute_powerplatform_request',
+  'assess_done',
+  'check_prohibited_operations',
+  'suggest_reuse_pattern',
+  'get_playbook',
+  'capture_app_startup',
+  'capture_user_interaction',
+  'capture_data_binding',
+  'capture_formula_execution',
+  'capture_connection',
+  'capture_error_event',
+  'capture_state_transition',
+  'capture_performance',
+  'capture_behavior_verification',
+  'capture_integration',
+  'generate_runtime_report',
+  'export_evidence',
+  'get_agent_registry',
+  'create_execution_request',
+  'get_execution_queue',
+  'get_execution_status',
+  'get_checkpoint',
+  'get_azure_deployment_metadata', 'verify_github_ci_artifact',
+  'get_powerapps_media_asset', 'update_powerapps_image'
 ]);
+
+// 実行キューはプロセス内で1つだけ保持する（再起動で消える。永続化は後続で検討）。
+// 承認台帳は未設定（fail closed）。SharePoint承認台帳の列名・サイトが実環境で確認されるまで、承認は得られない。
+const executionQueue = new ExecutionQueue({ ledger: new ApprovalLedger() });
 
 const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   name: { type: 'string', description: '氏名' },
@@ -140,11 +290,21 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
   },
   {
     name: 'get_powerapps_source',
-    description: '既存Power Appsソースの指定ファイルを取得します。',
+    description: '既存Power Appsソースの指定ファイルを取得します。relativePath / screenName / targetNames のいずれかを指定。',
     inputSchema: {
       type: 'object',
-      properties: { relativePath: { type: 'string', description: '取得するソースファイルの相対パス' } },
-      required: ['relativePath'],
+      properties: {
+        relativePath: { type: 'string', description: '取得するソースファイルの相対パス（オプション）' },
+        screenName: { type: 'string', description: 'Power Apps画面名。Git正本から自動解決します（オプション）' },
+        targetNames: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '複数の画面名を一括解決（targetNamesが指定された場合、他は無視）（オプション）',
+          maxItems: 50
+        },
+        correlationId: { type: 'string', description: 'get_powerapps_stateが返したcorrelationId（オプション）' },
+        stateSessionId: { type: 'string', description: '同じ実行単位のstateSessionId。解決結果をStateContextへ保存（オプション）' }
+      },
       additionalProperties: false
     }
   },
@@ -157,20 +317,97 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         updateData: { type: 'object', description: 'Power Apps管理APIへ送る更新内容' },
         relativePath: { type: 'string', description: '更新するソースファイルの相対パス' },
         content: { type: 'string', description: '更新後のファイル内容' },
-        message: { type: 'string', description: '更新のコミットメッセージ' }
+        message: { type: 'string', description: '更新のコミットメッセージ' },
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA
       },
+      required: ['stateContext'],
       additionalProperties: false
     }
   },
   {
     name: 'save_powerapps_app',
     description: 'GitHubの既存Power AppsソースをPower Platformへ同期し、保存状態を確認します。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA
+      },
+      required: ['stateContext'],
+      additionalProperties: false
+    }
   },
   {
     name: 'publish_powerapps_app',
     description: '既存Power Appsアプリを公開します。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: 'get_powerapps_sourceが返したbranch。正本branchと一致しない場合は拒否します（任意）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_sourceで正本ソースを観測したstateSessionId（必須・契約2026-10-11）' }
+      },
+      required: ['stateContext', 'stateSessionId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_submit_windows_job',
+    description: 'CNAI RouterからWindows Executorへ安全にジョブを投入します。LOW/MEDIUMのみ自動受付し、HIGH/CRITICALは人間承認待ち（WAITING_FOR_APPROVAL）になります。同じtaskIdは二重実行されません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'ジョブ識別子。未指定時は自動生成される' },
+        action: { type: 'string', description: '実行するジョブの要約（例: bridge_read_verify）' },
+        workspace: { type: 'string', description: '実行対象のワークスペースまたはパス' },
+        riskLevel: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'ジョブのリスクレベル' }
+      },
+      required: ['action', 'workspace', 'riskLevel'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_route_request',
+    description: 'CNAI Routerへ1件の依頼を投入し、分類・Route選択・ポリシーゲート・実行・検証・監査・Checkpointまでを1回で処理します。未確認の結果はCOMPLETEDとして返しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        requestType: { type: 'string', description: '依頼の種別（任意の短い説明）' },
+        platformHint: { type: 'string', description: 'microsoft365 / sharepoint / powerapps / powerautomate / operationsmcp / windows / code / chatgpt 等のヒント' },
+        route: { type: 'string', enum: cnaiRouter.ROUTES, description: 'Routeを明示指定する場合（省略時はplatformHintから決定）' },
+        riskLevel: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: '省略時はLOW' },
+        requiredCapability: { type: 'string', description: 'Premium/外部AI Routeが使えない場合に探す無料代替の判定キー' },
+        allowPaid: { type: 'boolean', description: '明示的に課金Routeの実行を許可する場合のみtrue（既定false）' },
+        costHint: { type: 'string', enum: ['FREE', 'PAID'], description: '外部AI Routeのコスト区分の既知情報（任意）' },
+        idempotencyKey: { type: 'string', description: '同一キーの二重投入を防止する識別子（任意）' },
+        correlationId: { type: 'string', description: '既存の追跡IDを引き継ぐ場合（任意）' },
+        payload: { description: '実行対象への入力（秘密値はマスクして保存されます）' },
+        workspace: { type: 'string', description: 'windowsExecutor Route向けの作業対象パス（任意）' }
+      },
+      required: ['requestType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_get_route_status',
+    description: 'CNAI Routerの依頼状態・Checkpoint・監査証跡を取得します（読み取りのみ）。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string' } },
+      required: ['requestId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'cnai_rollback_route',
+    description: 'CNAI Routerの依頼をロールバック（状態のみ）します。実行済みの外部副作用そのものは取り消しません。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string' }, reason: { type: 'string' } },
+      required: ['requestId'],
+      additionalProperties: false
+    }
   },
   {
     name: 'get_sharepoint_list',
@@ -183,6 +420,94 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' },
         top: { type: 'number', description: '取得件数の上限（既定50、最大200）' }
       },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_sharepoint_lists',
+    description: '指定SharePointサイト内のリスト一覧（リストGUID・表示名・URL・テンプレート）を読み取り専用で取得します。項目や設定は変更しません。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePointサイトID（省略時は既定サイト）' },
+        searchTerm: { type: 'string', description: 'リスト表示名の部分一致フィルター（任意）' },
+        top: { type: 'integer', minimum: 1, maximum: 200, description: '最大取得件数（既定200）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'create_sharepoint_list',
+    description: 'SharePointサイトに新しい汎用リストを作成します。既存リストの重複を事前確認し、人間承認（approvedByHuman:true）が必須です。削除は行いません。',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: { type: 'object', properties: {
+      siteId: { type: 'string' }, displayName: { type: 'string', minLength: 1, maxLength: 255 },
+      approvedByHuman: { type: 'boolean', description: 'このリストの作成を人間が明示承認した場合のみtrue' }
+    }, required: ['siteId','displayName','approvedByHuman'], additionalProperties: false }
+  },
+  {
+    name: 'create_sharepoint_list_item',
+    description: '既存SharePointリストに1件追加します。fieldsのキーは実環境で確認済みの列内部名を指定し、人間承認（approvedByHuman:true）が必須です。',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: { type: 'object', properties: {
+      siteId: { type: 'string' }, listId: { type: 'string' }, fields: { type: 'object', minProperties: 1 },
+      approvedByHuman: { type: 'boolean' }
+    }, required: ['siteId','listId','fields','approvedByHuman'], additionalProperties: false }
+  },
+  {
+    name: 'update_sharepoint_list_item',
+    description: '既存SharePointリスト項目を部分編集します。fieldsのキーは実環境で確認済みの列内部名を指定し、人間承認（approvedByHuman:true）が必須です。削除は行いません。',
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: { type: 'object', properties: {
+      siteId: { type: 'string' }, listId: { type: 'string' }, itemId: { type: 'string' }, fields: { type: 'object', minProperties: 1 },
+      approvedByHuman: { type: 'boolean' }
+    }, required: ['siteId','listId','itemId','fields','approvedByHuman'], additionalProperties: false }
+  },
+  {
+    name: 'get_sharepoint_columns',
+    description: 'SharePointリストの列定義（内部名・表示名・型・必須・Choice候補等）を読み取り専用で取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: '取得するSharePointリストのID' },
+        listName: { type: 'string', description: 'listId未指定時に表示名で検索するためのリスト名' },
+        siteId: { type: 'string', description: '対象サイトID（省略時は既定のサイトを使用）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'ensure_sharepoint_columns',
+    description: 'SharePointリストに不足列だけを追加します。既存列は変更・削除せずスキップします。人間承認（approvedByHuman:true）が必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string' },
+        listName: { type: 'string' },
+        siteId: { type: 'string' },
+        columns: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              displayName: { type: 'string' },
+              type: { type: 'string', enum: ['text','number','dateTime','boolean','choice'] },
+              required: { type: 'boolean' },
+              multiline: { type: 'boolean' },
+              choices: { type: 'array', items: { type: 'string' } },
+              description: { type: 'string' }
+            },
+            required: ['name','displayName','type'],
+            additionalProperties: false
+          }
+        },
+        approvedByHuman: { type: 'boolean' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_stateが返したstateSessionId（状態コンテキストと併用）' }
+      },
+      required: ['columns','approvedByHuman','stateContext'],
       additionalProperties: false
     }
   },
@@ -236,8 +561,1119 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
       required: ['itemId', 'record', 'approvedByHuman'],
       additionalProperties: false
     }
-  }
+  },
+  {
+    name: 'get_powerapps_operation_result',
+    description: 'Power Apps操作（更新・保存・公開）のoperationIdから、記録された結果を取得します。',
+    inputSchema: {
+      type: 'object',
+      properties: { operationId: { type: 'string', description: '操作ID（更新・保存・公開の応答に含まれるoperationId）' } },
+      required: ['operationId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'validate_powerapps_change',
+    description: 'Power Appsソース変更を適用前に検査します（branch・relativePath・対象ファイル・削除・大規模差分・構文）。valid・errors・warnings・summaryを返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: '変更対象のbranch（正本branchと一致する必要があります）' },
+        relativePath: { type: 'string', description: '対象ソースファイルの相対パス' },
+        content: { type: 'string', description: '更新後のファイル内容（削除の場合は指定しません）' },
+        currentContent: { type: 'string', description: '現在のファイル内容（省略時は正本branchから取得します）' },
+        currentExists: { type: 'boolean', description: '対象ファイルが現在存在するか（currentContent未指定時の補足）' },
+        delete: { type: 'boolean', description: 'ファイル削除を検査する場合はtrue' },
+        create: { type: 'boolean', description: '新規ファイル作成を許可する場合はtrue' },
+        allowLargeDiff: { type: 'boolean', description: '大規模差分（変更率80%以上）を意図したものとして許可する場合はtrue' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 1, description: 'get_powerapps_sourceが返した同一実行単位のstateSessionId' }
+      },
+      required: ['branch', 'relativePath', 'stateContext', 'stateSessionId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'run_powerapps_tests',
+    description: 'Power Appsソース変更の静的検査（構文・括弧・引用符・重複定義・画面遷移・データソース参照・危険な削除）を実行します。実行不能の項目は成功扱いにせずskippedとreasonを返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', minLength: 8, description: 'get_powerapps_sourceで取得したstateSessionId（任意）' },
+        files: {
+          type: 'array',
+          description: '検査する変更ファイル（1〜50件）',
+          items: {
+            type: 'object',
+            properties: {
+              relativePath: { type: 'string' },
+              content: { type: 'string', description: '更新後の内容（削除の場合は指定しません）' },
+              delete: { type: 'boolean', description: '削除するファイルの場合はtrue' }
+            },
+            required: ['relativePath'],
+            additionalProperties: false
+          }
+        },
+        knownScreens: { type: 'array', items: { type: 'string' }, description: '既存の画面名一覧（指定すると画面遷移先を厳密に検証します）' },
+        knownDataSources: { type: 'array', items: { type: 'string' }, description: '既存のデータソース/コネクタ名一覧（指定するとデータソース参照を検証します）' }
+      },
+      required: ['files', 'stateContext'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'verify_save_result',
+    description: '保存後にアプリ状態と正本ソースを再取得し、branch・relativePath・期待SHAまたは期待内容・エラー状態を検証します。expectedShaまたはexpectedContentのいずれかが必須です。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        relativePath: { type: 'string', description: '検証するソースファイルの相対パス' },
+        branch: { type: 'string', description: '想定しているbranch（正本branchと一致する必要があります）' },
+        expectedSha: { type: 'string', description: '期待するファイルのSHA（40桁の16進）' },
+        expectedContent: { type: 'string', description: '期待するファイル内容' }
+      },
+      required: ['relativePath'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'deploy_to_test',
+    description: '構成済みの非本番テスト環境へだけデプロイを要求します。本番・環境不明・設定不足・branch不一致は拒否します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: 'デプロイ元branch（許可branchと一致する必要があります）' },
+        environment: { type: 'string', description: '対象環境名（省略時は構成済みのテスト環境）。本番は指定できません' },
+        ref: { type: 'string', description: 'デプロイするコミットSHA（省略時はbranch先頭）' }
+      },
+      required: ['branch'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'verify_deployment',
+    description: '対象環境・バージョン・デプロイ結果・healthのHTTP状態と応答内容を検証します。確認できない項目は成功扱いにしません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        environment: { type: 'string', description: '検証する環境名（省略時は構成済みのテスト環境）' },
+        deploymentId: { type: 'string', description: 'deploy_to_testが返したdeploymentId（デプロイ結果の検証に使用）' },
+        expectedVersion: { type: 'string', description: '期待するバージョン（healthの応答のversionと比較）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_deployment_logs',
+    description: '構成済みのデプロイ基盤から診断ログ（workflow run・job・step）を取得します。トークン・APIキー・接続文字列などはマスクされます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        environment: { type: 'string', description: '対象環境名（省略時は構成済みのテスト環境）' },
+        deploymentId: { type: 'string', description: '対象のdeploymentId' },
+        runId: { type: 'integer', description: '対象のworkflow run ID（deploymentIdとは同時に指定できません）' },
+        limit: { type: 'integer', minimum: 1, maximum: 20, description: '取得件数（既定5、最大20）' },
+        includeJobLogs: { type: 'boolean', description: 'jobログ本文の末尾100行を含める場合はtrue' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'rollback_deployment',
+    description: '確認済み（verify_deploymentでverified）の復旧元へだけ戻します。本番はapprovedByHuman:trueが必須です。復旧後にhealthを再確認します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        environment: { type: 'string', description: '対象環境名（省略時は構成済みのテスト環境）' },
+        targetDeploymentId: { type: 'string', description: '復旧元のdeploymentId（確認済みのもののみ）' },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（本番ではtrue必須）' }
+      },
+      required: ['targetDeploymentId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_permissions',
+    description: '構成済み対象の権限を読み取り専用で取得します。対象種別・取得範囲・現在の権限を返し、秘密情報は返しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetType: { type: 'string', enum: ['powerapps_app', 'dataverse_user_roles'], description: '対象種別' },
+        principalId: { type: 'string', description: 'dataverse_user_rolesで対象とするsystemuserのGUID' }
+      },
+      required: ['targetType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'update_permissions',
+    description: '必要最小権限のみを付与・取消します。人間承認（approvedByHuman:true）が必須です。System Administrator等の強い権限・テナント全体共有・外部共有は拒否し、変更前後を検証します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetType: { type: 'string', enum: ['powerapps_app', 'dataverse_user_roles'], description: '対象種別' },
+        action: { type: 'string', enum: ['grant', 'revoke'], description: '付与または取消' },
+        principalId: { type: 'string', description: '対象のEntraオブジェクトID（GUID）またはメールアドレス（dataverse_user_rolesではsystemuserのGUID）' },
+        principalType: { type: 'string', enum: ['User', 'Group', 'Tenant'], description: '対象の種別（Tenantは常に拒否されます）' },
+        roleName: { type: 'string', description: 'ロール名（powerapps_app: CanView/CanEdit。dataverse_user_roles: 許可リストのロール）' },
+        approvedByHuman: { type: 'boolean', description: '人間による承認済みであることを示すフラグ（true必須）' }
+      },
+      required: ['targetType', 'action', 'principalId', 'principalType', 'roleName', 'approvedByHuman'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'lock_user_info',
+    description: 'ユーザー情報をロック状態にします。ロック後、非管理者による閲覧・編集を禁止します。パスキーの初期化と同時に実行します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user: { type: 'object', description: 'ロック対象のユーザーオブジェクト（name, email, department, employeeId等を含む）' },
+        passkey: { type: 'string', description: 'パスキー（編集時に要求される64文字以上のランダム文字列）' }
+      },
+      required: ['user', 'passkey'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'validate_passkey',
+    description: 'ロック済みユーザーの編集時、パスキーの妥当性を検証します。認証成功・失敗を返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        passkey: { type: 'string', description: '入力されたパスキー' },
+        user: { type: 'object', description: 'ロック済みのユーザーオブジェクト（passkeyHashを含む）' }
+      },
+      required: ['passkey', 'user'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_user_lock_status',
+    description: 'ユーザーのロック状態（ロック済み・未ロック・ロック日時）を取得します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user: { type: 'object', description: 'ユーザーオブジェクト' }
+      },
+      required: ['user'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'can_view_user_info',
+    description: '指定ユーザーが対象ユーザー情報を閲覧可能かを判定します。自分自身・管理者は常に閲覧可。ロック済みユーザーは管理者のみ閲覧可。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetUser: { type: 'object', description: '対象ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '確認対象のユーザーメールアドレス' }
+      },
+      required: ['targetUser', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'can_edit_user_info',
+    description: '指定ユーザーが対象ユーザー情報を編集可能かを判定します。権限・パスキー要否を返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetUser: { type: 'object', description: '対象ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '確認対象のユーザーメールアドレス' },
+        passkey: { type: 'string', description: 'ロック済みユーザー編集時のパスキー（省略可）' }
+      },
+      required: ['targetUser', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'can_delete_user_info',
+    description: '指定ユーザーが対象ユーザー情報を削除可能かを判定します。管理者かつ未ロック状態でのみ削除可。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetUser: { type: 'object', description: '対象ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '確認対象のユーザーメールアドレス' }
+      },
+      required: ['targetUser', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'generate_ui_control_state',
+    description: '指定ユーザーに対するPower Apps UI制御情報を生成します。ボタン非表示・フィールド読み取り専用・パスキープロンプト表示等の制御フラグを返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user: { type: 'object', description: 'ユーザーオブジェクト' },
+        currentUserEmail: { type: 'string', description: '現在ログイン中のユーザーメールアドレス' }
+      },
+      required: ['user', 'currentUserEmail'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_bridge_capabilities',
+    description: 'BridgeのVersion、MCP仕様対応状況、公開ツール一覧、制約情報、セキュリティ設定を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'check_dependencies',
+    description: 'Bridge接続先（Power Apps、SharePoint、Power Automate、Git、Azure）のhealth状態を確認します。Bridge全体が正常と判定するには全依存先が健全である必要があります。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'compare_powerapps_with_git',
+    description: 'Power AppsソースとGit正本ブランチのファイル内容を比較します。一致、Power Apps側が新しい、Git側が新しい、競合等の状態を判定します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targetFile: { type: 'string', description: '比較するファイルの相対パス（例：Source/Home.pa.yaml）' },
+        targetApp: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: 'get_powerapps_stateが返した実行単位ID' }
+      },
+      required: ['stateContext', 'stateSessionId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'validate_powerapps_source',
+    description: 'Power Appsソースファイルの構文、Secret混入、ファイルサイズ等を検査します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceContent: { type: 'string', description: '検査するソースコンテンツ' },
+        relativePath: { type: 'string', description: 'ソースファイルの相対パス' },
+        expectedBranch: { type: 'string', description: '期待するbranch名（省略可）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: 'get_powerapps_stateが返した実行単位ID' }
+      },
+      required: ['stateContext', 'stateSessionId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_sharepoint_list_schema',
+    description: 'SharePoint Listのスキーマ情報（列定義、型、必須、一意制約等）を取得します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePointサイトID' },
+        listId: { type: 'string', description: 'ListのID' }
+      },
+      required: ['siteId', 'listId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_registered_power_automate_flows',
+    description: 'Bridge登録済みのPower Automateフロー一覧を取得します。フロー名、用途、入力定義、承認要否を返します。トリガーURLとSAS値は返されません。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_power_automate_run_result',
+    description: 'Power Automateフロー実行後、実行結果（成功/失敗、各アクション状態、エラー）を取得します。「受付成功」と「業務処理成功」を区別します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'string', description: 'フロー実行ID' }
+      },
+      required: ['runId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'inspect_powerapps_structure',
+    description: 'Power Appsアプリの構造を解析します。appIdのみで実アプリ情報を解析、またはstateContext+relativePath指定でGit保存ソースを解析。画面一覧、コントロール、コンポーネント、データソース、コネクタ、Power Fx参照、警告を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', description: '対象Power AppsアプリID（省略時は構成済みアプリ）' },
+        stateContext: STATE_CONTEXT_SCHEMA,
+        stateSessionId: { type: 'string', description: 'Git保存ソース解析時の実行session ID（stateContextと併用時のみ有効）' },
+        relativePath: { type: 'string', description: 'Git解析対象ファイルの相対パス（stateContextと併用時のみ有効）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'discover_powerapps_structure',
+    description: 'App ID と Environment ID のみで対象Power Appsアプリを解決し、画面一覧・遷移マップ・欠落遷移先・未参照画面・コントロール一覧を読み取り専用で返します。登録済みソースrootのみを対象とし、推測しません。書込みは行いません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', description: '対象Power AppsアプリID（GUID）' },
+        environmentId: { type: 'string', description: '対象Environment ID' }
+      },
+      required: ['appId', 'environmentId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'resolve_app_target',
+    description: 'アプリ名（例: CN_AI依頼台帳。別名・部分一致可）、またはApp IDとEnvironment IDから、App ID・Environment・正本Branch・gitRootを実環境から解決します。取得できなかった項目は推測せずunconfirmedで返します。曖昧な場合は候補を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'アプリ名または別名（例: CN_AI依頼台帳）' },
+        appId: { type: 'string', description: 'App ID（GUID）。environmentIdと併用' },
+        environmentId: { type: 'string', description: 'Environment ID。appIdと併用' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'list_power_apps',
+    description: '環境内のPower Appsキャンバスアプリ一覧（App ID・名称・公開日時）をDataverseから取得します。取得できない場合は構成済みアプリ1件のみ返し、その旨をwarningsに示します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  ...platformManage.TOOL_DEFS,
+  {
+    name: 'powerautomate_flow_list',
+    description: 'Power Automateクラウドフロー(Dataverse上のソリューション対応フロー)の一覧を返します。solutionNameでソリューション内に限定、nameContainsで名前の部分一致検索。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        solutionName: { type: 'string', description: 'Dataverseソリューションの一意名' },
+        nameContains: { type: 'string', description: 'フロー名の部分一致' },
+        top: { type: 'integer', minimum: 1, maximum: 200 }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_read',
+    description: 'フロー定義(トリガー/アクション/接続参照)を読み取ります。search=文字列で該当行のみ返します。編集前の調査用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowId: { type: 'string', description: 'フローID (workflowid GUID)' },
+        search: { type: 'string', description: '検索文字列' }
+      },
+      required: ['flowId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_update',
+    description: 'フロー定義(clientdata)を文字列置換で編集→保存→再取得検証まで一括実行します。変更前スナップショットを自動保存(ロールバック可)。find不一致や定義が壊れる場合は何も変更しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowId: { type: 'string' },
+        edits: { type: 'array', items: { type: 'object', properties: { find: { type: 'string', minLength: 1 }, replace: { type: 'string' }, expectCount: { type: 'integer', minimum: 1 } }, required: ['find', 'replace'], additionalProperties: false } },
+        dryRun: { type: 'boolean', description: 'trueなら検証のみ(反映しない)' }
+      },
+      required: ['flowId', 'edits'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_set_state',
+    description: 'フローをオン/オフします(再取得で状態を検証)。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        flowId: { type: 'string' },
+        state: { type: 'string', enum: ['on', 'off'] }
+      },
+      required: ['flowId', 'state'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerautomate_flow_rollback',
+    description: 'powerautomate_flow_updateが保存したスナップショットへフロー定義を戻します。',
+    inputSchema: {
+      type: 'object',
+      properties: { snapshotId: { type: 'string' } },
+      required: ['snapshotId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerapps_app_read',
+    description: 'Power Appsキャンバスアプリの定義(ソリューション内.msapp)を読み取ります。search=文字列で該当行を検索、file=ファイル内容取得、どちらも無ければファイル一覧。編集前の調査用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        solutionName: { type: 'string', description: 'Dataverseソリューションの一意名 (例: CN_AIIraiDaicho)' },
+        appFile: { type: 'string', description: 'ソリューション内に複数アプリがある場合の.msappファイル名の一部' },
+        search: { type: 'string', description: '検索文字列(Power Fx/プロパティ等)' },
+        file: { type: 'string', description: '取得するファイルパス (例: Src/MainScreen1.pa.yaml)' },
+        maxResults: { type: 'integer', minimum: 1, maximum: 200 }
+      },
+      required: ['solutionName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerapps_app_edit_publish',
+    description: 'Power Appsキャンバスアプリを編集→保存→公開→再取得検証まで一括実行します。変更前スナップショットを自動保存(ロールバック可)。edits=数式/プロパティ文字列の置換、images=メディア画像の追加/差替え(名前で割当: Image = 名前)。find不一致時は何も変更しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        solutionName: { type: 'string' },
+        appFile: { type: 'string' },
+        edits: { type: 'array', items: { type: 'object', properties: { find: { type: 'string', minLength: 1 }, replace: { type: 'string' }, file: { type: 'string' }, expectCount: { type: 'integer', minimum: 1 } }, required: ['find', 'replace'], additionalProperties: false } },
+        images: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' } }, required: ['name'], additionalProperties: false } },
+        dryRun: { type: 'boolean', description: 'trueなら検証のみ(反映しない)' }
+      },
+      required: ['solutionName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'powerapps_app_rollback',
+    description: 'powerapps_app_edit_publishが保存したスナップショットへ戻して公開します。',
+    inputSchema: { type: 'object', properties: { snapshotId: { type: 'string' } }, required: ['snapshotId'], additionalProperties: false }
+  },
+  {
+    name: 'powerapps_snapshots_list',
+    description: '保存済みのPower Appsスナップショット一覧(新しい順)を返します。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'list_environments',
+    description: 'Power Platform管理APIからEnvironment一覧を取得します。権限不足の場合は構成済みEnvironment IDのみ（名称・種別は未確認）を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_azure_subscription',
+    description: 'Azure CLIで現在のサブスクリプション（名称・ID・状態）を取得します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_azure_app_service',
+    description: 'Bridge用App Serviceの状態（名称・リソースグループ・状態・既定ホスト名）を取得します。アプリ設定・秘密値は取得しません。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_azure_app_service_slots',
+    description: 'Bridge用App Serviceのデプロイスロット一覧（名称・状態）を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_github_commits',
+    description: '設定済みリポジトリの正本（または指定）branchのコミット一覧を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: '省略時は正本branch' },
+        perPage: { type: 'integer', minimum: 1, maximum: 50 }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_github_file',
+    description: '設定済みリポジトリのファイル内容を取得します（200KB以下のテキスト）。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'リポジトリ相対パス' },
+        ref: { type: 'string', description: '省略時は正本branch' }
+      },
+      required: ['path'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_github_pull_requests',
+    description: '設定済みリポジトリのPull Request一覧を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        state: { type: 'string', enum: ['open', 'closed', 'all'] },
+        perPage: { type: 'integer', minimum: 1, maximum: 50 }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_github_workflow_runs',
+    description: '設定済みリポジトリのGitHub Actions workflow run一覧を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string' },
+        perPage: { type: 'integer', minimum: 1, maximum: 50 }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'list_git_branches',
+    description: 'GitHub上の実在Branch一覧と、書き込み対象の正本Branch（構成値）を返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_application_rules',
+    description: 'ユーザー確認済みの設定ファイルに記載されたルール（公開承認者・gitRoot・別名）を返します。記載のない項目は未確認として扱ってください。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { appName: { type: 'string', description: 'アプリケーション名（例: CN_AI依頼台帳）' } },
+      required: ['appName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'export_knowledge_snapshot',
+    description: 'アプリ・Environment・Branch・承認者の取得結果をCopilot Studio Knowledge用のMarkdownとして生成します。生成のみで、どこにも保存・更新しません。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_executive_policy',
+    description: 'CNAI Executive vNext：利益・入金回収・資金繰り優先の経営執行支援方針と14役割の振り分け候補、承認・再利用・正本・改修順序を取得。読み取り専用。業務操作は行わない。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: { type: 'object', properties: { query: { type: 'string', maxLength: 4000, description: '相談内容（秘密値は入力しない）' } }, additionalProperties: false }
+  },
+  {
+    name: 'get_executive_brief',
+    description: '実在確認済みの既存SharePointリスト・列を指定して経営資料の原本値と不足データを取得。取得範囲のみで全社集計・予測・書き込みは行わない。取得先未指定時は不足項目を返す。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: { type: 'object', properties: { sources: { type: 'array', maxItems: 8, items: {
+      type: 'object', properties: { metric: { type: 'string', enum: require('./executivePolicy.json').managementData }, siteId: { type: 'string' }, listId: { type: 'string' }, listName: { type: 'string' }, field: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['metric', 'field'], anyOf: [{ required: ['listId'] }, { required: ['listName'] }], additionalProperties: false
+    } } }, additionalProperties: false }
+  },
+  {
+    name: 'check_payment_status',
+    description: 'SharePoint AI4 支払管理リストから未入金・遅延案件を検出（期限超過、期限内未入金、入金済み、キャンセル済み）。各案件の遅延日数・期限までの日数を算出し、優先度付きの一覧を返します。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        siteId: { type: 'string', description: 'SharePoint サイト ID（未指定時は既定サイト）' },
+        listId: { type: 'string', description: '支払管理リスト ID（listName 指定時は省略可）' },
+        listName: { type: 'string', description: '支払管理リスト名（デフォルト: 支払管理）' },
+        top: { type: 'integer', minimum: 10, maximum: 200, description: '取得件数（デフォルト: 100）' }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'discover_sharepoint_ai4_resources',
+    description: 'SharePoint テナント内から AI4 関連サイトとリストを自動探索します。AI4 サイトが見つからない場合は全テナントを検索します。支払管理・請求管理・案件管理・社員管理リストを自動分類し、推奨リストを返します。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'prepare_powerapps_execution',
+    description: 'Power Apps実装契約を1回で生成します。対象アプリ・環境解決→StateContext生成→正本ブランチ/SHA/ソース一覧取得→Git差分解析→SharePointスキーマ/Flow/依存関係取得→重複・未完成機能確認→ROI最高の機能選定→受入条件/変更範囲/ロールバック確定の8ステップを内部処理し、完全な実行契約をJSON形式で返します。Copilot Studioによる複数ツール呼出と手動StateContext継承を廃止します。読み取り専用。',
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appName: { type: 'string', description: 'Target Power Apps app name (e.g., CN_AI依頼台帳)' },
+        objective: { type: 'string', description: 'Feature selection objective (optional, max 500 chars)' },
+        isolatedCommit: { type: 'string', description: 'Optional 40-char hex SHA for testing on non-canonical branch' }
+      },
+      required: ['appName'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'execute_powerplatform_request',
+    description: 'Power Platform 統合実行基盤：ユーザー短文1回から、PowerApps・SharePoint・PowerAutomate・Copilot Studio・GitHub・Azure の全製品を協調制御し、対象特定→接続診断→接続修復→既存資産取得→変更計画→実装→テスト→保存→再取得検証→Git/PR/CI→環境反映→公開承認→公開→監査→ロールバック管理の全工程を自動実行します。本番公開・mainマージ・権限変更・削除・外部共有・追加課金のみ人間承認が必須です。',
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        request: { type: 'string', description: 'ユーザーからの短文指示（目的・対象・内容を含む、通常3〜100文字）' },
+        target: { type: 'object', description: 'オプション：対象の明示指定（appName, environmentId等）' },
+        environmentId: { type: 'string', description: 'オプション：環境ID（省略時は正本Environmentを自動選択）' },
+        requestId: { type: 'string', description: 'オプション：冪等キー用requestId（省略時は自動生成）' },
+        publishApproval: { type: 'boolean', description: 'true=公開を含める、false/未指定=保存までで停止（公開時はAPPROVAL_REQUIRED）' },
+        approvalToken: { type: 'string', description: 'オプション：mainマージ・本番公開の人間承認トークン' }
+      },
+      required: ['request'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'assess_done',
+    description: 'Phase 7 DONE Engine：Power Apps操作の完了状態を12条件で自動判定します。実施内容→保存確認→公開確認→再取得確認→ランタイム確認→権限確認→画面確認→証跡5項目→監査ログ→エラーゼロの全チェックリストを実行し、完了度%と不足項目を返します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        inputState: {
+          type: 'object',
+          description: 'リクエスト時の入力状態（appId, environment, branch, canonicalBranch, sha）',
+          properties: {
+            appId: { type: 'string' },
+            environment: { type: 'string' },
+            branch: { type: 'string' },
+            canonicalBranch: { type: 'string' },
+            sha: { type: 'string' }
+          }
+        },
+        runtimeState: {
+          type: 'object',
+          description: 'ランタイムから取得した実測状態（appId, environment, branch, canonicalBranch, sha）',
+          properties: {
+            appId: { type: 'string' },
+            environment: { type: 'string' },
+            branch: { type: 'string' },
+            canonicalBranch: { type: 'string' },
+            sha: { type: 'string' }
+          }
+        },
+        operationLog: {
+          type: 'array',
+          description: '操作ログ配列（save, publish, reread 操作のタイムスタンプと結果）',
+          items: {
+            type: 'object',
+            properties: {
+              operation: { type: 'string' },
+              timestamp: { type: 'string' },
+              status: { type: 'string' },
+              stateSnapshot: { type: 'object' }
+            }
+          }
+        },
+        evidence: {
+          type: 'object',
+          description: '証跡オブジェクト（correlationId, runtimeSha, response, state, publishResult, auditLog など）'
+        },
+        auditLog: {
+          type: 'array',
+          description: '監査ログエントリ配列',
+          items: { type: 'object' }
+        },
+        errorLog: {
+          type: 'array',
+          description: 'エラーログ配列',
+          items: { type: 'object' }
+        }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'check_prohibited_operations',
+    description: 'Phase 8 Prohibited Operations Engine：危険な操作（削除・本番公開・権限変更など）を10カテゴリで自動遮断します。本番デプロイ・mainブランチ変更・権限変更・削除・秘密値変更・外部共有・課金変更・Solution エクスポート・データバックアップ・環境間昇格の各操作を検査し、承認トークンの有無に応じて許可/拒否を返します。秘密値・外部共有・データエクスポートは承認の有無にかかわらず常に遮断します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          description: '実行予定の操作名（deploy_to_test, delete_app, update_permissions など）'
+        },
+        approvalToken: {
+          type: 'string',
+          description: '人間の明示承認トークン（8文字以上）'
+        },
+        environment: {
+          type: 'string',
+          description: '対象環境（本番/production/テスト等）'
+        },
+        targetBranch: {
+          type: 'string',
+          description: '対象ブランチ（main/master/dev等）'
+        },
+        targetName: {
+          type: 'string',
+          description: '削除対象名（アプリ名、Solution 名など）'
+        },
+        paramKeys: {
+          type: 'array',
+          description: '操作パラメータのキー配列（秘密値チェック用）',
+          items: { type: 'string' }
+        },
+        targetScope: {
+          type: 'string',
+          description: '共有スコープ（public/external/internal等）'
+        },
+        currentScope: {
+          type: 'string',
+          description: '現在のスコープ（internal等）'
+        },
+        sourceEnv: {
+          type: 'string',
+          description: '昇格元環境（dev/test等）'
+        },
+        targetEnv: {
+          type: 'string',
+          description: '昇格先環境（本番/production等）'
+        }
+      },
+      required: ['operation'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'suggest_reuse_pattern',
+    description: 'Phase 11 Reuse Engine：過去の成功・失敗パターンから、類似操作の提案テンプレート・リスク要因・最適化案を返します。署名付きパターンマッチング（exact/similar/risk/none）で、実績のある操作手順を検索します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          description: '実行予定の操作名（publish_app, save_app等）'
+        },
+        targetId: {
+          type: 'string',
+          description: '対象リソースID（アプリID等）'
+        },
+        environment: {
+          type: 'string',
+          description: '実行環境（production/test/dev等）'
+        },
+        steps: {
+          type: 'array',
+          description: '実行予定のステップ配列',
+          items: { type: 'object' }
+        }
+      },
+      required: ['operation'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_playbook',
+    description: 'Phase 11 Reuse Engine：操作とその環境向けの標準実行手順書（playbook）を取得します。成功率・リスク要因・検証チェックポイント・実行時間推定を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          description: '操作名（publish_app, deploy_app等）'
+        },
+        environment: {
+          type: 'string',
+          description: '実行環境（production/test/dev等）'
+        }
+      },
+      required: ['operation', 'environment'],
+      additionalProperties: false
+    }
+  },
+  // Phase 12: Runtime Evidence Engine
+  {
+    name: 'capture_app_startup',
+    description: 'Phase 12：アプリ起動時の初期化状態をキャプチャします。起動時間・画面読み込み・接続初期化を記録します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string', description: 'セッション関連ID' },
+        appId: { type: 'string', description: 'アプリID' },
+        startupTime: { type: 'number', description: 'ミリ秒単位の起動時間' },
+        environment: { type: 'string', description: '実行環境' },
+        screenLoaded: { type: 'boolean', description: 'UI画面読み込み完了' },
+        connectionsInitialized: { type: 'boolean', description: '接続初期化完了' }
+      },
+      required: ['appId', 'startupTime'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_user_interaction',
+    description: 'Phase 12：ユーザー操作（クリック・入力・選択）をキャプチャします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        screenName: { type: 'string' },
+        controlName: { type: 'string' },
+        interactionType: { type: 'string', enum: ['click', 'input', 'navigation', 'selection'] },
+        inputValue: { type: 'string' }
+      },
+      required: ['appId', 'controlName', 'interactionType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_data_binding',
+    description: 'Phase 12：データバインディング検証。UI要素と実際のデータが一致しているか確認します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        controlName: { type: 'string' },
+        dataSourceName: { type: 'string' },
+        expectedValue: {},
+        actualValue: {}
+      },
+      required: ['appId', 'controlName', 'expectedValue', 'actualValue'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_formula_execution',
+    description: 'Phase 12：PowerFx式実行結果をキャプチャ。入出力値の検証を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        formulaName: { type: 'string' },
+        inputParameters: { type: 'object' },
+        expectedOutput: {},
+        actualOutput: {}
+      },
+      required: ['appId', 'formulaName', 'expectedOutput', 'actualOutput'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_connection',
+    description: 'Phase 12：接続状態とAPI呼び出しをキャプチャします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        connectionName: { type: 'string' },
+        status: { type: 'string', enum: ['connected', 'error', 'timeout'] },
+        responseTime: { type: 'number' },
+        errorInfo: { type: 'string' }
+      },
+      required: ['appId', 'connectionName', 'status'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_error_event',
+    description: 'Phase 12：ランタイムエラーをキャプチャ。重大度（error/warning/fatal）と処理状態を記録します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        errorMessage: { type: 'string' },
+        severity: { type: 'string', enum: ['error', 'warning', 'fatal'] },
+        handled: { type: 'boolean' }
+      },
+      required: ['appId', 'errorMessage', 'severity'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_state_transition',
+    description: 'Phase 12：状態遷移・画面遷移をキャプチャします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        transitionType: { type: 'string', enum: ['navigation', 'overlay', 'modal', 'dialog'] },
+        fromScreen: { type: 'string' },
+        toScreen: { type: 'string' },
+        transitionTime: { type: 'number' }
+      },
+      required: ['appId', 'transitionType'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_performance',
+    description: 'Phase 12：操作パフォーマンスをキャプチャ。実行時間と閾値比較を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        operationName: { type: 'string' },
+        duration: { type: 'number', description: 'ミリ秒単位' },
+        renderTime: { type: 'number' },
+        apiCallTime: { type: 'number' }
+      },
+      required: ['appId', 'operationName', 'duration'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_behavior_verification',
+    description: 'Phase 12：ユーザー可視動作を検証。期待値と観測値の比較を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        scenario: { type: 'string', description: '動作シナリオ' },
+        expectedBehavior: { type: 'string' },
+        observedBehavior: { type: 'string' },
+        verified: { type: 'boolean' }
+      },
+      required: ['appId', 'scenario', 'expectedBehavior', 'observedBehavior'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'capture_integration',
+    description: 'Phase 12：クロスアプリ・クロスサービス連携を検証します。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: { type: 'string' },
+        appId: { type: 'string' },
+        integrationType: { type: 'string', enum: ['sharepoint_sync', 'power_automate', 'cross_app', 'external_api'] },
+        sourceSystem: { type: 'string' },
+        targetSystem: { type: 'string' },
+        status: { type: 'string', enum: ['success', 'partial', 'failed'] }
+      },
+      required: ['appId', 'integrationType', 'status'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'generate_runtime_report',
+    description: 'Phase 12：ランタイムレポート生成。エビデンス集約・完全性検証・準備度採点を含みます。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: {
+          type: 'string',
+          description: 'セッション関連ID'
+        }
+      },
+      required: ['correlationId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'export_evidence',
+    description: 'Phase 12：完全なランタイムエビデンス・ヘルスステータスをエクスポートします。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        correlationId: {
+          type: 'string',
+          description: 'セッション関連ID'
+        }
+      },
+      required: ['correlationId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_agent_registry',
+    description: 'Bridgeに登録されたAIエージェント（CommanderAI・ResearchAI・DesignAI・ImplementationAI・TestAI・AuditAI・ReleaseAI・RecoveryAI・ProfitAI・CollectionAI・OptimizationAI）の役割、使用可能ツール、人間承認が必要な操作、Capability Registryを返します。Tool Registryとの整合性も検証します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'create_execution_request',
+    description: 'AIエージェントへの実行依頼をキューに登録します。依頼はAgent Registryに登録されたエージェントの使用可能ツールの範囲に限られます。人間承認が必要なステップを含む場合は「人間承認待ち」で登録され、人間が承認するまで進みません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agentId: { type: 'string', description: '依頼先エージェントID（例：ImplementationAI）' },
+        priority: { type: 'string', description: '優先度：high / normal / low（省略時 normal）' },
+        steps: {
+          type: 'array',
+          description: '実行するステップの配列（最大50件）',
+          items: {
+            type: 'object',
+            properties: { tool: { type: 'string', description: '使用するツール名' } },
+            required: ['tool'],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ['agentId', 'steps'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'get_execution_queue',
+    description: '実行待ちの依頼を、優先順位（high→normal→low）と登録順で返します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_execution_status',
+    description: '実行依頼1件の状態（ステップごとの状態、承認状況を含む）を返します。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string', description: '実行依頼ID' } },
+      required: ['requestId'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_checkpoint',
+    description: '実行依頼のチェックポイント（完了ステップ数、最後に完了したツール）を返します。停止後の再開位置の確認に使います。読み取り専用。',
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: { type: 'string', description: '実行依頼ID' } },
+      required: ['requestId'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'verify_github_ci_artifact',
+    description: 'GitHub Actionsの診断ZIPを認証付きで取得し、SHA-256・HEAD・実行回・REST結果を照合します。読み取り専用。修正・マージ・デプロイは許可しません。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'integer', minimum: 1 },
+        artifactId: { type: 'integer', minimum: 1 },
+        expectedHeadSha: { type: 'string', pattern: '^[a-f0-9]{40}$' },
+        expectedRunAttempt: { type: 'integer', minimum: 1 }
+      },
+      required: ['runId', 'artifactId', 'expectedHeadSha', 'expectedRunAttempt'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false }
+  },
+  {
+    name: 'get_azure_deployment_metadata',
+    description: 'Azureデプロイの非機密メタデータを取得します。読み取り専用。未接続の場合はFail Closed。デプロイIDをGit SHAと見なしません。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'get_powerapps_media_asset',
+    description: 'Git正本の画像をBase64のまま取得・出力、または指定パスを一覧確認します。読み取り専用。',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['get', 'export', 'list'] },
+      relativePath: { type: 'string' },
+      relativePaths: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } }
+    }, required: ['operation'], additionalProperties: false }
+  },
+  {
+    name: 'update_powerapps_image',
+    description: '既存画面に画像コントロールを追加・編集します。PNG/JPEG/GIF/WebP（1MiB以下）をdata URIで埋め込み、位置・サイズ・表示方法を編集します。Git更新は保存・公開完了を意味しません。変更後に状態再取得、既存save/publishツールで検証してください。',
+    inputSchema: { type: 'object', properties: {
+      operation: { type: 'string', enum: ['add', 'edit'] },
+      relativePath: { type: 'string', description: 'get_powerapps_sourceで取得した画面.pa.yamlのパス' },
+      screenName: { type: 'string' }, controlName: { type: 'string' },
+      base64Content: { type: 'string', maxLength: 1398204 },
+      contentType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] },
+      properties: { type: 'object', properties: {
+        X: { type: 'number', minimum: 0, maximum: 10000 }, Y: { type: 'number', minimum: 0, maximum: 10000 },
+        Width: { type: 'number', exclusiveMinimum: 0, maximum: 10000 }, Height: { type: 'number', exclusiveMinimum: 0, maximum: 10000 },
+        ImagePosition: { type: 'string', enum: ['Fit', 'Fill', 'Stretch', 'Center', 'Tile'] },
+        AccessibleLabel: { type: 'string', maxLength: 500 }
+      }, additionalProperties: false },
+      message: { type: 'string', maxLength: 500 }, branch: { type: 'string' },
+      stateContext: STATE_CONTEXT_SCHEMA, stateSessionId: { type: 'string', minLength: 8 }
+    }, required: ['operation', 'relativePath', 'screenName', 'controlName', 'branch', 'stateContext', 'stateSessionId'], additionalProperties: false }
+  },
 ]);
+
+// External tools/list (CNAI and other MCP clients). Internal catalog stays in MCP_PUBLIC_TOOLS.
+const PUBLISHED_TOOLS = publishedToolsFor(MCP_PUBLIC_TOOLS);
 
 async function tasksPayload(store) {
   const tasks = await store.list();
@@ -269,6 +1705,22 @@ async function updateTaskStatusPayload(store, params) {
 async function getTaskResultPayload(store, taskId) {
   const tasks = await store.list();
   return tasks.find((task) => task.id === taskId) || null;
+}
+
+// Read-only GitHub tools. Owner and repo come from configuration only.
+// Read-only Azure tools. Only az read commands; app settings and secrets are never requested.
+const AZURE_READ_METHODS = new Set(['get_azure_subscription', 'get_azure_app_service', 'list_azure_app_service_slots']);
+const GITHUB_READ_METHODS = new Set(['list_github_commits', 'get_github_file', 'list_github_pull_requests', 'list_github_workflow_runs']);
+
+/** Read-only GitHub tool set bound to the configured canonical repository, or null when not configured. */
+function githubReadToolsFor(gitStore) {
+  if (!gitStore || !gitStore.githubToken || !gitStore.githubOwner || !gitStore.githubRepo) return null;
+  return createGithubReadTools({
+    request: (path) => gitStore.githubRequest(path),
+    owner: gitStore.githubOwner,
+    repo: gitStore.githubRepo,
+    canonicalBranch: gitStore.canonicalBranch
+  });
 }
 
 function requestError(message, status = 400) {
@@ -318,12 +1770,77 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
-async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries) {
+async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, authenticatedScope) {
+  if (method === 'get_powerapps_media_asset') {
+    if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
+    if (!['get', 'export', 'list'].includes(params.operation)) throw requestError('operationはget/export/listが必要です');
+    if (params.operation === 'list' && (!Array.isArray(params.relativePaths) || !params.relativePaths.length || params.relativePaths.length > 50 || params.relativePaths.some(path => typeof path !== 'string'))) throw requestError('relativePathsは1から50個のパスが必要です');
+    const result = await powerAppsGitStore.powerAppsMediaAsset(params);
+    if (result.status === 'blocked' || result.status === 'not_found') {
+      const error = requestError(result.error || '画像取得に失敗しました', result.status === 'not_found' ? 404 : 400);
+      error.payload = result;
+      throw error;
+    }
+    return result;
+  }
   if (!MCP_METHODS.includes(method)) {
     throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
   }
 
   if (method === 'health_check') return { status: 'ok' };
+  if (method === 'cnai_submit_windows_job') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    const { taskId, action, workspace, riskLevel } = params;
+    return windowsJobs.submitWindowsJob(windowsJobs.defaultState, { taskId, action, workspace, riskLevel }, 'mcp');
+  }
+  if (method === 'cnai_route_request') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    return cnaiRouter.routeRequest(cnaiRouter.defaultState, params);
+  }
+  if (method === 'cnai_get_route_status') {
+    if (!params || typeof params.requestId !== 'string') throw requestError('requestIdは必須です');
+    return {
+      status: cnaiRouter.getStatus(cnaiRouter.defaultState, params.requestId),
+      checkpoint: cnaiRouter.getCheckpoint(cnaiRouter.defaultState, params.requestId),
+      audit: cnaiRouter.getAuditTrail(cnaiRouter.defaultState, params.requestId)
+    };
+  }
+  if (method === 'cnai_rollback_route') {
+    if (!params || typeof params.requestId !== 'string') throw requestError('requestIdは必須です');
+    return cnaiRouter.rollbackRequest(cnaiRouter.defaultState, params.requestId, params.reason);
+  }
+  if (method === 'verify_github_ci_artifact') {
+    if (!config.mcpApiKey) return { status: 'blocked', reason: 'mcp_authentication_required', mayEditDraft: false, mayMerge: false, mayDeploy: false };
+    return bridgeServices.ciArtifact.verify(params);
+  }
+  if (method === 'get_azure_deployment_metadata') {
+    if (params && Object.keys(params).length) throw requestError('parameters_not_allowed');
+    const reader = bridgeServices?.azureMetadata?.readDeploymentMetadata;
+    if (typeof reader !== 'function') return { status: 'blocked', reason: 'azure_metadata_reader_unavailable' };
+    let result;
+    try { result = await reader(); }
+    catch {
+      return { status: 'blocked', reason: 'azure_metadata_unavailable',
+        metadataFailures: [{ stage: 'metadata_reader', reason: 'reader_failed' }] };
+    }
+    const metadataFailures = sanitizeMetadataFailures(result?.metadataFailures);
+    if (!result || result.status === 'blocked' || result.resourceIdMatched !== true || !Array.isArray(result.deploymentEntries))
+      return { status: 'blocked', reason: result?.reason === 'azure_metadata_unavailable' ? 'azure_metadata_unavailable' : 'azure_metadata_unverified',
+        resourceIdMatched: result?.resourceIdMatched === true, metadataFailures };
+    return { status: 'observed_not_verified', resourceIdMatched: true,
+      metadataFailures,
+      // Only the trusted adapter's already assessed diagnostic is forwarded.
+      // Missing or malformed diagnostic must remain blocked.
+      // Untrusted adapter results are observational only. Never accept a
+      // self-declared confirmed status as independent Azure proof.
+      diagnostic: require('./azureDiagnostic').assessAzureDiagnostic(),
+      deploymentEntries: result.deploymentEntries.map(entry => ({
+        deploymentId: typeof entry.deploymentId === 'string' ? entry.deploymentId.slice(0, 100) : null,
+        active: entry.active === true,
+        status: Number.isInteger(entry.status) ? entry.status : null,
+        receivedTime: typeof entry.receivedTime === 'string' ? entry.receivedTime.slice(0, 40) : null
+      })).slice(0, 30), deploymentShaMatched: false, effectiveRbacVerified: false, pacRuntimeVerified: false };
+  }
   if (method === 'get_tasks') return tasksPayload(store);
   if (method === 'get_next_task') return nextPayload(store);
   if (method === 'create_task') {
@@ -348,7 +1865,124 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'get_powerapps_source') {
     const paramError = validateGetPowerAppsSourceParams(params);
     if (paramError) throw requestError(paramError);
-    return withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(params.relativePath));
+
+    // Authenticate the session before resolving or binding a multi-file batch.
+    if (params.targetNames !== undefined) {
+      if (typeof authenticatedScope !== 'string' || !authenticatedScope) {
+        throw contextError(['authenticated scope unavailable']);
+      }
+      const record = stateRegistry.lookup(params.correlationId, params.stateSessionId, authenticatedScope);
+      const sourceObservations = [];
+      const bindErrors = [];
+      try {
+        const names = params.targetNames;
+        if (!Array.isArray(names) || !names.length || names.length > 50 ||
+            names.some(name => typeof name !== 'string' || !name.trim()) ||
+            new Set(names).size !== names.length) {
+          throw contextError(['targetNames: non-empty unique names required'], 400);
+        }
+        const { results, errors } = await powerAppsGitStore.resolveTargetNamesToFiles(names);
+        if (!Array.isArray(results) || !Array.isArray(errors)) {
+          throw contextError(['targetNames: invalid resolution result']);
+        }
+        bindErrors.push(...errors.map(error => ({ screenName: error.name, reason: error.reason || error.error })));
+        const resolvedNames = results.map(result => result.name);
+        if (errors.length || results.length !== names.length ||
+            new Set(resolvedNames).size !== names.length ||
+            resolvedNames.some(name => !names.includes(name))) {
+          throw contextError(['targetNames: incomplete or duplicate resolution']);
+        }
+
+        const pending = [];
+        const paths = new Set();
+        for (const result of results) {
+          try {
+            if (typeof result.path !== 'string' || !result.path) throw contextError(['path: missing from resolved source']);
+            const fileData = await powerAppsGitStore.getSourceFile(result.path);
+            const root = record.context.gitRoot;
+            const canonicalPath = fileData.path;
+            if (typeof root !== 'string' || !root ||
+                (canonicalPath !== `${root}/${result.path}` &&
+                 !(result.path.startsWith(`${root}/`) && canonicalPath === result.path))) {
+              throw contextError(['path: retrieved source does not match resolved canonical path']);
+            }
+            if (paths.has(canonicalPath)) throw contextError(['path: duplicate resolved source']);
+            paths.add(canonicalPath);
+            if (typeof fileData.content !== 'string' || !/^[a-f0-9]{40}$/.test(fileData.sha || '') ||
+                blobSha(fileData.content) !== fileData.sha ||
+                !/^[a-f0-9]{40}$/.test(result.sha || '') || result.sha !== fileData.sha) {
+              throw contextError(['sha: resolved and retrieved content must match verified blob SHA']);
+            }
+            if (fileData.branch !== record.context.branch ||
+                fileData.canonicalBranch !== record.context.canonicalBranch ||
+                (result.branch !== undefined && result.branch !== record.context.branch)) {
+              throw contextError(['branch: retrieved source differs from registered authority']);
+            }
+            pending.push({ result, source: { path: canonicalPath, sha: fileData.sha, content: fileData.content } });
+          } catch (error) {
+            bindErrors.push({ screenName: result.name, reason: error.message });
+          }
+        }
+        if (bindErrors.length || pending.length !== names.length) {
+          throw contextError(['targetNames: source verification incomplete']);
+        }
+        // All asynchronous reads and hash checks finish before the synchronous binds.
+        for (const { result, source } of pending) {
+          const bound = stateRegistry.bindSourceObservation(
+            params.correlationId, params.stateSessionId, authenticatedScope, source, result.path
+          );
+          sourceObservations.push({
+            screenName: result.name,
+            relativePath: result.path,
+            fileSha: source.sha,
+            stateSessionId: bound.stateSessionId,
+            sourceObservationComplete: bound.sourceObservationComplete
+          });
+        }
+        return {
+          status: 'ok', method: 'get_powerapps_source',
+          result: { sourceObservations, bindErrors, totalRequested: names.length,
+            successCount: sourceObservations.length, errorCount: 0 }
+        };
+      } catch (error) {
+        // Only this authenticated session can be invalidated, including old observations.
+        stateRegistry.invalidateBySessionId(params.stateSessionId, 'source_observation_batch_failed');
+        if (!bindErrors.length) bindErrors.push({ reason: error.message });
+        const failure = contextError(['targetNames: batch failed; acquire a new state session']);
+        failure.payload = { ...failure.payload,
+          method: 'get_powerapps_source', sourceObservationComplete: false, stateContextComplete: false,
+          result: { sourceObservations: [], bindErrors, totalRequested: Array.isArray(params.targetNames) ? params.targetNames.length : 0,
+            successCount: 0, errorCount: bindErrors.length } };
+        throw failure;
+      }
+    }
+
+    // relativePath または screenName 指定時: 単一ファイル取得
+    let resolvedPath = params.relativePath;
+    if (!resolvedPath && params.screenName) {
+      const resolved = await powerAppsGitStore._resolveScreenToRelativePath(params.screenName);
+      if (resolved.error) {
+        const statusMap = {
+          'AUTH_CONFIGURATION': 503,
+          'FILE_NOT_FOUND': 404,
+          'AMBIGUOUS_PATH': 400,
+          'BRANCH_MISMATCH': 409
+        };
+        const error = new Error(resolved.reason);
+        error.status = statusMap[resolved.error] || 400;
+        error.payload = {
+          status: resolved.error,
+          screenName: params.screenName
+        };
+        throw error;
+      }
+      resolvedPath = resolved.path;
+    }
+
+    const fileResult = await powerAppsGitStore.getSourceFile(resolvedPath);
+
+    // The transport wrapper binds single-file observations using its authenticated scope.
+    return fileResult;
   }
   if (method === 'get_powerapps_app') {
     const paramError = validateGetPowerAppsAppParams(params);
@@ -363,13 +1997,16 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'update_powerapps_app') {
     const paramError = validateUpdatePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertSourceControlCompatible?.('編集')));
     return params.updateData
       ? powerAppsStore.updateApp(params.updateData)
-      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message));
+      : withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(params.relativePath, params.content, params.message, params.branch));
   }
   if (method === 'save_powerapps_app') {
     const paramError = validateSavePowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
+    // get_powerapps_sourceが返したbranchが渡された場合、正本branchと一致しなければ保存を拒否する。
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '保存')));
     const refresh = await withUpstreamErrorStatus(powerAppsGitStore.refreshFromGit());
     const pull = await withUpstreamErrorStatus(powerAppsGitStore.pullFromGit());
     const saved = await powerAppsStore.saveApp();
@@ -378,17 +2015,58 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (method === 'publish_powerapps_app') {
     const paramError = validatePublishPowerAppsAppParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsStore.publishApp();
+    await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
+    return withUpstreamErrorStatus(powerAppsStore.publishApp());
   }
   if (method === 'get_powerapps_operation_result') {
     const paramError = validateGetPowerAppsOperationResultParams(params);
     if (paramError) throw requestError(paramError);
-    return powerAppsStore.getOperationResult(params.operationId);
+    return withUpstreamErrorStatus(powerAppsStore.getOperationResult(params.operationId));
   }
   if (method === 'get_sharepoint_list') {
     const paramError = validateGetSharePointListParams(params);
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(sharePointReader.listItems(params));
+  }
+  if (method === 'list_sharepoint_lists') {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
+    const unknown = Object.keys(params).filter((key) => !['siteId', 'searchTerm', 'top'].includes(key));
+    if (unknown.length) throw requestError(`未対応のプロパティです: ${unknown.join(', ')}`);
+    if (params.siteId !== undefined && (typeof params.siteId !== 'string' || !params.siteId.trim())) throw requestError('siteIdは空でない文字列である必要があります');
+    if (params.searchTerm !== undefined && (typeof params.searchTerm !== 'string' || params.searchTerm.length > 200)) throw requestError('searchTermは200文字以内の文字列である必要があります');
+    if (params.top !== undefined && (!Number.isInteger(params.top) || params.top < 1 || params.top > 200)) throw requestError('topは1から200の整数である必要があります');
+    return withUpstreamErrorStatus(sharePointReader.listLists(params));
+  }
+  if (method === 'create_sharepoint_list') {
+    if (params.approvedByHuman !== true) throw requestError('SharePointへの書き込みにはapprovedByHuman:trueが必須です');
+    if (typeof params.siteId !== 'string' || !params.siteId.trim()) throw requestError('siteIdは必須です');
+    if (typeof params.displayName !== 'string' || !params.displayName.trim() || params.displayName.length > 255) throw requestError('displayNameは1〜255文字で指定してください');
+    const existing = await sharePointReader.listLists({ siteId: params.siteId, searchTerm: params.displayName, top: 200 });
+    if (existing.lists.some((item) => item.displayName.toLocaleLowerCase() === params.displayName.trim().toLocaleLowerCase())) {
+      throw requestError('同名リストが既に存在します。重複作成を中止しました。');
+    }
+    return withUpstreamErrorStatus(sharePointWriter.createList(params.siteId, params.displayName, 'genericList'));
+  }
+  if (method === 'create_sharepoint_list_item' || method === 'update_sharepoint_list_item') {
+    if (params.approvedByHuman !== true) throw requestError('SharePointへの書き込みにはapprovedByHuman:trueが必須です');
+    for (const key of ['siteId','listId', ...(method === 'update_sharepoint_list_item' ? ['itemId'] : [])]) {
+      if (typeof params[key] !== 'string' || !params[key].trim()) throw requestError(`${key}は必須です`);
+    }
+    if (!params.fields || typeof params.fields !== 'object' || Array.isArray(params.fields) || Object.keys(params.fields).length === 0) throw requestError('fieldsは1件以上の列内部名と値を持つオブジェクトで指定してください');
+    if (JSON.stringify(params.fields).length > 50000) throw requestError('fieldsのJSONは50000文字以内にしてください');
+    return withUpstreamErrorStatus(method === 'create_sharepoint_list_item'
+      ? sharePointWriter.createItemFields(params.siteId, params.listId, params.fields)
+      : sharePointWriter.updateItemFields(params.siteId, params.listId, params.itemId, params.fields));
+  }
+  if (method === 'get_sharepoint_columns') {
+    const paramError = validateGetSharePointColumnsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.listColumns(params));
+  }
+  if (method === 'ensure_sharepoint_columns') {
+    const paramError = validateEnsureSharePointColumnsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(sharePointReader.ensureColumns(params));
   }
   if (method === 'run_power_automate_flow') {
     // approvedByHuman:trueはvalidateRunPowerAutomateFlowParamsで必須チェック済み。
@@ -410,6 +2088,926 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
     if (paramError) throw requestError(paramError);
     return withUpstreamErrorStatus(employeeLedgerEntries.updateEntry(params.itemId, params.record));
   }
+  if (method === 'validate_powerapps_change') {
+    const paramError = validateValidatePowerAppsChangeParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.validatePowerAppsChange(params));
+  }
+  if (method === 'run_powerapps_tests') {
+    const paramError = validateRunPowerAppsTestsParams(params);
+    if (paramError) throw requestError(paramError);
+    return runStaticTests(params);
+  }
+  if (method === 'verify_save_result') {
+    const paramError = validateVerifySaveResultParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.verifySaveResult(params));
+  }
+  if (method === 'deploy_to_test') {
+    const paramError = validateDeployToTestParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.deployToTest(params));
+  }
+  if (method === 'verify_deployment') {
+    const paramError = validateVerifyDeploymentParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.verifyDeployment(params));
+  }
+  if (method === 'get_deployment_logs') {
+    const paramError = validateGetDeploymentLogsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.getDeploymentLogs(params));
+  }
+  if (method === 'rollback_deployment') {
+    const paramError = validateRollbackDeploymentParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.deployment.rollbackDeployment(params));
+  }
+  if (method === 'get_permissions') {
+    const paramError = validateGetPermissionsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.permissions.getPermissions(params));
+  }
+  if (method === 'update_permissions') {
+    // approvedByHuman:trueはvalidateUpdatePermissionsParamsで必須チェック済み（AI単独承認禁止）。
+    const paramError = validateUpdatePermissionsParams(params);
+    if (paramError) throw requestError(paramError);
+    return withUpstreamErrorStatus(bridgeServices.permissions.updatePermissions(params));
+  }
+  if (method === 'lock_user_info') {
+    const paramError = validateLockUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return bridgeServices.userProtection.lockUserInfo(params.user, params.passkey);
+  }
+  if (method === 'validate_passkey') {
+    const paramError = validateValidatePasskeyParams(params);
+    if (paramError) throw requestError(paramError);
+    const isValid = bridgeServices.userProtection.validatePasskey(params.passkey, params.user);
+    return { valid: isValid };
+  }
+  if (method === 'get_user_lock_status') {
+    const paramError = validateGetUserLockStatusParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      isLocked: bridgeServices.userProtection.isUserLocked(params.user),
+      lockedAt: params.user.lockedAt || null
+    };
+  }
+  if (method === 'can_view_user_info') {
+    const paramError = validateCanViewUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      canView: bridgeServices.userProtection.canViewUserInfo(params.targetUser, params.currentUserEmail)
+    };
+  }
+  if (method === 'can_edit_user_info') {
+    const paramError = validateCanEditUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    const result = bridgeServices.userProtection.canEditUserInfo(params.targetUser, params.currentUserEmail, params.passkey);
+    return result;
+  }
+  if (method === 'can_delete_user_info') {
+    const paramError = validateCanDeleteUserInfoParams(params);
+    if (paramError) throw requestError(paramError);
+    return {
+      canDelete: bridgeServices.userProtection.canDeleteUserInfo(params.targetUser, params.currentUserEmail)
+    };
+  }
+  if (method === 'generate_ui_control_state') {
+    const paramError = validateGenerateUIControlStateParams(params);
+    if (paramError) throw requestError(paramError);
+    return bridgeServices.userProtection.generateUIControlState(params.user, params.currentUserEmail);
+  }
+  if (method === 'get_bridge_capabilities') {
+    return getBridgeCapabilities(MCP_PUBLIC_TOOLS, { version: '1.0.0', mcpVersion: '2025-06-18', deploymentSha: config.deploymentSha || null });
+  }
+  if (method === 'check_dependencies') {
+    return checkDependencies({
+      powerAppsStore,
+      sharePointReader,
+      powerAutomateRunner,
+      powerAppsGitStore
+    });
+  }
+  // Note: compare_powerapps_with_git and validate_powerapps_source require State Manager validation.
+  // These are handled in executeWithStateInternal() when stateContext is provided.
+  // If they reach here (no stateContext), they fail with missing State Context.
+  if (method === 'compare_powerapps_with_git') {
+    throw contextError(['stateContext: required for compare_powerapps_with_git'], 400);
+  }
+  if (method === 'validate_powerapps_source') {
+    throw contextError(['stateContext: required for validate_powerapps_source'], 400);
+  }
+  if (method === 'get_sharepoint_list_schema') {
+    return getSharePointListSchema({
+      sharePointReader,
+      siteId: params.siteId,
+      listId: params.listId
+    });
+  }
+  if (method === 'list_registered_power_automate_flows') {
+    return listRegisteredPowerAutomateFlows({
+      powerAutomateRunner
+    });
+  }
+  if (method === 'get_power_automate_run_result') {
+    return getPowerAutomateRunResult({
+      powerAutomateRunner,
+      runId: params.runId
+    });
+  }
+  if (method === 'discover_powerapps_structure') {
+    return discoverPowerAppsStructure({
+      appId: params.appId,
+      environmentId: params.environmentId,
+      getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+      githubRequest: (path) => powerAppsGitStore.githubRequest(path),
+      owner: powerAppsGitStore.githubOwner,
+      repo: powerAppsGitStore.githubRepo,
+      branch: powerAppsGitStore.canonicalBranch
+    });
+  }
+  if (method === 'inspect_powerapps_structure') {
+    // StateContextなし: params.appIdで実アプリ情報解析（Power Apps API経由）
+    // StateContextあり: executeWithStateInternal が処理
+    // stateSessionIdのみ: State Registryからappid、sourceを取得
+    if (!params.appId && params.correlationId === undefined && params.stateSessionId === undefined) {
+      throw bridgeError('appIdまたはstateContext/stateSessionIdが必要です（resolve_app_targetまたはprepare_powerapps_executionで対象を解決してください）', 400);
+    }
+
+    // stateSessionIdのみで実行（StateContext完全なし）
+    if (params.stateSessionId !== undefined && params.stateContext === undefined && params.correlationId === undefined) {
+      // Use formal Registry lookup API
+      const record = stateRegistry.lookupBySessionId(params.stateSessionId, scope, params.appId);
+      const result = await inspectPowerAppsStructure({
+        powerAppsStore,
+        sourceContent: record.source.content,
+        sourceOrigin: 'github_canonical',
+        stateContext: record.context
+      });
+      return {
+        ...result,
+        correlationId: record.context.correlationId,
+        stateContext: { ...record.context },
+        stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha
+      };
+    }
+
+    return inspectPowerAppsStructure({
+      powerAppsStore,
+      appId: params.appId
+    });
+  }
+  if (method === 'get_executive_policy') return withUpstreamErrorStatus(Promise.resolve().then(() => getExecutivePolicy(params)), 400);
+  if (method === 'get_executive_brief') return withUpstreamErrorStatus(getExecutiveBrief({ ...params, sharePointReader }), 400);
+  if (method === 'resolve_app_target') {
+    // App ID + Environment ID による動的解決（固定値・単一アプリ前提を使わない）
+    if (params.appId !== undefined || params.environmentId !== undefined) {
+      return resolveAppTargetById({
+        appId: params.appId,
+        environmentId: params.environmentId,
+        getAppInfo: (query) => powerAppsStore.getAppInfoForEnvironment(query),
+        canonicalBranch: powerAppsGitStore.canonicalBranch
+      });
+    }
+    if (typeof params.query !== 'string' || !params.query.trim()) {
+      throw requestError('queryまたはappId/environmentIdが必要です');
+    }
+    return getResolver(powerAppsStore, powerAppsGitStore).resolve(params.query);
+  }
+  if (method === 'list_power_apps') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const list = await r.listApps();
+    return createCommonResponse({ status: list.verified ? 'ok' : 'error', verified: list.verified, data: { source: list.source, apps: list.apps }, warnings: list.warnings, summary: `アプリ${list.apps.length}件（取得元: ${list.source}）` });
+  }
+  if (platformManage.TOOL_NAMES.includes(method)) {
+    const d = await platformManage.run(method, params || {});
+    return createCommonResponse({ status: d.status === 'ok' ? 'ok' : d.status === 'partial' ? 'partial' : 'error', verified: d.verified, data: d, warnings: d.error ? [d.error] : [], summary: `${method}.${d.operation} ${d.status}` });
+  }
+  if (typeof method === 'string' && method.startsWith('powerautomate_flow_')) {
+    try {
+      const p = params || {};
+      const fn = { powerautomate_flow_list: 'listFlows', powerautomate_flow_read: 'readFlow', powerautomate_flow_update: 'updateFlow', powerautomate_flow_set_state: 'setFlowState', powerautomate_flow_rollback: 'rollbackFlow' }[method];
+      if (!fn) throw new Error('unknown tool');
+      const d = await powerAutomateFlowWriter[fn](p);
+      const bad = typeof d.status === 'string' && d.status.endsWith('verify_failed');
+      return createCommonResponse({ status: bad ? 'partial' : 'ok', verified: !bad, data: d, warnings: [], summary: `${method} ${d.status || 'ok'}` });
+    } catch (err) {
+      return createCommonResponse({ status: 'error', verified: false, data: null, warnings: [err.message], summary: `${method} 失敗: ${err.message}` });
+    }
+  }
+  if (method === 'powerapps_app_read' || method === 'powerapps_app_edit_publish' || method === 'powerapps_app_rollback' || method === 'powerapps_snapshots_list') {
+    try {
+      const p = params || {};
+      if (method === 'powerapps_app_read') {
+        const d = await powerAppsSolutionWriter.readApp(p);
+        return createCommonResponse({ status: 'ok', verified: true, data: d, warnings: [], summary: `${d.app}: ${d.matches ? d.matches.length + '件一致' : d.content !== undefined ? d.file : d.fileCount + 'ファイル'}` });
+      }
+      if (method === 'powerapps_app_edit_publish') {
+        const d = await powerAppsSolutionWriter.applyEdit(p);
+        return createCommonResponse({ status: d.status === 'published_verify_failed' ? 'partial' : 'ok', verified: d.status !== 'published_verify_failed', data: d, warnings: d.verified === false ? ['公開後の再取得で一部の変更を確認できませんでした'] : [], summary: `${d.status} snapshot=${d.snapshotId}` });
+      }
+      if (method === 'powerapps_app_rollback') {
+        const d = await powerAppsSolutionWriter.rollback(p);
+        return createCommonResponse({ status: 'ok', verified: true, data: d, warnings: [], summary: `rolled back to ${d.snapshotId}` });
+      }
+      const d = powerAppsSolutionWriter.listSnapshots();
+      return createCommonResponse({ status: 'ok', verified: true, data: d, warnings: [], summary: `${d.snapshots.length}件` });
+    } catch (err) {
+      return createCommonResponse({ status: 'error', verified: false, data: null, warnings: [err.message], summary: `${method} 失敗: ${err.message}` });
+    }
+  }
+  if (method === 'list_environments') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const envs = await r.listEnvironments();
+    return createCommonResponse({ status: envs.verified ? 'ok' : 'partial', verified: envs.verified, data: envs, warnings: envs.warnings, summary: `Environment${envs.environments.length}件（取得元: ${envs.source}）` });
+  }
+  if (method === 'list_git_branches') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    const br = await r.listBranches();
+    return createCommonResponse({ status: br.verified ? 'ok' : 'error', verified: br.verified, data: br, warnings: br.warnings, summary: `Branch${br.branches.length}件（正本: ${br.canonicalBranch}）` });
+  }
+  if (AZURE_READ_METHODS.has(method)) {
+    const tools = createAzureReadTools();
+    const handler = {
+      get_azure_subscription: () => tools.getSubscription(),
+      get_azure_app_service: () => tools.getAppService(),
+      list_azure_app_service_slots: () => tools.listSlots()
+    }[method];
+    let data;
+    try {
+      data = await handler();
+    } catch (err) {
+      if (err && typeof err.code === 'string' && /^azure_/.test(err.code)) {
+        throw notConfiguredError('Azure読み取り', ['az login（読み取り権限）']);
+      }
+      throw err;
+    }
+    return createCommonResponse({ status: 'ok', verified: true, data, warnings: [], summary: `${method} 取得完了（読み取りのみ）` });
+  }
+  if (GITHUB_READ_METHODS.has(method)) {
+    const tools = githubReadToolsFor(powerAppsGitStore);
+    if (!tools) {
+      throw notConfiguredError('GitHub読み取り', ['POWERAPPS_GITHUB_TOKEN', 'POWERAPPS_GITHUB_OWNER', 'POWERAPPS_GITHUB_REPO']);
+    }
+    const handler = {
+      list_github_commits: () => tools.listCommits(params),
+      get_github_file: () => tools.getFile(params),
+      list_github_pull_requests: () => tools.listPullRequests(params),
+      list_github_workflow_runs: () => tools.listWorkflowRuns(params)
+    }[method];
+    let data;
+    try {
+      data = await handler();
+    } catch (err) {
+      if (err && typeof err.code === 'string' && /^(invalid_|not_a_file|file_too_large|unsupported_encoding|github_)/.test(err.code)) {
+        throw requestError(`入力または対象が不正です（${err.code}）`, err.code.startsWith('invalid_') ? 400 : 422);
+      }
+      throw err;
+    }
+    return createCommonResponse({ status: 'ok', verified: true, data, warnings: [], summary: `${method} 取得完了（読み取りのみ）` });
+  }
+  if (method === 'get_application_rules') {
+    const r = getResolver(powerAppsStore, powerAppsGitStore);
+    return createCommonResponse({ status: 'ok', verified: false, data: r.getRules(params.appName), warnings: r.rulesWarning ? [r.rulesWarning] : [], summary: `${params.appName} のルール（設定ファイル記載分のみ）` });
+  }
+  if (method === 'export_knowledge_snapshot') {
+    return getResolver(powerAppsStore, powerAppsGitStore).exportKnowledgeSnapshot();
+  }
+  if (method === 'check_payment_status') {
+    if (!sharePointReader) throw notConfiguredError('SharePoint設定', ['SHAREPOINT_TENANT_ID', 'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET', 'SHAREPOINT_SITE_ID']);
+    const paymentMonitor = new PaymentMonitorService({ sharePointReader });
+    const report = await paymentMonitor.generatePaymentReport(params);
+    if (report.errors.length > 0) {
+      return createCommonResponse({
+        status: 'error',
+        verified: false,
+        data: report.analysis,
+        errors: report.errors,
+        summary: '未入金監視エラー'
+      });
+    }
+    const { overdue, pending, paid, cancelled, summary } = report.analysis;
+    return createCommonResponse({
+      status: overdue.length > 0 ? 'warning' : 'ok',
+      verified: true,
+      data: {
+        overdue: overdue.map(p => ({
+          estimateId: p.estimateId,
+          invoiceId: p.invoiceId,
+          daysOverdue: p.daysOverdue,
+          amount: p.amount,
+          dueDate: p.dueDate,
+          statusLabel: p.statusLabel
+        })),
+        pending: pending.map(p => ({
+          estimateId: p.estimateId,
+          invoiceId: p.invoiceId,
+          daysUntilDue: p.daysUntilDue,
+          amount: p.amount,
+          dueDate: p.dueDate,
+          statusLabel: p.statusLabel
+        })),
+        paid: paid.length,
+        cancelled: cancelled.length,
+        summary
+      },
+      warnings: overdue.length > 0 ? [`期限超過: ${overdue.length}件、合計${summary.overdueAmount.toLocaleString('ja-JP')}円`] : [],
+      summary: `期限超過${overdue.length}件、期限内未入金${pending.length}件、入金済み${paid.length}件`
+    });
+  }
+  if (method === 'discover_sharepoint_ai4_resources') {
+    if (!config.sharePoint?.tenantId || !config.sharePoint?.clientId || !config.sharePoint?.clientSecret) {
+      throw notConfiguredError('SharePoint設定', ['SHAREPOINT_TENANT_ID', 'SHAREPOINT_CLIENT_ID', 'SHAREPOINT_CLIENT_SECRET']);
+    }
+    const discovery = new SharePointSiteDiscovery(config.sharePoint);
+    try {
+      const results = await discovery.findAI4Resources();
+      const recommendations = discovery.getRecommendedLists(results);
+      if (results.error) {
+        return createCommonResponse({
+          status: 'error',
+          verified: false,
+          data: results,
+          errors: [results.error],
+          summary: 'AI4 サイト自動探索エラー'
+        });
+      }
+      return createCommonResponse({
+        status: results.sites.length === 0 ? 'warning' : 'ok',
+        verified: true,
+        data: {
+          sites: results.sites,
+          found: recommendations.found,
+          recommendations: recommendations.recommendations
+        },
+        warnings: results.sites.length === 0 ? ['AI4 サイトが見つかりませんでした'] : [],
+        summary: `AI4 サイト${results.sites.filter(s => s.normalizedName.includes('ai4') || s.normalizedName.includes('ai依頼') || s.normalizedName.includes('cleannano')).length}件、支払管理${recommendations.found.paymentLists}件、請求管理${recommendations.found.invoiceLists}件、案件管理${recommendations.found.projectLists}件`
+      });
+    } catch (error) {
+      return createCommonResponse({
+        status: 'error',
+        verified: false,
+        data: null,
+        errors: [error.message],
+        summary: '自動探索処理エラー'
+      });
+    }
+  }
+  if (method === 'prepare_powerapps_execution') {
+    const paramError = validatePrepareExecutionPackageParams(params);
+    if (paramError) throw requestError(paramError);
+
+    if (!stateRegistry) {
+      throw requestError('State Registry is not configured (stateRegistry not initialized)', 503);
+    }
+
+    let contract;
+    try {
+      const resolver = getResolver(powerAppsStore, powerAppsGitStore);
+      contract = await prepareExecutionPackage({
+        appName: params.appName,
+        appId: params.appId,
+        environmentId: params.environmentId,
+        stateSessionId: params.stateSessionId,
+        stateContext: params.stateContext,
+        objective: params.objective,
+        isolatedCommit: params.isolatedCommit,
+        resolvers: {
+          appTargetResolver: resolver,
+          powerAppsGitStore,
+          sharePointReader,
+          powerAutomateRunner,
+          stateRegistry
+        }
+      });
+
+      // State Registry binding: Register StateContext for subsequent inspect_powerapps_structure calls
+      // Fail-Closed: binding failure => BLOCKED（graceful fallback廃止）
+      if (contract.stateContext && contract.stateContext.correlationId && contract.stateContext.sha) {
+        try {
+          const sourceFile = await powerAppsGitStore.getSourceFile(`${String(contract.gitRoot || contract.stateContext.gitRoot || 'powerapps/CN_AI依頼台帳/Source').replace(/\/+$/, '')}/App.pa.yaml`);
+          if (!sourceFile || !sourceFile.content) {
+            contract.missing.push('Source file not found for State Registry binding');
+            contract.status = 'BLOCKED';
+          } /* file blob SHA differs from commit SHA by design; commit SHA is bound below */ else {
+            const begun = stateRegistry.begin(
+              {
+                ...contract.stateContext,
+                environmentId: contract.stateContext.environmentId || contract.stateContext.environment
+              },
+              'powerapps'
+            );
+            const bound = stateRegistry.bind(
+              begun.correlationId || contract.stateContext.correlationId,
+              begun.stateSessionId,
+              'powerapps',
+              {
+                ...sourceFile,
+                branch: contract.stateContext.branch,
+                canonicalBranch: contract.stateContext.canonicalBranch
+              },
+              sourceFile.path
+            );
+            contract.stateSessionId = bound.stateSessionId || begun.stateSessionId;
+          }
+        } catch (err) {
+          contract.missing.push(`State Registry binding failed: ${err.message}`);
+          contract.status = 'BLOCKED';
+        }
+      }
+    } catch (err) {
+      // Catch ANY error in prepare_powerapps_execution and return BLOCKED contract
+      if (err.message && err.message.includes('appId') || err.message.includes('timeout')) {
+        throw requestError(err.message, err.status || 502);
+      }
+      // Return gracefully with BLOCKED status instead of failing response
+      contract = {
+        status: 'BLOCKED',
+        requestId: crypto.randomUUID(),
+        generatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        target: { appName: params.appName, appId: params.appId, environmentId: params.environmentId },
+        canonicalBranch: 'main',
+        baseSha: null,
+        feature: { id: '', name: '', description: '', roiRank: 999, category: 'unknown', impact: [] },
+        dependencies: [],
+        changes: [],
+        acceptanceCriteria: [],
+        validation: { tests: [], staticChecks: [] },
+        rollback: { strategy: 'none', estimatedRecoveryTime: 'unknown' },
+        additionalCost: { sharePointColumns: false, powerAutomateRuns: false, premiumConnectors: false, estimatedMonthlyCost: 'unknown' },
+        missing: [err.message || 'prepare_powerapps_execution internal error'],
+        warnings: []
+      };
+    }
+
+    // Ensure contract is valid JSON-serializable before return
+    if (!contract || typeof contract !== 'object') {
+      throw requestError('prepare_powerapps_execution returned invalid contract', 500);
+    }
+
+    return contract;
+  }
+  if (method === 'execute_powerplatform_request') {
+    const paramError = validateExecutePowerPlatformRequestParams(params);
+    if (paramError) throw requestError(paramError);
+
+    // Normalize input: extract targetName, targetId, environmentId from multiple sources
+    const targetName = params.targetName ?? params.target?.name ?? params.target?.targetName;
+    const targetId = params.targetId ?? params.target?.appId ?? params.target?.agentId ?? params.target?.flowId ?? params.target?.listId ?? params.target?.id;
+    const environmentId = params.environmentId ?? params.target?.environmentId;
+
+    const handler = new PowerPlatformRequestHandler({
+      powerAppsStore,
+      powerAppsGitStore,
+      sharePointReader,
+      powerAutomateRunner,
+      stateRegistry,
+      deploymentService: bridgeServices.deployment,
+      permissionsService: bridgeServices.permissions,
+      config
+    });
+
+    return withUpstreamErrorStatus(handler.executePowerPlatformRequest({
+      request: params.request,
+      targetName,
+      targetId,
+      environmentId,
+      requestId: params.requestId,
+      publishApproval: params.publishApproval || false,
+      approvalToken: params.approvalToken
+    }));
+  }
+
+  // Phase 7: DONE Engine assessment
+  if (method === 'assess_done') {
+    const engine = new DoneEngine();
+    const assessment = engine.assess({
+      inputState: params.inputState,
+      runtimeState: params.runtimeState,
+      operationLog: params.operationLog,
+      runtimeResponse: params.runtimeResponse,
+      authContext: params.authContext,
+      screenEvidence: params.screenEvidence,
+      evidence: params.evidence,
+      auditLog: params.auditLog,
+      errorLog: params.errorLog
+    });
+
+    return {
+      status: assessment.done ? 'DONE' : assessment.verdict,
+      verdict: assessment.verdict,
+      done: assessment.done,
+      completionPercent: assessment.completionPercent,
+      passed: assessment.passed,
+      failed: assessment.failed,
+      next: assessment.next,
+      passCount: assessment.passCount,
+      failCount: assessment.failCount,
+      assessmentId: assessment.assessmentId,
+      timestamp: assessment.timestamp,
+      results: assessment.results
+    };
+  }
+
+  // Phase 8: Prohibited Operations Engine
+  if (method === 'check_prohibited_operations') {
+    const engine = new ProhibitedOperationsEngine();
+    const check = engine.check({
+      operation: params.operation,
+      approvalToken: params.approvalToken,
+      environment: params.environment,
+      targetBranch: params.targetBranch,
+      targetName: params.targetName,
+      paramKeys: params.paramKeys,
+      targetScope: params.targetScope,
+      currentScope: params.currentScope,
+      sourceEnv: params.sourceEnv,
+      targetEnv: params.targetEnv
+    });
+
+    return {
+      status: check.allowed ? 'ALLOWED' : 'BLOCKED',
+      allowed: check.allowed,
+      verdict: check.verdict,
+      blocked: check.blocked,
+      violations: check.violations,
+      checksPerformed: check.checksPerformed,
+      checksBlocked: check.checksBlocked,
+      evidence: check.evidence,
+      reasons: check.reasons,
+      requiresApprovalCategories: check.requiresApprovalCategories,
+      remediationPath: check.remediationPath,
+      timestamp: check.timestamp,
+      assessmentId: check.assessmentId
+    };
+  }
+
+  // Phase 11: Reuse Engine - pattern suggestion
+  if (method === 'suggest_reuse_pattern') {
+    const engine = new ReuseEngine();
+    const suggestion = engine.suggestPattern({
+      operation: params.operation,
+      targetId: params.targetId,
+      environment: params.environment,
+      steps: params.steps
+    });
+
+    return {
+      status: 'OK',
+      matchType: suggestion.matchType,
+      confidence: suggestion.confidence,
+      recommendation: suggestion.recommendation,
+      pattern: suggestion.pattern,
+      patterns: suggestion.patterns,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Phase 11: Reuse Engine - playbook retrieval
+  if (method === 'get_playbook') {
+    const engine = new ReuseEngine();
+    const playbook = engine.getPlaybook(params.operation, params.environment);
+
+    if (!playbook) {
+      return {
+        status: 'NOT_FOUND',
+        message: `No playbook found for operation: ${params.operation} in environment: ${params.environment}`,
+        operation: params.operation,
+        environment: params.environment,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      status: 'OK',
+      playbookId: playbook.playbookId,
+      operation: playbook.operation,
+      environment: playbook.environment,
+      successHistory: playbook.successHistory,
+      failureHistory: playbook.failureHistory,
+      successRate: playbook.successRate,
+      template: playbook.template,
+      riskFactors: playbook.riskFactors,
+      checkpoints: playbook.checkpoints,
+      estimatedDuration: playbook.estimatedDuration,
+      prerequisitesByFrequency: playbook.prerequisitesByFrequency,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Phase 12: Runtime Evidence Engine
+  if (method === 'capture_app_startup') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureAppStartup({
+      appId: params.appId,
+      appName: params.appName,
+      startupTime: params.startupTime,
+      screenLoadTime: params.screenLoadTime,
+      connectionInitStatus: params.connectionInitStatus,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'App startup event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_user_interaction') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureUserInteraction({
+      userId: params.userId,
+      interactionType: params.interactionType,
+      elementId: params.elementId,
+      elementLabel: params.elementLabel,
+      timestamp: params.timestamp,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'User interaction event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_data_binding') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureDataBinding({
+      bindingId: params.bindingId,
+      uiElement: params.uiElement,
+      expectedValue: params.expectedValue,
+      actualValue: params.actualValue,
+      isBound: params.isBound,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Data binding validation captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_formula_execution') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureFormulaExecution({
+      formulaId: params.formulaId,
+      formulaText: params.formulaText,
+      inputData: params.inputData,
+      outputResult: params.outputResult,
+      executionTime: params.executionTime,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Formula execution captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_connection') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureConnection({
+      connectionId: params.connectionId,
+      connectionName: params.connectionName,
+      status: params.status,
+      latency: params.latency,
+      dataExchangedBytes: params.dataExchangedBytes,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Connection event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_error_event') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureErrorEvent({
+      errorCode: params.errorCode,
+      errorMessage: params.errorMessage,
+      stackTrace: params.stackTrace,
+      handled: params.handled,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Error event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_state_transition') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureStateTransition({
+      componentId: params.componentId,
+      previousState: params.previousState,
+      newState: params.newState,
+      transitionTime: params.transitionTime,
+      trigger: params.trigger,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'State transition captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_performance') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.capturePerformance({
+      operationName: params.operationName,
+      startTime: params.startTime,
+      endTime: params.endTime,
+      resourcesUsed: params.resourcesUsed,
+      warnings: params.warnings,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Performance data captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_behavior_verification') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureBehaviorVerification({
+      scenario: params.scenario,
+      expectedBehavior: params.expectedBehavior,
+      observedBehavior: params.observedBehavior,
+      matches: params.matches,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Behavior verification captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'capture_integration') {
+    const engine = new RuntimeEvidenceEngine();
+    engine.captureIntegration({
+      sourceSystem: params.sourceSystem,
+      targetSystem: params.targetSystem,
+      dataTransferred: params.dataTransferred,
+      status: params.status,
+      duration: params.duration,
+      correlationId: params.correlationId
+    });
+    return {
+      status: 'OK',
+      message: 'Integration event captured',
+      timestamp: new Date().toISOString(),
+      correlationId: params.correlationId
+    };
+  }
+
+  if (method === 'generate_runtime_report') {
+    const engine = new RuntimeEvidenceEngine();
+    const report = engine.generateRuntimeReport();
+    return {
+      status: 'OK',
+      message: 'Runtime report generated',
+      reportId: report.reportId,
+      generatedAt: report.generatedAt,
+      timeline: report.timeline,
+      categories: report.categories,
+      integrityVerified: report.integrityVerified,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  if (method === 'get_agent_registry') {
+    return getAgentRegistry({ publicTools: MCP_PUBLIC_TOOLS });
+  }
+  if (method === 'create_execution_request') {
+    return executionQueue.createRequest(params);
+  }
+  if (method === 'get_execution_queue') {
+    return { queue: executionQueue.getQueue() };
+  }
+  if (method === 'get_execution_status') {
+    if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    return executionQueue.getStatus(params.requestId);
+  }
+  if (method === 'get_checkpoint') {
+    if (typeof params.requestId !== 'string') throw requestError('requestId（文字列）が必要です');
+    return executionQueue.getCheckpoint(params.requestId);
+  }
+
+  if (method === 'export_evidence') {
+    const engine = new RuntimeEvidenceEngine();
+    const exported = engine.exportEvidence();
+    return {
+      status: 'OK',
+      message: 'Evidence export completed',
+      exportTimestamp: exported.exportTimestamp,
+      totalRecords: exported.totalRecords,
+      runtimeReport: exported.runtimeReport,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  throw requestError(`不明なmethodです（対応: ${MCP_METHODS.join(', ')}）`);
+}
+
+// 新ツール（検証・デプロイ・権限・ユーザー保護）が使うServiceを束ねる。テストでは各Serviceを差し替えられる。
+function createBridgeServices(config, powerAppsStore, powerAppsGitStore, injected = {}) {
+  const deployment = injected.deployment || new DeploymentService(config.deployment || {});
+  const permissions = injected.permissions || new PermissionsService({ powerAppsStore, config: config.permissions || {} });
+  const userProtection = injected.userProtection || new UserProtectionService({ adminEmail: config.adminEmail });
+
+  async function validatePowerAppsChange(params) {
+    const canonicalBranch = powerAppsGitStore.canonicalBranch;
+    let currentContent = params.currentContent;
+    let currentExists = params.currentExists;
+    let sourceBranch = null;
+    const extraWarnings = [];
+    const pathLooksUnsafe = /\.\.|\\/.test(params.relativePath);
+    if (currentContent === undefined && currentExists === undefined && !pathLooksUnsafe) {
+      try {
+        const current = await powerAppsGitStore.getSourceFile(params.relativePath);
+        currentContent = current.content;
+        currentExists = true;
+        sourceBranch = current.branch;
+      } catch (error) {
+        if (/\(404\)/.test(String(error.message))) currentExists = false;
+        else if (/設定が不足/.test(String(error.message))) extraWarnings.push('GitHub設定が不足しているため、現在内容の取得と差分検査を実行していません（未検証）');
+        else throw error;
+      }
+    }
+    const result = validateChange({ ...params, currentContent, currentExists }, { canonicalBranch });
+    if (sourceBranch && sourceBranch !== canonicalBranch) {
+      result.errors.push(`対象ソースは正本branch以外(${sourceBranch})で見つかりました。正本branch(${canonicalBranch})へは存在しないため更新できません`);
+      result.valid = false;
+      result.summary.sourceBranch = sourceBranch;
+      result.summary.errorCount = result.errors.length;
+    }
+    result.warnings.push(...extraWarnings);
+    result.summary.warningCount = result.warnings.length;
+    return result;
+  }
+
+  function verifySave(params) {
+    return verifySaveResult(params, {
+      canonicalBranch: powerAppsGitStore.canonicalBranch,
+      getSourceFile: (relativePath) => powerAppsGitStore.getSourceFile(relativePath),
+      getAppState: () => powerAppsStore.getAppState()
+    });
+  }
+
+  // Constructing the reader performs no Azure request. Azure CLI metadata is read
+  // only when the authenticated read-only MCP method is called. Tests/operators may inject a reader.
+  const azureMetadata = injected.azureMetadata &&
+    typeof injected.azureMetadata.readDeploymentMetadata === 'function'
+    ? injected.azureMetadata : createAzureMetadataReader();
+  return {
+    deployment,
+    ciArtifact: createGitHubCiArtifactService(config.deployment || {}),
+    permissions,
+    userProtection,
+    azureMetadata,
+    validatePowerAppsChange: injected.validatePowerAppsChange || validatePowerAppsChange,
+    verifySaveResult: injected.verifySaveResult || verifySave
+  };
+}
+
+// Read-only tools exposed to claude.ai custom connectors. These are direct (non-facade) published
+// tools, so resolveVisibleCall passes them through unchanged and no write path can be reached.
+const CONNECTOR_READONLY_TOOLS = Object.freeze(['health_check', 'resolve_app_target', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source']);
+
+function connectorReadOnlyGuard(req, res, next) {
+  const body = req.body;
+  if (!body || Array.isArray(body) || typeof body !== 'object' || body.jsonrpc !== '2.0') {
+    return res.status(400).json(jsonRpcError(null, -32600, 'このエンドポイントはJSON-RPC 2.0の単一リクエストのみ受け付けます'));
+  }
+  const { id, method } = body;
+  const params = body.params && typeof body.params === 'object' ? body.params : {};
+  if (typeof method === 'string' && method.startsWith('notifications/')) return next();
+  if (method === 'ping' || method === 'initialize') return next();
+  if (method === 'tools/list') {
+    return res.status(200).json(jsonRpcResult(id, { tools: PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)) }));
+  }
+  if (method === 'tools/call') {
+    if (typeof params.name === 'string' && CONNECTOR_READONLY_TOOLS.includes(params.name)) return next();
+    return res.status(200).json(jsonRpcError(id, -32601, 'このコネクタでは読み取り専用ツールのみ使用できます'));
+  }
+  return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${typeof method === 'string' ? method : ''}`));
 }
 
 function jsonRpcResult(id, result) {
@@ -422,19 +3020,25 @@ function jsonRpcError(id, code, message, data) {
   return { jsonrpc: '2.0', id: id ?? null, error };
 }
 
-function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner, injectedEmployeeLedgerWriter) {
+function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, injectedPowerAppsGitStore, injectedSharePointReader, injectedPowerAutomateRunner, injectedEmployeeLedgerWriter, injectedBridgeServices = {}) {
   const store = injectedStore || createDefaultStore(config);
   const powerAppsStore = injectedPowerAppsStore || new PowerAppsStore(config.powerApps);
   const powerAppsGitStore = injectedPowerAppsGitStore || new PowerAppsGitStore(config.powerApps);
   const sharePointReader = injectedSharePointReader || new SharePointReader(config.sharepoint);
+  const sharePointWriter = new SharePointListWriter(config.sharepoint);
   const powerAutomateRunner = injectedPowerAutomateRunner || new PowerAutomateRunner(config.powerAutomate);
   const employeeLedgerWriter = injectedEmployeeLedgerWriter
     || new SharePointListWriter({ ...config.sharepoint, fieldMap: CN_EMPLOYEE_LEDGER_FIELD_MAP });
   const employeeLedgerEntries = createEmployeeLedgerEntries(employeeLedgerWriter, config.sharepoint);
+  const bridgeServices = createBridgeServices(config, powerAppsStore, powerAppsGitStore, injectedBridgeServices);
+  const stateRegistry = new StateContextRegistry(config.stateContextRegistry);
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ origin: config.corsOrigins }));
-  app.use(express.json({ limit: '256kb' }));
+  // Image upload tool accepts up to 1MiB binary + Base64/JSON overhead on MCP only.
+  const imageJson = express.json({ limit: '2mb' });
+  const defaultJson = express.json({ limit: '256kb' });
+  app.use((req, res, next) => (req.path === '/mcp' ? imageJson : defaultJson)(req, res, next));
 
   app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
@@ -446,7 +3050,11 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     try { return res.status(200).json(await nextPayload(store)); } catch (error) { return next(error); }
   });
 
-  const webhookAuth = apiKeyMiddleware(() => config.webhookApiKey);
+  const webhookKeyAuth = apiKeyMiddleware(() => config.webhookApiKey);
+  // Fail-closed: with no WEBHOOK_API_KEY configured, webhooks refuse (503) instead of accepting tasks from anyone.
+  const webhookAuth = (req, res, next) => (config.webhookApiKey
+    ? webhookKeyAuth(req, res, next)
+    : res.status(503).json({ error: '認証キーが未設定のため利用できません' }));
   for (const path of ['/webhooks/claude-code', '/webhooks/copilot']) {
     app.post(path, webhookAuth, async (req, res, next) => {
       const errorMessage = validateTaskInput(req.body, { requireTitle: true });
@@ -468,11 +3076,495 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     } catch (error) { return next(error); }
   });
 
-  app.get('/mcp/tools/list', (req, res) => {
-    res.status(200).json({ tools: MCP_PUBLIC_TOOLS });
+  const mcpKeyAuth = apiKeyMiddleware(() => config.mcpApiKey);
+  // Fail-closed: with no MCP_API_KEY configured, /mcp refuses (503) instead of being open to anyone.
+  const mcpAuth = (req, res, next) => (config.mcpApiKey
+    ? mcpKeyAuth(req, res, next)
+    : res.status(503).json({ error: '認証キーが未設定のため利用できません' }));
+
+  // Windows Executor / Job API. Same MCP_API_KEY as /mcp, but fail-closed: with no key configured
+  // these routes refuse instead of opening the job queue to anyone.
+  const jobAuth = (req, res, next) => (config.mcpApiKey
+    ? mcpAuth(req, res, next)
+    : res.status(503).json({ error: '認証キーが未設定のため利用できません' }));
+  const jobRoute = (handler) => (req, res, next) => {
+    try {
+      return res.status(200).json(handler(req));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  };
+  const jobState = windowsJobs.defaultState;
+  app.post('/executor/register', jobAuth, jobRoute((req) => windowsJobs.registerExecutor(jobState, req.body || {})));
+  app.post('/executor/heartbeat', jobAuth, jobRoute((req) => windowsJobs.heartbeatExecutor(jobState, req.body || {})));
+  app.post('/job/submit', jobAuth, jobRoute((req) => {
+    const result = windowsJobs.submitWindowsJob(jobState, req.body || {}, 'submit');
+    return { accepted: result.accepted, taskId: result.taskId, status: result.status, ...(result.duplicate ? { duplicate: true } : {}) };
+  }));
+  app.get('/job/pull', jobAuth, jobRoute((req) => {
+    const executorId = typeof req.query.executorId === 'string' ? req.query.executorId : req.query.executor_id;
+    return { accepted: true, ...windowsJobs.pullWindowsJob(jobState, windowsJobs.readExecutorId({ executorId })) };
+  }));
+  app.post('/job/checkpoint', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.checkpointWindowsJob(jobState, req.body || {}) })));
+  app.post('/job/result', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.resultWindowsJob(jobState, req.body || {}) })));
+  app.get('/job/:taskId', jobAuth, jobRoute((req) => ({ taskId: req.params.taskId, job: windowsJobs.getWindowsJob(jobState, req.params.taskId) })));
+
+  // CNAI Router: classify -> route -> dispatch -> verify -> audit -> checkpoint, in one call.
+  // Same auth posture as the Windows Executor/job routes (fail-closed 503 with no MCP_API_KEY).
+  app.post('/router/request', jobAuth, async (req, res, next) => {
+    try {
+      return res.status(200).json(await cnaiRouter.routeRequest(cnaiRouter.defaultState, req.body || {}));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+  app.get('/router/request/:id', jobAuth, jobRoute((req) => ({
+    status: cnaiRouter.getStatus(cnaiRouter.defaultState, req.params.id),
+    checkpoint: cnaiRouter.getCheckpoint(cnaiRouter.defaultState, req.params.id),
+    audit: cnaiRouter.getAuditTrail(cnaiRouter.defaultState, req.params.id)
+  })));
+  app.post('/router/request/:id/resume', jobAuth, async (req, res, next) => {
+    try {
+      return res.status(200).json(await cnaiRouter.resumeRequest(cnaiRouter.defaultState, req.params.id, req.body || {}));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+  app.post('/router/request/:id/rollback', jobAuth, jobRoute((req) => cnaiRouter.rollbackRequest(cnaiRouter.defaultState, req.params.id, req.body?.reason)));
+
+  // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
+  // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
+  app.get('/mcp/tools/list', mcpAuth, (req, res) => {
+    res.status(200).json({ tools: PUBLISHED_TOOLS });
+  });
+  app.get('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.delete('/mcp', mcpAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.post('/mcp', mcpAuth, (req, res, next) => {
+    handleMcpRequest(req, res, next).catch(next);
   });
 
-  app.post('/mcp', (req, res, next) => handleMcpRequest(req, res, next));
+  // claude.ai custom connectors cannot send custom headers, so this endpoint accepts a separate
+  // key (CONNECTOR_API_KEY) in the URL query (?api_key=...). It exposes read-only tools only.
+  // Fail-closed: with no key configured the endpoint does not exist (unlike /mcp).
+  const connectorKeyAuth = apiKeyMiddleware(() => config.connectorApiKey);
+  const connectorAuth = (req, res, next) => (config.connectorApiKey
+    ? connectorKeyAuth(req, res, next)
+    : res.status(404).json({ error: 'コネクタ用エンドポイントは無効です' }));
+  app.get('/connector/mcp', connectorAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  app.post('/connector/mcp', connectorAuth, connectorReadOnlyGuard, (req, res, next) => {
+    handleMcpRequest(req, res, next).catch(next);
+  });
+
+  /**
+   * Hydrate a complete StateContext with all required fields.
+   * Fail-Closed: NEVER issues stateSessionId if ANY required field is missing/invalid.
+   * Required fields: appId, environmentId, repository, gitRoot, branch, canonicalBranch, sha, correlationId
+   *
+   * @param {string} scope - Authentication scope hash
+   * @param {string} correlationId - Request-scoped correlation ID (generated once at request entry, never regenerated)
+   */
+  // AuthorityContext: 8-field state required for executable sessions
+  // This is the ONLY context that warrants a stateSessionId.
+  // Never issue stateSessionId if ANY of these are missing or invalid.
+  // NOTE: Internal representation uses 'baseSha' for commit HEAD SHA to distinguish from file blob SHAs.
+  // External StateContext schema (STATE_CONTEXT_SCHEMA) still uses 'sha' for backward compatibility during migration.
+  const AUTHORITY_CONTEXT_FIELDS = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId'];
+
+  // SourceObservation: file-level metadata bound to an AuthorityContext
+  // These fields are validated AFTER SourceObservation is populated with actual data.
+  // fileSha is the blob SHA of the retrieved file (different from baseSha which is commit HEAD SHA)
+  const SOURCE_OBSERVATION_FIELDS = ['relativePath', 'fileSha', 'content'];
+
+  async function hydrateAuthorityContext(scope, correlationId) {
+    if (!correlationId || typeof correlationId !== 'string') {
+      const error = new Error('AuthorityContext hydration requires external correlationId');
+      error.status = 400;
+      error.payload = {
+        status: 'state_context_invalid',
+        missingFields: ['correlationId'],
+        reason: 'correlationId must be generated once at request entry and injected into hydration'
+      };
+      throw error;
+    }
+
+    const appState = await powerAppsStore.getAppState();
+
+    // CRITICAL: Fail-Closed - Git metadata is REQUIRED; do NOT continue if unavailable
+    let gitState = null;
+    try {
+      gitState = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+    } catch (error) {
+      // Git metadata failure = CANNOT issue stateSessionId
+      const fieldError = new Error('AuthorityContext hydration failed: Git metadata unavailable');
+      fieldError.status = 400;
+      fieldError.payload = {
+        status: 'state_context_invalid',
+        missingFields: ['branch', 'canonicalBranch', 'baseSha'],
+        reason: `Cannot issue stateSessionId without Git metadata. Root cause: ${error.message}`
+      };
+      throw fieldError;
+    }
+
+    // Strict validation: all fields must be present (no optional/partial contexts at this layer)
+    // Internal: baseSha (commit HEAD SHA from git/refs/heads/{branch})
+    // External: sha (for backward compatibility with STATE_CONTEXT_SCHEMA during migration)
+    // Note: begin() expects 'environment' (not 'environmentId'), but our context includes both
+    const context = {
+      appId: appState.appId,
+      environmentId: appState.environmentId,  // For extended AuthorityContext validation
+      environment: appState.environmentId,  // For STATE_CONTEXT_SCHEMA compatibility (begin() uses this)
+      repository: config.powerApps.githubRepo,
+      gitRoot: config.powerApps.githubRoot,
+      branch: gitState.branch,
+      canonicalBranch: gitState.canonicalBranch,
+      baseSha: gitState.sha,  // INTERNAL: Commit HEAD SHA (authority for all files in this commit)
+      sha: gitState.sha,  // EXTERNAL: Backward compatible with STATE_CONTEXT_SCHEMA
+      correlationId: correlationId  // NEVER regenerate; use injected value
+    };
+
+    // Validate all required fields are present and in correct format BEFORE issuing session
+    // Extended AuthorityContext requires 8 fields: appId, environmentId, repository, gitRoot, branch, canonicalBranch, baseSha, correlationId
+    const missing = [];
+    if (!context.appId) missing.push('appId');
+    if (!context.environmentId) missing.push('environmentId');
+    if (!context.repository) missing.push('repository');
+    if (!context.gitRoot) missing.push('gitRoot');
+    if (!context.branch) missing.push('branch');
+    if (!context.canonicalBranch) missing.push('canonicalBranch');
+    if (!context.baseSha || !/^[a-f0-9]{40}$/.test(context.baseSha)) missing.push('baseSha');
+    if (!context.correlationId) missing.push('correlationId');
+
+    if (missing.length > 0) {
+      const error = new Error('AuthorityContext hydration failed: missing or invalid required fields');
+      error.status = 400;
+      error.payload = {
+        status: 'state_context_invalid',
+        missingFields: missing,
+        reason: `Cannot issue stateSessionId without: ${missing.join(', ')}`
+      };
+      throw error;
+    }
+
+    return stateRegistry.begin(context, scope);
+  }
+
+  // Legacy alias for backward compatibility during transition
+  const hydratePowerAppsStateContext = hydrateAuthorityContext;
+
+  async function executeWithState(method, params, req) {
+    try { return await executeWithStateInternal(method, params, req); }
+    catch (error) {
+      if (method === 'compare_powerapps_with_git') {
+        if (error.payload?.status === 'state_context_invalid') {
+          error.payload = { ...error.payload, comparisonStatus: 'validation_blocked' };
+        } else if (!error.payload?.comparisonStatus) {
+          // Do not expose provider diagnostics or connection information.
+          const safe = new Error('Power Apps/Git source could not be read');
+          safe.status = 503;
+          safe.payload = { status: 'source_unavailable', comparisonStatus: 'source_unavailable' };
+          throw safe;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async function executeWithStateInternal(method, params, req) {
+    if (method === 'update_powerapps_image') {
+      validateImageParams(params);
+      const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+      const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      powerAppsGitStore.assertCanonicalBranch(params.branch, '画像編集');
+      const state = await powerAppsStore.getAppState();
+      if (state.appId !== record.context.appId || state.environmentId !== record.context.environment) throw contextError(['画像編集の対象アプリまたは環境が変化しました']);
+      const metadata = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (metadata.sha !== record.context.sha || metadata.branch !== record.context.branch) throw contextError(['画像編集前に正本commitまたはbranchが変化しました']);
+      const source = await powerAppsGitStore.getSourceFile(record.source.path);
+      if (source.sha !== record.source.sha || source.branch !== record.context.branch || source.writable !== true) throw contextError(['画像編集前に観測ソースが変化したか書込み不可です']);
+      const content = editImageSource(source.content, params);
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const result = await withUpstreamErrorStatus(powerAppsGitStore.applySourceFileChange(record.source.path, content, params.message || `${params.operation} image: ${params.controlName}`, params.branch, record.source.sha));
+      const observed = await withUpstreamErrorStatus(powerAppsGitStore.getSourceFile(record.source.path));
+      if (observed.branch !== record.context.branch || observed.content !== content) throw contextError(['画像編集後のGitソース照合に失敗しました']);
+      return { ...result, image: { screenName: params.screenName, controlName: params.controlName, operation: params.operation }, gitVerified: true, saved: false, published: false,
+        nextAction: 'get_powerapps_state → get_powerapps_source → save_powerapps_app → 状態再取得・照合 → publish_powerapps_app → 状態・ソース・画面の再確認' };
+    }
+    // CRITICAL: Generate correlationId ONCE at request entry (not per-method)
+    // This ID scopes all stateful operations within the request: resolve_app_target, get_powerapps_state, hydration, source binding
+    // Never regenerate correlationId in child functions (hydratePowerAppsStateContext, bind, etc.)
+    const requestCorrelationId = crypto.randomUUID();
+
+    // Scope to authenticated transport + MCP session when present. The explicit,
+    // random stateSessionId also scopes stateless Copilot/legacy requests.
+    const credential = req.get('x-api-key') || req.get('authorization') || req.query?.['x-api-key'] || req.query?.api_key || '';
+    const scope = crypto.createHash('sha256').update(String(credential)).update('\0').update(req.get('Mcp-Session-Id') || '').digest('hex');
+    const execute = (input) => executeMcpMethod(method, input, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config, stateRegistry, scope);
+
+    if (method === 'get_powerapps_state') {
+      const state = await execute(params);
+      // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
+      // Inject request-scoped correlationId (never regenerate)
+      try {
+        const session = await hydrateAuthorityContext(scope, requestCorrelationId);
+
+        // Verify authorityContextComplete is true (all 8 fields present and valid)
+        if (!session.authorityContextComplete) {
+          const missingFields = ['appId', 'environmentId', 'repository', 'gitRoot', 'branch', 'canonicalBranch', 'baseSha', 'correlationId']
+            .filter(f => !session.authorityContext?.[f]);
+          throw new Error(`AuthorityContext incomplete: missing ${missingFields.join(', ')}`);
+        }
+
+        const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
+
+        return {
+          ...state,
+          ...session,
+          deploymentSha,
+          requestId: requestCorrelationId
+        };
+      } catch (error) {
+        // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
+        // Even in non-enforcement mode, returning incomplete context must not be misleading
+        if (config.enforceStateManager === true) throw error;
+        const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
+        // Legacy tests and non-enforcement mode: return state without full context
+        return {
+          ...state,
+          deploymentSha,
+          requestId: requestCorrelationId,
+          stateContextUnavailable: error.message || 'Observed Power Apps state is unavailable; restart with get_powerapps_state'
+        };
+      }
+    }
+
+    if (method === 'get_powerapps_source') {
+      // CRITICAL: Separate AuthorityContext (commit-level) from SourceObservation (file-level)
+      // AuthorityContext must be obtained/validated first, then use it to retrieve and validate SourceObservation
+
+      let session;
+      // Step 1: Only lookup existing session if caller provides both parameters
+      if (params.correlationId !== undefined && params.stateSessionId !== undefined) {
+        // If caller provides correlationId + stateSessionId, they MUST match a registered session
+        // Mismatched pairs are FAIL-CLOSED: throw immediately, never fall through to fresh hydration
+        // This prevents cross-session or stale session attacks
+        session = stateRegistry.response(stateRegistry.lookup(params.correlationId, params.stateSessionId, scope));
+      }
+
+      // Step 2: Retrieve source WHILE AuthorityContext is being established/validated
+      // This allows execute() to work with whatever context is available, maintaining backward compatibility
+      const source = await execute(params);
+
+      // Step 3: Establish AuthorityContext if not already present
+      if (!session) {
+        try {
+          // Hydrate complete AuthorityContext with all required fields before issuing stateSessionId
+          // Inject request-scoped correlationId (never regenerate)
+          session = await hydrateAuthorityContext(scope, requestCorrelationId);
+        } catch (hydrationError) {
+          // FAIL-CLOSED: Never issue stateSessionId if context is incomplete
+          if (config.enforceStateManager === true) throw hydrationError;
+          // Non-enforcement legacy mode: return source without executable context
+          return {
+            ...source,
+            requestId: requestCorrelationId,
+            stateContextUnavailable: hydrationError.payload?.missingFields
+              ? `Observed Power Apps state is incomplete; missing: ${hydrationError.payload.missingFields.join(', ')}. Start with get_powerapps_state`
+              : 'Observed Power Apps state is unavailable; start with get_powerapps_state'
+          };
+        }
+      }
+
+      // Step 4: Validate that retrieved session is complete (has all required Authority fields)
+      if (!session.correlationId || !session.stateSessionId) {
+        const error = new Error('AuthorityContext session incomplete after hydration');
+        error.status = 400;
+        error.payload = {
+          status: 'state_context_invalid',
+          reason: 'Session returned from registry does not contain required fields'
+        };
+        throw error;
+      }
+
+      // Step 5: Validate SourceObservation fields are populated
+      // For single-file operations (non-targetNames), all these must be present from execute()
+      if (!params.targetNames && source && typeof source === 'object') {
+        // source.sha = file blob SHA
+        // source.path = relative path
+        // source.content = file contents
+        if (!source.sha || !/^[a-f0-9]{40}$/.test(source.sha)) {
+          // File SHA missing or invalid - cannot establish SourceObservation
+          if (config.enforceStateManager === true) {
+            const error = new Error('SourceObservation validation failed: invalid or missing fileSha');
+            error.status = 400;
+            error.payload = {
+              status: 'source_observation_invalid',
+              missingFields: ['fileSha'],
+              reason: `Retrieved source does not have valid file SHA`
+            };
+            throw error;
+          }
+        }
+      }
+
+      // Step 6: Preserve pre-enforcement standalone reads, but never grant unbound context
+      // Pre-enforcement readers may accept upstream diagnostic SHAs, but cannot
+      // establish registered executable State Context without full hydration.
+      if (config.enforceStateManager !== true && !params.targetNames && !params.correlationId && !/^[a-f0-9]{40}$/.test(source.sha || '')) {
+        return { ...source, requestId: requestCorrelationId };
+      }
+
+      // Step 7: Bind SourceObservation to AuthorityContext session
+      // Phase 6: Use bindSourceObservation for file-level validation only
+      let bound = stateRegistry.response(stateRegistry.lookup(session.correlationId, session.stateSessionId, scope));
+
+      if (!params.targetNames && source && source.sha && source.path && source.content) {
+        try {
+          // Single-file binding: use bindSourceObservation
+          const sourceObs = {
+            sha: source.sha,
+            path: source.path,
+            content: source.content
+          };
+          bound = stateRegistry.bindSourceObservation(
+            session.correlationId,
+            session.stateSessionId,
+            scope,
+            sourceObs,
+            source.path
+          );
+        } catch (e) {
+          console.warn('bindSourceObservation failed in compare_powerapps_with_git:', e.message);
+          // Continue with current state if binding fails (backward compatibility)
+        }
+      }
+
+      const deploymentSha = process.env.GITHUB_SHA || process.env.COMMIT_SHA || process.env.DEPLOYMENT_SHA || null;
+
+      return {
+        ...source,
+        ...bound,
+        deploymentSha,
+        requestId: requestCorrelationId
+      };
+    }
+    if (method === 'publish_powerapps_app') {
+      // Canonical-branch refusal keeps its existing precedence (branch_mismatch) before session checks.
+      await withUpstreamErrorStatus(Promise.resolve().then(() => powerAppsGitStore.assertCanonicalBranch(params.branch, '公開')));
+      // Contract PUBLISH_CONTRACT_VERSION: publish requires a source-bound, unexpired stateSession.
+      // Old callers without stateSessionId receive an explicit refusal (no fallback).
+      if (typeof params.stateSessionId !== 'string' || !params.stateSessionId) {
+        throw publishGateError(['stateSessionId: 公開には必須です（契約 ' + PUBLISH_CONTRACT_VERSION + '）'], 428, 'state_session_required');
+      }
+      if (!params.stateContext || typeof params.stateContext !== 'object' || Array.isArray(params.stateContext)) {
+        throw publishGateError(['stateContext: 公開には必須です'], 428, 'state_session_required');
+      }
+      // Fail-Closed: validate() rejects expired sessions, unknown sessions, unobserved sources,
+      // branch != canonical, and any commit/blob/path mismatch with the registered state.
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      const failures = [];
+      const currentState = await powerAppsStore.getAppState();
+      if (currentState.appId !== record.context.appId) failures.push('appId: 公開直前に対象アプリが変化しました');
+      if (currentState.environmentId !== record.context.environment) failures.push('environmentId: 公開直前に環境が変化しました');
+      const canonical = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (canonical.sha !== record.context.sha) failures.push('sha: 正本commitが状態取得後に変化しました');
+      if (canonical.canonicalBranch !== record.context.canonicalBranch) failures.push('canonicalBranch: 正本branchが変化しました');
+      const liveFile = await powerAppsGitStore.getSourceFile(record.source.path);
+      if (liveFile.sha !== record.source.sha) failures.push('sha: 観測ソースのblob SHAが変化しました');
+      if (liveFile.branch !== record.context.branch) failures.push('branch: 観測ソースのbranchが変化しました');
+      if (!config.deploymentSha) failures.push('deploymentSha: DEPLOYMENT_SHA が未設定です');
+      else if (config.deploymentSha !== record.context.sha) failures.push('deploymentSha: 稼働中SHAが正本commitと一致しません');
+      if (failures.length) throw publishGateError(failures, 409, 'publish_gate_refused');
+      // Recheck TTL and session after upstream calls; slow requests may expire.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return execute(params);
+    }
+    if ((method === 'validate_powerapps_change' && config.enforceStateManager === true) ||
+        method === 'validate_powerapps_source' || method === 'compare_powerapps_with_git' ||
+        (method === 'inspect_powerapps_structure' && (params.stateContext !== undefined || params.stateSessionId !== undefined))) {
+      const record = stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      // Detect changed Git state and changed app/environment, not just a client
+      // tuple matching an old registry entry. Do not guess paths or branches.
+      const currentState = await powerAppsStore.getAppState();
+      const failures = [];
+      if (currentState.appId !== record.context.appId) failures.push('appId: observed app changed');
+      if (currentState.environmentId !== record.context.environment) failures.push('environment: observed environment changed');
+      const source = await powerAppsGitStore.getSourceFile(record.source.path);
+      for (const field of ['branch', 'canonicalBranch']) if (source[field] !== record.context[field]) failures.push(`${field}: observed source changed`);
+      // Blob SHA (file) must match the observed file; commit SHA (branch HEAD) is re-read separately.
+      if (source.sha !== record.source.sha) failures.push('sha: observed source blob changed');
+      const observedCommit = await powerAppsGitStore.getSourceFileMetadata(config.powerApps.githubRoot);
+      if (observedCommit.sha !== record.context.sha) failures.push('sha: observed commit changed');
+      if (source.path !== record.source.path || source.content !== record.source.content) failures.push('sourceContent/path: observed source changed');
+      // Recheck TTL and session after upstream calls; slow requests may expire.
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      if (failures.length) throw contextError(failures);
+      let result;
+      if (method === 'inspect_powerapps_structure') {
+        if (params.appId !== undefined && params.appId !== record.context.appId) {
+          throw contextError([
+            `appId mismatch: received ${params.appId}, expected ${record.context.appId}`,
+            `requestId/session: correlationId=${record.context.correlationId}, stateSessionId=${record.stateSessionId}`
+          ]);
+        }
+        result = await inspectPowerAppsStructure({ powerAppsStore, sourceContent: record.source.content,
+          sourceOrigin: 'github_canonical', stateContext: record.context });
+      } else if (method === 'validate_powerapps_source') {
+        result = await validatePowerAppsSource({ sourceContent: params.sourceContent ?? record.source.content,
+          relativePath: record.source.path, expectedBranch: params.expectedBranch ?? record.context.branch, powerAppsGitStore });
+        result.validationStatus = result.data.valid && result.verified ? 'VALID' : 'INVALID';
+      } else if (method === 'validate_powerapps_change') {
+        // Change validation is fail-closed: the registered source identity is checked
+        // before static diff validation, so branch/path/SHA cannot be stale or guessed.
+        const paramError = validateValidatePowerAppsChangeParams(params);
+        if (paramError) throw requestError(paramError);
+        if (params.branch !== record.context.branch) throw contextError(['branch: request does not match registered context']);
+        result = await bridgeServices.validatePowerAppsChange({
+          ...params,
+          branch: record.context.branch,
+          relativePath: record.source.path,
+          currentContent: params.currentContent ?? record.source.content
+        });
+        result.validationStatus = result.valid === true ? 'VALID' : 'INVALID';
+      } else {
+        result = await comparePowerAppsWithGit({ powerAppsStore, powerAppsGitStore,
+          targetFile: record.source.path, targetApp: record.context.appId, gitSource: source,
+          stateContext: record.context,
+          assertStateContext: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method) });
+        // PAC evidence is optional and read-only; never trust request-supplied adapter or flags.
+        // No registered internal adapter means no PAC evidence (Fail Closed).
+        const internalPacAdapter = powerAppsStore._runtimeSource;
+        if (internalPacAdapter instanceof PowerAppsRuntimeSourceAdapter
+            && internalPacAdapter.getSourceFile === PowerAppsRuntimeSourceAdapter.prototype.getSourceFile) {
+          const pacEvidence = await readPacEvidenceWithRegisteredState({
+            adapter: internalPacAdapter, registeredRecord: record,
+            validateRegisteredState: () => stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method),
+            relativePath: record.source.path
+          });
+          result.pacEvidence = { status: pacEvidence.status, source: pacEvidence.source,
+            runtimeHash: pacEvidence.runtimeHash, appId: pacEvidence.appId,
+            environment: pacEvidence.environment };
+        }
+        // Export may take time: reject provider or Git drift during the read.
+        const afterState = await powerAppsStore.getAppState();
+        const afterSource = await powerAppsGitStore.getSourceFile(record.source.path);
+        const afterFailures = [];
+        if (afterState.appId !== record.context.appId) afterFailures.push('appId: observed app changed during export');
+        if (afterState.environmentId !== record.context.environment) afterFailures.push('environment: observed environment changed during export');
+        for (const field of ['branch', 'canonicalBranch', 'sha']) if (afterSource[field] !== record.context[field]) afterFailures.push(`${field}: observed source changed during export`);
+        if (afterSource.path !== record.source.path || afterSource.content !== record.source.content) afterFailures.push('sourceContent/path: observed source changed during export');
+        if (afterFailures.length) throw contextError(afterFailures);
+      }
+      stateRegistry.validate(params.stateContext, params.stateSessionId, scope, params, method);
+      return { ...result, correlationId: record.context.correlationId,
+        stateContext: { ...record.context }, stateSessionId: record.stateSessionId,
+        targetSha: record.context.sha, comparisonSources: method === 'compare_powerapps_with_git' ? result.data.comparisonSources : undefined };
+    }
+    return execute(params);
+  }
 
   async function handleMcpRequest(req, res, next) {
     const body = req.body || {};
@@ -483,36 +3575,79 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
       const id = body.id;
       const params = body.params || {};
 
-      if (body.method === 'notifications/initialized') return res.status(202).end();
+      // MCP: a notification (no id, e.g. notifications/initialized or notifications/cancelled)
+      // is acknowledged with 202 and no body, never a JSON-RPC error.
+      if (typeof body.method === 'string' && body.method.startsWith('notifications/') && id === undefined) return res.status(202).end();
       if (body.method === 'ping') return res.status(200).json(jsonRpcResult(id, {}));
       if (body.method === 'initialize') {
         return res.status(200).json(jsonRpcResult(id, {
           protocolVersion: params.protocolVersion || '2025-06-18',
-          capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.0.0' }
+          capabilities: { tools: { listChanged: true } },
+          serverInfo: { name: 'clean-nano-ai-bridge', version: '1.1.0' }
         }));
       }
       if (body.method === 'tools/list') {
-        return res.status(200).json(jsonRpcResult(id, { tools: MCP_PUBLIC_TOOLS }));
+        return res.status(200).json(jsonRpcResult(id, { tools: PUBLISHED_TOOLS }));
       }
+      // Standard MCP tool methods (health_check, get_tasks, etc.) via tools/call
+      // Map legacy method names to tools/call format for JSON-RPC 2.0 compatibility
+      const standardMethods = new Set(MCP_METHODS);
+      if (standardMethods.has(body.method) && body.method !== 'tools/list' && body.method !== 'tools/call') {
+        // Convert standard method call to tools/call format
+        return res.status(200).json(await (async () => {
+          try {
+            const result = await executeWithState(body.method, params || {}, req);
+            return jsonRpcResult(id, result);
+          } catch (error) {
+            return jsonRpcError(id, -32603, error.message, error.payload);
+          }
+        })());
+      }
+
       if (body.method === 'tools/call') {
-        const name = params.name;
-        const toolParams = params.arguments || {};
-        if (typeof name !== 'string') {
+        if (typeof params.name !== 'string') {
           return res.status(200).json(jsonRpcError(id, -32602, 'tools/callにはparams.nameが必要です'));
         }
+        let name;
+        let toolParams;
         try {
-          const result = await executeMcpMethod(name, toolParams, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
+          // Published consolidated tools resolve to the internal tool first, so the
+          // state-context and approval gates below apply to the real target.
+          ({ name, args: toolParams } = resolveVisibleCall(params.name, params.arguments || {}));
+          // Phase 6: State Manager Enforcement (Fail-Closed)
+          // Before executing write operations, validate that required state context is provided
+          // Controlled by BRIDGE_STATE_MANAGER_ENFORCE env var (set in production)
+          const enforceStateManager = config.enforceStateManager === true;
+          let stateContext = extractStateContext(toolParams);
+
+          if (enforceStateManager) {
+            const stateValidation = validateStateContext(name, toolParams, stateContext);
+            if (!stateValidation.isValid) {
+              const error = createStateValidationError(stateValidation, name, toolParams);
+              return res.status(200).json(jsonRpcResult(id, {
+                content: [{ type: 'text', text: error.message }],
+                structuredContent: { error: error.message, ...error.details, ...(name === 'compare_powerapps_with_git' ? { comparisonStatus: 'validation_blocked' } : {}) },
+                isError: true
+              }));
+            }
+          }
+
+          const result = await executeWithState(name, toolParams, req);
+
+          // Enrich response with state metadata for audit trail (Phase 9: Evidence Capture)
+          // Only add metadata when State Manager enforcement is enabled
+          const enrichedResult = enforceStateManager ? enrichResponseWithState(result, stateContext) : result;
+
           return res.status(200).json(jsonRpcResult(id, {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-            isError: false
+            content: [{ type: 'text', text: JSON.stringify(enrichedResult) }],
+            structuredContent: enrichedResult,
+            isError: enrichedResult.comparisonStatus === 'source_unavailable' || enrichedResult.comparisonStatus === 'validation_blocked'
           }));
         } catch (error) {
           if (!error.status) return next(error);
           return res.status(200).json(jsonRpcResult(id, {
             content: [{ type: 'text', text: error.message }],
-            structuredContent: { error: error.message, ...(error.upstream ? { details: error.upstream } : {}) },
+            structuredContent: { error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) },
             isError: true
           }));
         }
@@ -525,16 +3660,37 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     const { method } = body;
     const params = body.params || {};
     try {
-      const result = await executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries);
-      return res.status(200).json({ accepted: true, method, result });
+      // Phase 6: State Manager Enforcement (Fail-Closed)
+      // Legacy handler: also validate state context before write operations
+      const enforceStateManager = config.enforceStateManager === true;
+      let stateContext = extractStateContext(params);
+
+      if (enforceStateManager) {
+        const stateValidation = validateStateContext(method, params, stateContext);
+        if (!stateValidation.isValid) {
+          const error = createStateValidationError(stateValidation, method, params);
+          return res.status(error.status).json({ error: error.message, ...error.details });
+        }
+      }
+
+      const result = await executeWithState(method, params, req);
+
+      // Enrich response with state metadata for audit trail
+      // Only add metadata when State Manager enforcement is enabled
+      const enrichedResult = enforceStateManager ? enrichResponseWithState(result, stateContext) : result;
+
+      return res.status(200).json({ accepted: true, method, result: enrichedResult });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}) });
+      if (error.status) return res.status(error.status).json({ error: error.message, ...(error.upstream ? { details: error.upstream } : {}), ...(error.payload || {}) });
       return next(error);
     }
   }
 
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
+    if ((req.path === '/mcp' || req.path === '/connector/mcp') && error.type === 'entity.parse.failed') {
+      return res.status(400).json(jsonRpcError(null, -32700, 'Parse error: リクエストがJSONとして不正です'));
+    }
     console.error('request_failed', { method: req.method, path: req.path, message: error.message });
     return res.status(500).json({ error: '内部エラーが発生しました' });
   });
@@ -542,8 +3698,16 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
 }
 
 if (require.main === module) {
-  const config = getConfig();
-  createApp(config).listen(config.port, config.host, () => console.log(`Bridge API listening on ${config.host}:${config.port}`));
+  try {
+    const config = getConfig();
+    createApp(config).listen(config.port, config.host, () => {
+      console.log(`Bridge API listening on ${config.host}:${config.port}`);
+    });
+  } catch (error) {
+    console.error('Bridge API startup failed:', error.message);
+    console.error(error.stack);
+    process.exit(1);
+  }
 }
 
-module.exports = { apiKeyMiddleware, createApp };
+module.exports = { apiKeyMiddleware, createApp, CONNECTOR_READONLY_TOOLS, MCP_METHODS, MCP_PUBLIC_TOOLS, PUBLISHED_TOOLS };

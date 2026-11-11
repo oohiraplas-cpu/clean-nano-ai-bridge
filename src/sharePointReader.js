@@ -47,10 +47,11 @@ class SharePointReader {
     return this._token;
   }
 
-  async _graphFetch(path) {
+  async _graphFetch(path, options = {}) {
     const token = await this._getAccessToken();
     const response = await this._fetch(`${this.graphBaseUrl}${path}`, {
-      headers: { authorization: `Bearer ${token}` }
+      ...options,
+      headers: { authorization: `Bearer ${token}`, ...(options.headers || {}) }
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
@@ -59,12 +60,129 @@ class SharePointReader {
     return response.json();
   }
 
+  /**
+   * 読み取り専用の健全性確認。設定の有無（名前のみ）を確認し、Graphで既定サイトを1件取得する。
+   * 秘密値・トークンは返さない。
+   */
+  async healthCheck() {
+    const missingConfiguration = [];
+    if (!this.tenantId) missingConfiguration.push('SHAREPOINT_TENANT_ID');
+    if (!this.clientId) missingConfiguration.push('SHAREPOINT_CLIENT_ID');
+    if (!this.clientSecret) missingConfiguration.push('SHAREPOINT_CLIENT_SECRET');
+    if (!this.defaultSiteId) missingConfiguration.push('SHAREPOINT_SITE_ID');
+    if (missingConfiguration.length) {
+      return { ok: false, status: 'not_configured', missingConfiguration };
+    }
+    const site = await this._graphFetch(`/sites/${this.defaultSiteId}?$select=id`);
+    return { ok: Boolean(site?.id), status: site?.id ? 'ok' : 'error' };
+  }
+
   async _resolveListId(siteId, listName) {
     const filter = `displayName eq '${listName.replace(/'/g, "''")}'`;
     const data = await this._graphFetch(`/sites/${siteId}/lists?$select=id,displayName&$filter=${encodeURIComponent(filter)}`);
     const match = (data.value || [])[0];
     if (!match) throw new Error(`指定されたSharePointリストが見つかりません: ${listName}`);
     return match.id;
+  }
+
+  // SharePointサイト内のリスト一覧を読み取り専用で取得する。列や項目の変更は行わない。
+  // params: { siteId?, searchTerm?, top? }
+  async listLists(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) {
+      throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    }
+    const top = Math.min(Math.max(Number.parseInt(params.top, 10) || 200, 1), 200);
+    const searchTerm = typeof params.searchTerm === 'string' ? params.searchTerm.trim().toLocaleLowerCase() : '';
+    const data = await this._graphFetch(`/sites/${targetSiteId}/lists?$select=id,displayName,webUrl,list&$top=${top}`);
+    const lists = (data.value || []).map((item) => ({
+      id: item.id,
+      displayName: item.displayName,
+      webUrl: item.webUrl || null,
+      template: item.list?.template || null,
+      hidden: item.list?.hidden === true
+    })).filter((item) => !searchTerm || String(item.displayName || '').toLocaleLowerCase().includes(searchTerm));
+    return {
+      status: 'ok',
+      siteId: targetSiteId,
+      count: lists.length,
+      lists,
+      hasMore: Boolean(data['@odata.nextLink']),
+      note: data['@odata.nextLink'] ? '結果は先頭ページです。必要に応じて検索語を指定して絞り込んでください。' : undefined
+    };
+  }
+
+  async ensureColumns(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
+    if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
+
+    const current = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/columns?$select=id,name,displayName`);
+    const existing = new Set((current.value || []).flatMap((column) => [column.name, column.displayName].filter(Boolean)));
+    const created = [];
+    const skipped = [];
+
+    for (const column of params.columns || []) {
+      if (existing.has(column.name) || existing.has(column.displayName)) {
+        skipped.push({ name: column.name, displayName: column.displayName, reason: 'already_exists' });
+        continue;
+      }
+      const definition = {
+        name: column.name,
+        displayName: column.displayName,
+        description: column.description || '',
+        required: column.required === true
+      };
+      if (column.type === 'text') definition.text = { allowMultipleLines: column.multiline === true };
+      else if (column.type === 'number') definition.number = { decimalPlaces: column.decimalPlaces ?? 'automatic' };
+      else if (column.type === 'dateTime') definition.dateTime = { format: column.format || 'dateTime' };
+      else if (column.type === 'boolean') definition.boolean = {};
+      else if (column.type === 'choice') definition.choice = { choices: column.choices || [], allowTextEntry: false };
+      else throw new Error(`未対応の列型です: ${column.type}`);
+
+      const made = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/columns`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(definition)
+      });
+      created.push({ id: made.id, name: made.name, displayName: made.displayName });
+      existing.add(column.name);
+      existing.add(column.displayName);
+    }
+    return { status: 'ok', siteId: targetSiteId, listId: targetListId, created, skipped };
+  }
+
+  // params: { siteId?, listId?, listName? } — SharePoint列定義を読み取り専用で取得する。
+  async listColumns(params = {}) {
+    this._assertConfig();
+    const targetSiteId = params.siteId || this.defaultSiteId;
+    if (!targetSiteId) {
+      throw new Error('SharePoint設定が不足しています: siteId（SHAREPOINT_SITE_ID、またはパラメータsiteIdで指定してください）');
+    }
+    const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
+    if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
+
+    const data = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/columns`);
+    const columns = (data.value || []).map((column) => {
+      const type = ['text', 'number', 'dateTime', 'boolean', 'choice', 'lookup', 'personOrGroup', 'currency', 'hyperlinkOrPicture']
+        .find((key) => column[key] !== undefined) || 'unknown';
+      return {
+        id: column.id,
+        name: column.name,
+        displayName: column.displayName,
+        type,
+        required: column.required === true,
+        readOnly: column.readOnly === true,
+        hidden: column.hidden === true,
+        ...(column.choice ? { choices: column.choice.choices || [], allowTextEntry: column.choice.allowTextEntry === true } : {}),
+        ...(column.text ? { allowMultipleLines: column.text.allowMultipleLines === true } : {}),
+        ...(column.dateTime ? { dateTimeFormat: column.dateTime.format || null } : {})
+      };
+    });
+    return { status: 'ok', siteId: targetSiteId, listId: targetListId, count: columns.length, columns };
   }
 
   // params: { siteId?, listId?, listName?, top? } — listIdまたはlistNameのいずれかが必要。
@@ -78,9 +196,20 @@ class SharePointReader {
     const targetListId = params.listId || (params.listName ? await this._resolveListId(targetSiteId, params.listName) : null);
     if (!targetListId) throw new Error('listIdまたはlistNameのいずれかが必要です');
     const limit = Math.min(Math.max(Number.parseInt(params.top, 10) || 50, 1), 200);
-    const data = await this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/items?expand=fields&$top=${limit}`);
+    const [data, schema] = await Promise.all([
+      this._graphFetch(`/sites/${targetSiteId}/lists/${targetListId}/items?expand=fields&$top=${limit}`),
+      this.listColumns({ siteId: targetSiteId, listId: targetListId })
+    ]);
     const items = (data.value || []).map((item) => ({ itemId: item.id, fields: item.fields || {} }));
-    return { status: 'ok', siteId: targetSiteId, listId: targetListId, count: items.length, items };
+    return {
+      status: 'ok',
+      siteId: targetSiteId,
+      listId: targetListId,
+      count: items.length,
+      items,
+      hasMore: Boolean(data['@odata.nextLink']),
+      columns: schema.columns
+    };
   }
 }
 
