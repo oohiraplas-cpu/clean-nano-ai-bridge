@@ -81,5 +81,5 @@ test('missing MCP key blocks the new reader even with an Actions credential',asy
  const f=fixture(),config=getConfig({});config.deployment=f.config;
  const server=createApp(config,{list:async()=>[]}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());
  const r=await fetch(`http://127.0.0.1:${server.address().port}/mcp`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'verify_github_ci_artifact',params})});
- assert.equal((await r.json()).result.reason,'mcp_authentication_required');assert.equal(f.calls.length,0);
+ assert.equal(r.status,503);assert.equal(f.calls.length,0);
 });

@@ -37,7 +37,7 @@ async function fixture(t, options = {}) {
       };
     }
   };
-  const config = getConfig({});
+  const config = getConfig({ MCP_API_KEY: 'test-mcp-key' });
   config.enforceStateManager = options.enforce !== false;
   config.stateContextRegistry = { ttlMs: 1000, now: () => now };
   const app = createApp(config, {}, appStore, gitStore, {}, {}, {});
@@ -48,7 +48,7 @@ async function fixture(t, options = {}) {
     const body = transport === 'legacy' ? { method: name, params: args }
       : transport === 'direct' ? { jsonrpc: '2.0', id: 1, method: name, params: args }
       : { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } };
-    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'Mcp-Session-Id': session }, body: JSON.stringify(body) });
+    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key', 'Mcp-Session-Id': session }, body: JSON.stringify(body) });
     const result = await response.json();
     if (transport === 'legacy') return { error: !response.ok, data: response.ok ? result.result : result };
     if (transport === 'direct') return { error: Boolean(result.error), data: result.error?.data || result.result };
@@ -73,7 +73,7 @@ async function fixture(t, options = {}) {
 
 test('tools/list publishes the shared schemas and preserves all 77 tool names', async t => {
   const f = await fixture(t);
-  const res = await fetch(f.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  const res = await fetch(f.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
   const published = (await res.json()).result.tools;
   assert.equal(published.length, PUBLISHED_TOOLS.length);
   assert.deepEqual(published.map(x => x.name), PUBLISHED_TOOLS.map(x => x.name));
@@ -345,7 +345,7 @@ test('CRITICAL: incomplete context (missing sha) must NOT issue stateSessionId',
     }
   };
 
-  const config = getConfig({});
+  const config = getConfig({ MCP_API_KEY: 'test-mcp-key' });
   config.enforceStateManager = true;
   config.stateContextRegistry = { ttlMs: 1000, now: () => 100000 };
   const app = createApp(config, {}, appStore, gitStoreBroken, {}, {}, {});
@@ -356,7 +356,7 @@ test('CRITICAL: incomplete context (missing sha) must NOT issue stateSessionId',
   async function rpc(name, args = {}) {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
     });
     const result = await response.json();
@@ -423,7 +423,7 @@ test('run_powerapps_tests publishes context inputs and accepts a state/source ch
   const f = await fixture(t);
   const res = await fetch(f.url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-api-key': 'test-mcp-key' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
   });
   const catalog = (await res.json()).result.tools;
