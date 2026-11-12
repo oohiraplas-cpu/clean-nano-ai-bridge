@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const recoveryOAuth = require('./recoveryOAuth');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
@@ -3134,6 +3135,15 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     }
   });
   app.post('/router/request/:id/rollback', jobAuth, jobRoute((req) => cnaiRouter.rollbackRequest(cnaiRouter.defaultState, req.params.id, req.body?.reason)));
+
+  const recoveryAuth = recoveryOAuth.createRecoveryAuth();
+  if (recoveryAuth) {
+    app.get(recoveryOAuth.metadataPath, (req, res) => res.json(recoveryAuth.metadata));
+    app.get(recoveryOAuth.path, recoveryAuth.middleware, (req, res) => res.status(405).set('Allow', 'POST').end());
+    app.post(recoveryOAuth.path, recoveryAuth.middleware, (req, res, next) => {
+      handleMcpRequest(req, res, next).catch(next);
+    });
+  }
 
   // Streamable HTTP MCP endpoint. GET is intentionally not used for SSE;
   // Copilot Studio (and current MCP clients) negotiate over POST /mcp.
