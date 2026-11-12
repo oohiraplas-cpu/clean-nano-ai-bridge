@@ -6,6 +6,7 @@ const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
 const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
+const cnaiCopilotEntry = require('./cnaiCopilotEntry');
 const windowsJobs = require('./windowsJobs');
 const cnaiRouter = require('./cnaiRouter');
 const express = require('express');
@@ -3002,10 +3003,10 @@ function connectorReadOnlyGuard(req, res, next) {
   if (typeof method === 'string' && method.startsWith('notifications/')) return next();
   if (method === 'ping' || method === 'initialize') return next();
   if (method === 'tools/list') {
-    return res.status(200).json(jsonRpcResult(id, { tools: PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)) }));
+    return res.status(200).json(jsonRpcResult(id, { tools: [...PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)), ...cnaiCopilotEntry.COPILOT_TOOLS] }));
   }
   if (method === 'tools/call') {
-    if (typeof params.name === 'string' && CONNECTOR_READONLY_TOOLS.includes(params.name)) return next();
+    if (typeof params.name === 'string' && (CONNECTOR_READONLY_TOOLS.includes(params.name) || cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(params.name))) return next();
     return res.status(200).json(jsonRpcError(id, -32601, 'このコネクタでは読み取り専用ツールのみ使用できます'));
   }
   return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${typeof method === 'string' ? method : ''}`));
@@ -3164,7 +3165,26 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
     ? connectorKeyAuth(req, res, next)
     : res.status(404).json({ error: 'コネクタ用エンドポイントは無効です' }));
   app.get('/connector/mcp', connectorAuth, (req, res) => res.status(405).set('Allow', 'POST').end());
+  // Copilot CNAI entry (cnai_status / cnai_route_request): READ-only, served here instead of the generic MCP path.
+  const copilotCnaiCall = async (req, res, next) => {
+    const body = req.body;
+    if (!body || body.method !== 'tools/call' || !body.params || !cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(body.params.name)) return next();
+    const entry = cnaiCopilotEntry.createCopilotEntry({
+      reader: sharePointReader,
+      executeReadTool: (tool, args) => executeWithState(tool, args, req),
+      config,
+      version: '1.1.0'
+    });
+    const result = await entry.call(body.params.name, body.params.arguments || {});
+    return res.status(200).json(jsonRpcResult(body.id, {
+      content: [{ type: 'text', text: JSON.stringify(result) }],
+      structuredContent: result,
+      isError: result.status === 'REJECTED' || result.status === 'FAILED'
+    }));
+  };
   app.post('/connector/mcp', connectorAuth, connectorReadOnlyGuard, (req, res, next) => {
+    copilotCnaiCall(req, res, next).catch(next);
+  }, (req, res, next) => {
     handleMcpRequest(req, res, next).catch(next);
   });
 
