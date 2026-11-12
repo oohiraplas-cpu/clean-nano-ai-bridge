@@ -13,7 +13,9 @@ function createRecoveryAuth(env = process.env, fetchKeys = fetch) {
   if (!/^https:\/\/[a-z0-9.-]+$/i.test(origin || '')) return null;
 
   const issuer = `${microsoft}/${tenant}/v2.0`;
-  const scope = `api://${audience}/mcp.access`;
+  const resourceUri = `api://${audience}`;
+  const legacyIssuer = `https://sts.windows.net/${tenant}/`;
+  const scope = `${resourceUri}/mcp.access`;
   const metadata = {
     resource: origin + path,
     authorization_servers: [issuer],
@@ -51,8 +53,11 @@ function createRecoveryAuth(env = process.env, fetchKeys = fetch) {
       const claim = decode(payloadPart);
       const now = Math.floor(Date.now() / 1000);
       if (header.alg !== 'RS256' || typeof header.kid !== 'string') return false;
-      if (claim.iss !== issuer || claim.tid !== tenant || claim.ver !== '2.0'
-        || claim.aud !== audience || claim.azp !== client || claim.oid !== user
+      const validTokenContext = claim.ver === '1.0'
+        ? claim.iss === legacyIssuer && (claim.aud === audience || claim.aud === resourceUri)
+          && claim.appid === client
+        : claim.ver === '2.0' && claim.iss === issuer && claim.aud === audience && claim.azp === client;
+      if (!validTokenContext || claim.tid !== tenant || claim.oid !== user
         || !Number.isInteger(claim.exp) || claim.exp <= now
         || !Number.isInteger(claim.nbf) || claim.nbf > now
         || typeof claim.scp !== 'string' || !claim.scp.split(' ').includes('mcp.access')) return false;
