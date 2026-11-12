@@ -1,5 +1,5 @@
 name: Bridge 読み取りツールの実行（読み取り専用）
-# Calls ONE of the five read-only tools through the production connector endpoint (/connector/mcp)
+# Calls ONE of the read-only tools (the five Power Apps reads plus the Copilot CNAI entry cnai_status / cnai_route_request) through the production connector endpoint (/connector/mcp)
 # and prints the response. The connector key is read from Azure App Service settings inside the run,
 # masked, and never printed. Nothing is changed: this is read-only by construction (the endpoint
 # only exposes these five tools).
@@ -17,6 +17,8 @@ on:
           - get_powerapps_app
           - get_powerapps_state
           - get_powerapps_source
+          - cnai_status
+          - cnai_route_request
       arguments:
         description: "ツールの引数（JSON。不要なら {}）"
         required: false
@@ -55,7 +57,7 @@ jobs:
           export KEY
           python3 - <<'PY'
           import json, os, sys, urllib.error, urllib.request
-          ALLOWED = {'health_check', 'resolve_app_target', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source'}
+          ALLOWED = {'health_check', 'resolve_app_target', 'get_powerapps_app', 'get_powerapps_state', 'get_powerapps_source', 'cnai_status', 'cnai_route_request'}
           tool = os.environ['TOOL']
           if tool not in ALLOWED:
               sys.exit('tool not allowed: ' + tool)
