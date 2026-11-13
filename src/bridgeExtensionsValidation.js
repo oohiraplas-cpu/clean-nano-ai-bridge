@@ -53,9 +53,22 @@ function validateRunPowerAutomateFlowParams(params) {
 
 // CN_社員台帳への書き込み（create/update）は、他の更新・実行系（run_power_automate_flow等）と
 // 同じくBridge全体の方針（AI単独承認禁止）に合わせ、approvedByHuman:trueを必須にする。
+const ENTRA_OBJECT_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+// entraObjectIdは本人確認の照合キーなので、GUID以外（空文字・誤入力）は台帳へ書かせない。
+function entraObjectIdError(record) {
+  if (record.entraObjectId === undefined) return null;
+  if (typeof record.entraObjectId !== 'string' || !ENTRA_OBJECT_ID_PATTERN.test(record.entraObjectId)) {
+    return 'record.entraObjectIdはEntraオブジェクトID（GUID）である必要があります';
+  }
+  return null;
+}
+
 function validateCreateEmployeeLedgerEntryParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
   if (!isPlainObject(params.record)) return 'recordが必要です（JSONオブジェクト）';
+  const recordError = entraObjectIdError(params.record);
+  if (recordError) return recordError;
   if (params.approvedByHuman !== true) return 'approvedByHuman:trueが必要です（人間承認が必要な操作です）';
   return null;
 }
@@ -64,6 +77,8 @@ function validateUpdateEmployeeLedgerEntryParams(params) {
   if (!isPlainObject(params)) return 'paramsはJSONオブジェクトである必要があります';
   if (typeof params.itemId !== 'string' || !params.itemId.trim()) return 'itemIdが必要です';
   if (!isPlainObject(params.record)) return 'recordが必要です（JSONオブジェクト）';
+  const recordError = entraObjectIdError(params.record);
+  if (recordError) return recordError;
   if (params.approvedByHuman !== true) return 'approvedByHuman:trueが必要です（人間承認が必要な操作です）';
   return null;
 }

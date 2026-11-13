@@ -221,7 +221,9 @@ const EMPLOYEE_LEDGER_RECORD_PROPERTIES = Object.freeze({
   employmentStatus: { type: 'string', description: '状態' },
   progressStatus: { type: 'string', description: '進捗状況' },
   hireDate: { type: 'string', description: '入社日（YYYY-MM-DD）' },
-  remarks: { type: 'string', description: '備考' }
+  remarks: { type: 'string', description: '備考' },
+  entraObjectId: { type: 'string', description: 'EntraオブジェクトID（GUID）。アプリのUser().EntraObjectIdと照合される' },
+  employeeCategory: { type: 'string', description: '社員区分（選択肢。例: 一般社員）' }
 });
 
 const MCP_PUBLIC_TOOLS = Object.freeze([
