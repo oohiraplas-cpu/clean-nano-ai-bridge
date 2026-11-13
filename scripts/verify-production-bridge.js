@@ -3,6 +3,7 @@ const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const { PUBLISHED_TOOLS } = require('../src/server');
 const { assessAzureReadiness } = require('../src/azureReadiness');
+const { summarizeToolContract } = require('../src/toolContractSummary');
 const { collectRuntimeEvidence } = require('../src/azureRuntimeEvidence');
 const azure = args => JSON.parse(execFileSync('az', [...args, '--only-show-errors', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 8000000 }));
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -68,7 +69,8 @@ async function main() {
   report.initialize = { httpStatus: init.httpStatus, protocolVersion: init.data?.result?.protocolVersion || null, success: !!init.data?.result?.capabilities };
   const listing = await request('/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   const actual = listing.data?.result?.tools;
-  report.tools = { httpStatus: listing.httpStatus, count: actual?.length || 0, names: actual?.map(t => t.name) || [], contractSha256: actual ? hash(actual) : null, first28MatchesCheckout: actual?.length >= 28 && hash(actual.slice(0, 28)) === hash(PUBLISHED_TOOLS.slice(0, 28)), matchesCheckout: actual && hash(actual) === hash(PUBLISHED_TOOLS) };
+  // The published list is a subset of the internal catalog, so its size is not fixed: compare the whole contract.
+  report.tools = { httpStatus: listing.httpStatus, ...summarizeToolContract(actual, PUBLISHED_TOOLS) };
   if (report.mode !== 'baseline' && actual) {
     await call('health_check');
     if (actual.some(t => t.name === 'get_executive_policy')) await call('get_executive_policy', { query: '利益・未入金・銀行融資' });
