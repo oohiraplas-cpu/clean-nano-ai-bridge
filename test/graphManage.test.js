@@ -138,3 +138,55 @@ test('graph_manage is published through platformManage and the audit/approval wi
   const bad = await platformManage.run('graph_manage', { operation: 'nope' }, { graph: g, env: ENV });
   assert.equal(bad.status, 'error');
 });
+
+test('user_verify compares expected fields (UPN/mail case-insensitive) and reports expected vs actual', async () => {
+  const actual = { userPrincipalName: 'Taro@Example.co.jp', mail: 'Taro@Example.co.jp', displayName: '太郎', department: '営業', accountEnabled: true };
+  const g = fakeGraph(['User.Read.All'], { responses: { '/users/': actual } });
+  const ok = await run({ operation: 'user_verify', user: GOOD_UPN, expected: { userPrincipalName: 'taro@example.co.jp', displayName: '太郎', accountEnabled: true } }, g);
+  assert.equal(ok.verified, true); assert.deepEqual(ok.data.mismatched, []);
+  const bad = await run({ operation: 'user_verify', user: GOOD_UPN, expected: { department: '総務', displayName: '太郎' } }, g);
+  assert.equal(bad.verified, false); assert.deepEqual(bad.data.mismatched, [{ field: 'department', expected: '総務', actual: '営業' }]); assert.deepEqual(bad.data.matched, ['displayName']);
+  await assert.rejects(() => run({ operation: 'user_verify', user: GOOD_UPN, expected: { passwordProfile: 'x' } }, g), /not verifiable/);
+  await assert.rejects(() => run({ operation: 'user_verify', user: GOOD_UPN }, g), /expected is required/);
+  assert.ok(g.calls.every((c) => c.m === 'GET'));
+  const blockedResult = await run({ operation: 'user_verify', user: GOOD_UPN, expected: { displayName: 'x' } }, fakeGraph(['Sites.ReadWrite.All']));
+  assert.equal(blockedResult.data.blocked, true);
+});
+
+test('license_available reports free units per SKU, never negative, and only reads', async () => {
+  const skus = { value: [{ skuId: 's1', skuPartNumber: 'O365_BUSINESS_PREMIUM', consumedUnits: 8, prepaidUnits: { enabled: 10 }, capabilityStatus: 'Enabled' }, { skuId: 's2', skuPartNumber: 'EXCHANGE_S_FOUNDATION', consumedUnits: 12, prepaidUnits: { enabled: 10 }, capabilityStatus: 'Enabled' }, { skuId: 's3', skuPartNumber: 'ODD', consumedUnits: 1 }] };
+  const g = fakeGraph(['Organization.Read.All'], { responses: { '/subscribedSkus': skus } });
+  const r = await run({ operation: 'license_available' }, g);
+  assert.deepEqual(r.data.skus.map((k) => [k.skuPartNumber, k.available]), [['O365_BUSINESS_PREMIUM', 2], ['EXCHANGE_S_FOUNDATION', 0], ['ODD', null]]);
+  assert.deepEqual((await run({ operation: 'license_available', search: 'o365' }, g)).data.skus.map((k) => k.skuPartNumber), ['O365_BUSINESS_PREMIUM']);
+  assert.ok(g.calls.every((c) => c.m === 'GET'), 'licenses are never assigned or purchased');
+  assert.ok(!NEEDS_HAS_WRITE('license_available'));
+});
+function NEEDS_HAS_WRITE(op) { return gm.WRITE_OPS.includes(op); }
+
+test('mail_sent_check needs Mail.ReadBasic.All, a configured sender, and matches the exact subject', async () => {
+  const now = new Date().toISOString();
+  const msgs = { value: [{ subject: '案内', sentDateTime: now, toRecipients: [{ emailAddress: { address: GOOD_UPN } }] }, { subject: '案内(再送)', sentDateTime: now, toRecipients: [] }] };
+  const g = fakeGraph(['Mail.ReadBasic.All'], { responses: { '/users/noreply%40example.co.jp/mailFolders/sentitems/messages': msgs } });
+  const r = await run({ operation: 'mail_sent_check', subject: '案内' }, g);
+  assert.equal(r.data.found, true); assert.equal(r.data.count, 1); assert.deepEqual(r.data.messages[0].to, [GOOD_UPN]);
+  assert.equal((await run({ operation: 'mail_sent_check', subject: '別件' }, g)).data.found, false);
+  await assert.rejects(() => run({ operation: 'mail_sent_check', subject: '案内' }, g, {}), /GRAPH_MAIL_SENDER/);
+  await assert.rejects(() => run({ operation: 'mail_sent_check' }, g), /subject is required/);
+  assert.equal((await run({ operation: 'mail_sent_check', subject: '案内' }, fakeGraph(['Mail.Send']))).data.blocked, true);
+  assert.ok(g.calls.every((c) => c.m === 'GET'));
+});
+
+test('mail_send confirms delivery through Sent Items when the app may read mail, otherwise stays unverified', async () => {
+  const base = { operation: 'mail_send', approvedByHuman: true, to: [GOOD_UPN], subject: '案内', body: '本文' };
+  const sent = { value: [{ subject: '案内', sentDateTime: new Date().toISOString(), toRecipients: [{ emailAddress: { address: GOOD_UPN } }] }] };
+  const found = fakeGraph(['Mail.Send', 'Mail.ReadBasic.All'], { responses: { '/users/noreply%40example.co.jp/mailFolders': sent } });
+  const ok = await gm.run(base, { graph: found, env: ENV, sleep: async () => {} });
+  assert.equal(ok.verified, true); assert.equal(ok.data.deliveryConfirmed, 'found in Sent Items');
+  const missing = fakeGraph(['Mail.Send', 'Mail.ReadBasic.All'], { responses: { '/users/noreply%40example.co.jp/mailFolders': { value: [] } } });
+  let sleeps = 0;
+  const no = await gm.run(base, { graph: missing, env: ENV, sleep: async () => { sleeps += 1; } });
+  assert.equal(no.verified, false); assert.match(no.data.note, /not found in Sent Items/); assert.equal(sleeps, 2, 'three attempts, bounded');
+  const blind = await gm.run(base, { graph: fakeGraph(['Mail.Send']), env: ENV, sleep: async () => {} });
+  assert.equal(blind.verified, false); assert.match(blind.data.note, /cannot be confirmed/);
+});

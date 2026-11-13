@@ -25,11 +25,14 @@ const NEEDS = {
   app_get: ['Application.Read.All', 'Directory.Read.All'],
   sp_get: ['Application.Read.All', 'Directory.Read.All'],
   permission_grants: ['Application.Read.All', 'Directory.Read.All'],
+  user_verify: ['User.Read.All', 'Directory.Read.All'],
+  license_available: ['Organization.Read.All', 'LicenseAssignment.Read.All', 'Directory.Read.All'],
+  mail_sent_check: ['Mail.ReadBasic.All', 'Mail.Read'],
   user_create: ['User.ReadWrite.All', 'Directory.ReadWrite.All'],
   user_update: ['User.ReadWrite.All', 'Directory.ReadWrite.All'],
   mail_send: ['Mail.Send'],
 };
-const READ_OPS = ['status', 'user_get', 'user_search', 'user_groups', 'user_licenses', 'group_list', 'group_members', 'license_list', 'app_get', 'sp_get', 'permission_grants'];
+const READ_OPS = ['status', 'user_verify', 'license_available', 'mail_sent_check', 'user_get', 'user_search', 'user_groups', 'user_licenses', 'group_list', 'group_members', 'license_list', 'app_get', 'sp_get', 'permission_grants'];
 const WRITE_OPS = ['user_create', 'user_update', 'mail_send'];
 const OPERATIONS = [...READ_OPS, ...WRITE_OPS];
 const USER_FIELDS = 'id,displayName,givenName,surname,userPrincipalName,mail,accountEnabled,jobTitle,department,mobilePhone,officeLocation,usageLocation,createdDateTime,assignedLicenses';
@@ -37,6 +40,9 @@ const UPDATABLE = ['displayName', 'givenName', 'surname', 'jobTitle', 'departmen
 const MAX_TOP = 25;
 const MAX_MAIL_BODY = 8000;
 const MAX_RECIPIENTS = 20;
+const VERIFY_FIELDS = ['displayName', 'givenName', 'surname', 'userPrincipalName', 'mail', 'accountEnabled', 'jobTitle', 'department', 'mobilePhone', 'officeLocation', 'usageLocation'];
+const CASE_INSENSITIVE = new Set(['userPrincipalName', 'mail']);
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const enc = encodeURIComponent;
 const odata = (s) => String(s).replace(/'/g, "''");
@@ -85,6 +91,17 @@ async function run(p, deps = {}) {
       const r = await graph.get(`/users?$filter=${enc(`startswith(displayName,'${s}') or startswith(userPrincipalName,'${s}') or startswith(mail,'${s}')`)}&$select=${USER_FIELDS}&$top=${top(p)}`, { ConsistencyLevel: 'eventual' });
       return { verified: true, data: { count: (r.value || []).length, users: r.value || [] } };
     }
+    case 'user_verify': return verifyUser(p, graph, userRef(p));
+    case 'license_available': {
+      const r = await graph.get('/subscribedSkus?$select=skuId,skuPartNumber,consumedUnits,prepaidUnits,capabilityStatus');
+      const needle = String(p.search || '').toLowerCase();
+      const skus = (r.value || []).filter((k) => !needle || String(k.skuPartNumber).toLowerCase().includes(needle)).map((k) => {
+        const enabled = k.prepaidUnits && Number.isFinite(k.prepaidUnits.enabled) ? k.prepaidUnits.enabled : null;
+        return { skuId: k.skuId, skuPartNumber: k.skuPartNumber, enabled, consumed: k.consumedUnits ?? null, available: enabled === null ? null : Math.max(enabled - (k.consumedUnits ?? 0), 0), capabilityStatus: k.capabilityStatus };
+      });
+      return { verified: true, data: { count: skus.length, skus, note: 'availability only: licenses are never assigned or purchased here' } };
+    }
+    case 'mail_sent_check': return { verified: true, data: await sentCheck(p, env, graph, p.subject) };
     case 'user_groups': { const r = await graph.get(`/users/${userRef(p)}/memberOf?$select=id,displayName,mail,securityEnabled&$top=${top(p)}`); return { verified: true, data: { count: (r.value || []).length, groups: r.value || [] } }; }
     case 'user_licenses': { const r = await graph.get(`/users/${userRef(p)}/licenseDetails`); return { verified: true, data: { count: (r.value || []).length, licenses: (r.value || []).map((l) => ({ skuId: l.skuId, skuPartNumber: l.skuPartNumber })) } }; }
     case 'group_list': {
@@ -105,9 +122,33 @@ async function run(p, deps = {}) {
     }
     case 'user_create': return createUser(p, env, graph);
     case 'user_update': return updateUser(p, graph);
-    case 'mail_send': return sendMail(p, env, graph);
+    case 'mail_send': return sendMail(p, env, graph, info.roles, deps.sleep || defaultSleep);
     default: throw new GraphOpError(`unknown operation "${op}"`, 'invalid_input');
   }
+}
+
+async function verifyUser(p, graph, ref) {
+  const expected = p.expected && typeof p.expected === 'object' ? p.expected : null;
+  if (!expected || !Object.keys(expected).length) throw new GraphOpError('expected is required (fields to compare)', 'invalid_input');
+  const bad = Object.keys(expected).filter((k) => !VERIFY_FIELDS.includes(k));
+  if (bad.length) throw new GraphOpError(`fields not verifiable: ${bad.join(', ')}`, 'invalid_input');
+  const actual = await graph.get(`/users/${ref}?$select=${USER_FIELDS}`);
+  const norm = (k, v) => (CASE_INSENSITIVE.has(k) && typeof v === 'string' ? v.toLowerCase() : v);
+  const mismatched = [];
+  for (const k of Object.keys(expected)) if (norm(k, actual[k]) !== norm(k, expected[k])) mismatched.push(k);
+  return { verified: mismatched.length === 0, data: { matched: Object.keys(expected).filter((k) => norm(k, actual[k]) === norm(k, expected[k])),
+    mismatched: mismatched.map((k) => ({ field: k, expected: expected[k], actual: actual[k] ?? null })), user: actual } };
+}
+
+async function sentCheck(p, env, graph, subject) {
+  const sender = String(env.GRAPH_MAIL_SENDER || '');
+  if (!UPN.test(sender)) throw new GraphOpError('GRAPH_MAIL_SENDER must be configured', 'config');
+  if (typeof subject !== 'string' || !subject.trim() || subject.length > 200) throw new GraphOpError('subject is required (<=200)', 'invalid_input');
+  const minutes = Math.min(Math.max(Number.isInteger(Number(p.sinceMinutes)) ? Number(p.sinceMinutes) : 30, 1), 1440);
+  const since = new Date(Date.now() - minutes * 60000).toISOString();
+  const r = await graph.get(`/users/${enc(sender)}/mailFolders/sentitems/messages?$filter=${enc(`sentDateTime ge ${since}`)}&$orderby=sentDateTime desc&$select=subject,sentDateTime,toRecipients&$top=${MAX_TOP}`);
+  const messages = (r.value || []).filter((m) => m.subject === subject).map((m) => ({ subject: m.subject, sentDateTime: m.sentDateTime, to: (m.toRecipients || []).map((x) => x.emailAddress && x.emailAddress.address) }));
+  return { found: messages.length > 0, count: messages.length, messages, searchedMinutes: minutes };
 }
 
 async function createUser(p, env, graph) {
@@ -140,7 +181,7 @@ async function updateUser(p, graph) {
   return { verified: mismatched.length === 0, data: { updated: Object.keys(patch), mismatched, user: again } };
 }
 
-async function sendMail(p, env, graph) {
+async function sendMail(p, env, graph, roles = [], sleep = defaultSleep) {
   const sender = String(env.GRAPH_MAIL_SENDER || '');
   const domains = csv(env.GRAPH_MAIL_ALLOWED_DOMAINS);
   if (!UPN.test(sender) || !domains.length) throw new GraphOpError('GRAPH_MAIL_SENDER and GRAPH_MAIL_ALLOWED_DOMAINS must be configured; mail is refused', 'config');
@@ -148,16 +189,24 @@ async function sendMail(p, env, graph) {
   if (!to.length || to.length > MAX_RECIPIENTS || !to.every((a) => UPN.test(a) && domains.includes(a.split('@')[1].toLowerCase()))) throw new GraphOpError('recipients are missing, too many, or outside the allowed domains', 'invalid_input');
   if (typeof p.subject !== 'string' || !p.subject.trim() || p.subject.length > 200 || typeof p.body !== 'string' || !p.body.trim() || p.body.length > MAX_MAIL_BODY) throw new GraphOpError('subject (<=200) and plain-text body (<=8000) are required', 'invalid_input');
   await graph.post(`/users/${enc(sender)}/sendMail`, { message: { subject: p.subject, body: { contentType: 'Text', content: p.body }, toRecipients: to.map((address) => ({ emailAddress: { address } })) }, saveToSentItems: true });
-  // Graph answers 202 with no message id, so delivery cannot be re-read here. Reported as partial on purpose.
-  return { verified: false, data: { accepted: true, recipients: to.length, note: 'Graph accepted the request (202). Delivery is not independently verifiable from here.' } };
+  // Graph answers 202 with no message id. Confirm through Sent Items only when the app may read mail; otherwise report partial.
+  if (NEEDS.mail_sent_check.some((role) => roles.includes(role))) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt) await sleep(1500);
+      const check = await sentCheck({ sinceMinutes: 10 }, env, graph, p.subject);
+      if (check.found) return { verified: true, data: { accepted: true, recipients: to.length, deliveryConfirmed: 'found in Sent Items', sentItems: check.messages[0] } };
+    }
+    return { verified: false, data: { accepted: true, recipients: to.length, note: 'Graph accepted the request (202) but the message was not found in Sent Items yet.' } };
+  }
+  return { verified: false, data: { accepted: true, recipients: to.length, note: 'Graph accepted the request (202). Delivery cannot be confirmed because the app has no Mail.ReadBasic.All / Mail.Read.' } };
 }
 
 const DEF = {
   name: 'graph_manage',
-  description: 'Microsoft Graph(Entra ID / Outlook)を1ツールで実行(operation指定)。読み取り=status(付与済み権限)/user_get/user_search/user_groups/user_licenses/group_list/group_members/license_list/app_get/sp_get/permission_grants。書込=user_create/user_update/mail_send は approvedByHuman:true 必須。必要な権限が付与されていない場合は推測せず、必要な権限を構造化して返します。パスワードは返しません。',
+  description: 'Microsoft Graph(Entra ID / Outlook)を1ツールで実行(operation指定)。読み取り=status(付与済み権限)/user_verify(期待値との照合)/license_available(空きライセンス数)/mail_sent_check(送信済みの確認)/user_get/user_search/user_groups/user_licenses/group_list/group_members/license_list/app_get/sp_get/permission_grants。書込=user_create/user_update/mail_send は approvedByHuman:true 必須。必要な権限が付与されていない場合は推測せず、必要な権限を構造化して返します。パスワードは返しません。',
   inputSchema: { type: 'object', properties: {
     operation: { type: 'string', enum: OPERATIONS }, user: { type: ['string', 'object'] }, search: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: MAX_TOP }, group: { type: 'string' },
-    appId: { type: 'string' }, patch: { type: 'object' }, to: { type: 'array', items: { type: 'string' }, maxItems: MAX_RECIPIENTS }, subject: { type: 'string' }, body: { type: 'string' },
+    appId: { type: 'string' }, expected: { type: 'object' }, sinceMinutes: { type: 'integer', minimum: 1, maximum: 1440 }, patch: { type: 'object' }, to: { type: 'array', items: { type: 'string' }, maxItems: MAX_RECIPIENTS }, subject: { type: 'string' }, body: { type: 'string' },
     approvedByHuman: { type: 'boolean' }, approver: { type: 'string' } }, required: ['operation'], additionalProperties: false },
 };
 
