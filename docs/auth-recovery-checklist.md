@@ -33,3 +33,19 @@ main へのマージは本番デプロイになる。順序の推奨:
 1. A4 を確認 → #236
 2. #65（A7 の接続が `X-API-Key` の場合に効く）
 3. #4（偽造ヘッダーの遮断。復旧そのものには効かない）
+
+## D. OAuth の resource / scope 不一致（AADSTS9010010）— 2026-11-13 の読み取り確認
+
+本番の `/.well-known/oauth-protected-resource/recovery/mcp`（公開・秘密値なし）を取得した結果:
+
+| 項目 | 値 |
+|---|---|
+| resource | `https://<bridge host>/recovery/mcp`（HTTPS） |
+| scopes_supported | `api://9cb3b23b-aa1a-4a45-a73e-24c78a2c2252/mcp.access`（`api://` 形式） |
+| authorization_servers | Entra テナント v2.0 |
+
+- 確認済み: `resource` が HTTPS URL、スコープが `api://` 形式で、Application ID URI の形が一致していない。MCP クライアント（ChatGPT など）は `resource` に MCP URL を送るため、Entra が `AADSTS9010010` を返す条件に当たる。
+- 未確認: 実際の失敗リクエスト（`resource` / `scope` / 相関ID）、Entra 側の `identifierUris` と `requestedAccessTokenVersion`。
+- コードは変更しない（`src/recoveryOAuth.js` は v1・v2 トークンの両方を検証済み。本番で稼働中の経路のため）。
+- 直すのは Entra 側（人間操作 1 件）: リソース側アプリ登録の Application ID URI に `https://<bridge host>` を追加し、`requestedAccessTokenVersion=2`、スコープは `https://<bridge host>/mcp.access` に揃える。そのうえで `RECOVERY_ENTRA_AUDIENCE` と許可オーディエンスの整合を確認する。
+- 関連: OZ Router 側は clean-nano-oz-router PR #12（`docs/oauth-resource-alignment.md`）。
