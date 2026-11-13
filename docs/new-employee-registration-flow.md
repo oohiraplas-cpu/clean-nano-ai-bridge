@@ -96,3 +96,24 @@
 2. 確認した内部名を、`CN_EMPLOYEE_LEDGER_FIELD_MAP` に追加する（コード変更・テスト・PR）。
 3. フローを作成する（Power Automate の画面での操作と承認が必要）。
 4. アプリの列指定を統一する（PR。保存・公開は人間の承認が必要）。
+
+## 追補2: 実環境の確認結果（2026-11-13、Bridge の読み取り専用ツール `get_sharepoint_list_schema`）
+
+上の「未確認」のうち、次の項目は実環境から確認できた（値は列の定義のみ。社員データは記録していない）。
+
+| 表示名 | 内部名 | 型 |
+|---|---|---|
+| 氏名 | `Title` | テキスト（必須） |
+| 社員ID | `EmployeeID` | テキスト（必須） |
+| 所属 | `Department` | 選択肢 |
+| 入社日 | `HireDate` | 日付 |
+| 状態 | `EmploymentStatus` | 選択肢 |
+| 備考 | `Remarks` | テキスト |
+| 進捗状況 | `ProgressStatus` | 選択肢 |
+| EntraObjectId | `EntraObjectId` | テキスト |
+| 社員区分 | `EmployeeCategory` | 選択肢 |
+
+- **`EmployeeID` と `EntraObjectId` は、一意制約なし。** リスト側では重複を防げないため、フローの重複確認（手順 4）が必須。
+- 台帳の列名は、表示名が日本語で内部名が英語。アプリが `EmployeeID` / `Title` と `社員ID` / `氏名` の両方を使っているのは、内部名と表示名の違いによる可能性がある（動作は未確認）。
+- 同じサイトに `CN_入社申請_仮登録台帳` と `CN_社員マスタ` がある。新規社員登録の入口として使うかは**未確認**（要判断）。
+- Bridge の `CN_EMPLOYEE_LEDGER_FIELD_MAP` に `entraObjectId` と `employeeCategory` を追加した。`entraObjectId` はGUID形式のみ受け付ける（create / update）。

@@ -167,7 +167,8 @@ class SharePointListWriter {
 }
 
 // CN_社員台帳の列内部名（2026-09-20にSharePoint「リストの設定」画面で実環境確認済み。
-// 推測値ではない）。Modified/Created/Author/EditorはSharePoint標準列のため含めていない
+// entraObjectId / employeeCategory は2026-11-13にBridgeの読み取り専用ツール
+// get_sharepoint_list_schemaで実環境から取得して確認済み。推測値ではない）。Modified/Created/Author/EditorはSharePoint標準列のため含めていない
 // （書き込み対象外）。
 const CN_EMPLOYEE_LEDGER_FIELD_MAP = Object.freeze({
   name: 'Title',
@@ -176,7 +177,9 @@ const CN_EMPLOYEE_LEDGER_FIELD_MAP = Object.freeze({
   department: 'Department',
   employmentStatus: 'EmploymentStatus',
   hireDate: 'HireDate',
-  remarks: 'Remarks'
+  remarks: 'Remarks',
+  entraObjectId: 'EntraObjectId',
+  employeeCategory: 'EmployeeCategory'
 });
 
 module.exports = { SharePointListWriter, CN_EMPLOYEE_LEDGER_FIELD_MAP };

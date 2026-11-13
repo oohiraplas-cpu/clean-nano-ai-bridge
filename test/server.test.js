@@ -1789,3 +1789,65 @@ test('webhooks are fail-closed (503) when WEBHOOK_API_KEY is not configured', as
   const tasks = await fetch(`${server.baseUrl}/api/tasks`);
   assert.equal((await tasks.json()).count, 1);
 });
+
+test('create_employee_ledger_entryはentraObjectIdとemployeeCategoryを実環境確認済みの内部名で書き込む', async (t) => {
+  const writes = [];
+  const mockFetch = async (url, options = {}) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    if (options.method === 'POST') {
+      writes.push({ url, body: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ id: 'new-item-2' }), { status: 201 });
+    }
+    throw new Error(`予期しないリクエスト: ${url}`);
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { siteId: 'site-1', employeeLedgerListId: 'list-employee-1', fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const entraObjectId = '00000000-0000-4000-8000-000000000001';
+
+  const called = await fetch(`${server.baseUrl}/mcp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' },
+    body: JSON.stringify({
+      method: 'create_employee_ledger_entry',
+      params: { record: { name: '山田太郎', employeeId: 'EMP011', entraObjectId, employeeCategory: '一般社員' }, approvedByHuman: true }
+    })
+  });
+  assert.equal(called.status, 200);
+  assert.deepEqual(writes[0].body, { fields: { Title: '山田太郎', EmployeeID: 'EMP011', EntraObjectId: entraObjectId, EmployeeCategory: '一般社員' } });
+});
+
+test('employee ledgerはGUIDでないentraObjectIdを書き込まない（create/update）', async (t) => {
+  let writeCount = 0;
+  const mockFetch = async (url, options = {}) => {
+    if (url.includes('/oauth2/v2.0/token')) {
+      return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }), { status: 200 });
+    }
+    writeCount += 1;
+    return new Response(JSON.stringify({ id: 'x' }), { status: 201 });
+  };
+  const server = await createTestServer([seedTask], {
+    mcpApiKey: 'mcp-secret',
+    sharepointOverrides: { siteId: 'site-1', employeeLedgerListId: 'list-employee-1', fetchImpl: mockFetch }
+  });
+  t.after(() => server.close());
+  const headers = { 'content-type': 'application/json', 'x-api-key': 'mcp-secret' };
+
+  for (const bad of ['', 'not-a-guid', 123, '00000000-0000-4000-8000-00000000000']) {
+    const created = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ method: 'create_employee_ledger_entry', params: { record: { name: 'A', entraObjectId: bad }, approvedByHuman: true } })
+    });
+    assert.equal(created.status, 400);
+    assert.match((await created.json()).error, /entraObjectId/);
+    const updated = await fetch(`${server.baseUrl}/mcp`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ method: 'update_employee_ledger_entry', params: { itemId: '1', record: { entraObjectId: bad }, approvedByHuman: true } })
+    });
+    assert.equal(updated.status, 400);
+  }
+  assert.equal(writeCount, 0);
+});
