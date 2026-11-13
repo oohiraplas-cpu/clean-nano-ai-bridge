@@ -67,3 +67,32 @@
 5. 実行履歴と項目を再取得して、値が対応表どおりであること。
 
 実環境で確認するまで、導入済みとは扱わない。
+
+## 追補: Entra ID の自動取得と社員との紐付け
+
+### 確認済み（アプリのソース `powerapps/CN_AI依頼台帳/Source` より）
+- アプリは、サインインしたユーザーの Entra オブジェクトIDを `User().EntraObjectId`（Power Fx 標準・追加課金なし）で取得し、`LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId))` で社員を特定している（`S1_Home` / `S3_Register` / `S4_Summary` / `S5_Salary`）。
+- `S1_Home` は、社員ID と Entra オブジェクトIDの両方が台帳と一致したときだけ勤怠を読み込む。不一致なら読み込まず、通知する。
+- つまり「Entra ID の自動取得」と「照合」は**すでにある**。足りないのは、新規登録時に Entra オブジェクトIDを台帳へ**書き込む**部分。
+
+### 確認済みの問題（コード上の事実）
+1. **Bridge の `CN_EMPLOYEE_LEDGER_FIELD_MAP` に `EntraObjectId` がない。** `create_employee_ledger_entry` / `update_employee_ledger_entry` は、この列を書けない。
+2. **画面ごとに列の指定が混在している。** `S1_Home` / `S4_Summary` / `S5_Salary` は `EmployeeID` / `Title` を使い、`S2_Calendar` / `S3_Register` は `社員ID` / `氏名` を使っている。どちらかが実環境の列名と合っていない可能性がある。
+3. **管理者判定に、固定のメールアドレスの比較を使っている**（`S2_Calendar` / `S3_Register`）。社員台帳の紐付けとは別の仕組みで、異動・退職に追随しない。
+
+### 紐付けの設計（案）
+- フローの手順 6（項目の作成）の前に、Office 365 Users の「ユーザーの取得 (V2)」で、社員のメールアドレスから Entra オブジェクトID（`Id`）を取得する。このコネクタは標準コネクタで、追加ライセンスは不要と理解しているが、**テナントのライセンスで要確認**。
+- 「Microsoft Entra ID」コネクタ（プレミアム）と Dataverse は使わない（追加課金を避ける）。
+- 取得した `Id` を `EntraObjectId` 列へ書く。取得できない場合は、登録を止めて通知する（空のまま登録しない）。
+- 同じ Entra オブジェクトIDが、すでに別の社員にある場合は登録しない（重複確認に追加）。
+
+### 実環境で確認すること（未確認）
+- `EntraObjectId` 列の内部名と型。
+- 台帳で使う列名が、`EmployeeID` / `Title` か `社員ID` / `氏名` か。
+- テナントのライセンスで、Office 365 Users コネクタが追加費用なしで使えること。
+
+### 変更の順序（承認が必要な操作を含む）
+1. 実環境で上の3点を確認する。
+2. 確認した内部名を、`CN_EMPLOYEE_LEDGER_FIELD_MAP` に追加する（コード変更・テスト・PR）。
+3. フローを作成する（Power Automate の画面での操作と承認が必要）。
+4. アプリの列指定を統一する（PR。保存・公開は人間の承認が必要）。
