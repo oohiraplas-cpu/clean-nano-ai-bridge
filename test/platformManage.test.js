@@ -112,8 +112,8 @@ test('errors are audited', async () => {
   assert.ok(a.data.entries.length >= 1);
 });
 
-test('exactly four tools', () => {
-  assert.deepStrictEqual(pm.TOOL_NAMES, ['sharepoint_manage', 'powerapps_manage', 'powerautomate_manage', 'powerplatform_validate']);
+test('exactly five unified tools (graph_manage added for Entra ID / Outlook)', () => {
+  assert.deepStrictEqual(pm.TOOL_NAMES, ['sharepoint_manage', 'powerapps_manage', 'powerautomate_manage', 'powerplatform_validate', 'graph_manage']);
 });
 
 test('powerFxCheck ignores apostrophes inside comments', () => {
