@@ -8,6 +8,7 @@ const path = require('path');
 const paw = require('./powerAppsSolutionWriter');
 const pfw = require('./powerAutomateFlowWriter');
 const { readZip } = require('./zipLite');
+const graphManage = require('./graphManage');
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,7 +66,7 @@ const OP_ALIASES = {
   powerautomate_manage: { flows: 'list', flow_list: 'list', flow_get: 'get', history: 'runs', run_history: 'runs', runs_get: 'runs', run: 'test', execute: 'test', errors: 'failures', failed: 'failures', repair: 'auto_repair', fix: 'auto_repair', connections: 'connection_check', on: 'enable', off: 'disable', rollback: 'restore', remove: 'delete' },
   powerplatform_validate: { env: 'environment', changes: 'unexpected_changes', fx: 'powerfx', columns: 'sp_column_types', image: 'image_assignment', recover: 'recoverability', premium: 'premium_check', license: 'premium_check' },
 };
-const JSON_KEYS = ['fields', 'items', 'rules', 'edits', 'images', 'definition', 'set', 'columns', 'column', 'patch', 'connectionReferences', 'expected', 'expect', 'choices', 'scripts', 'allowed', 'value'];
+const JSON_KEYS = ['user', 'to', 'fields', 'items', 'rules', 'edits', 'images', 'definition', 'set', 'columns', 'column', 'patch', 'connectionReferences', 'expected', 'expect', 'choices', 'scripts', 'allowed', 'value'];
 function normalizeParams(tool, params) {
   const p = { ...(params || {}) };
   for (const k of JSON_KEYS) {
@@ -130,7 +131,7 @@ function createGraph(cfg, fetchImpl = globalThis.fetch) {
     if (!r.ok) { const e = new Error(`Graph ${method} ${p.split('?')[0]} ${r.status}: ${text.slice(0, 400)}`); e.status = r.status; throw e; }
     return text ? JSON.parse(text) : {};
   }
-  return { get: (p, h) => call('GET', p, null, h), post: (p, b) => call('POST', p, b), patch: (p, b) => call('PATCH', p, b), del: (p) => call('DELETE', p) };
+  return { token, get: (p, h) => call('GET', p, null, h), post: (p, b) => call('POST', p, b), patch: (p, b) => call('PATCH', p, b), del: (p) => call('DELETE', p) };
 }
 
 async function withRepair(label, fn, repairs = {}) {
@@ -770,7 +771,12 @@ async function powerplatformValidate(p, deps = {}) {
   }
 }
 
-const HANDLERS = { sharepoint_manage: sharepointManage, powerapps_manage: powerappsManage, powerautomate_manage: powerautomateManage, powerplatform_validate: powerplatformValidate };
+const graphManageHandler = (p, deps = {}) => {
+  const env = deps.env || process.env;
+  const graph = deps.graph || createGraph(spSettings(env), deps.fetchImpl);
+  return graphManage.run(p, { ...deps, env, graph });
+};
+const HANDLERS = { graph_manage: graphManageHandler, sharepoint_manage: sharepointManage, powerapps_manage: powerappsManage, powerautomate_manage: powerautomateManage, powerplatform_validate: powerplatformValidate };
 
 async function run(tool, params = {}, deps = {}) {
   const env = deps.env || process.env;
@@ -800,6 +806,7 @@ const TOOL_DEFS = [
   { name: 'powerapps_manage', description: 'Power Appsキャンバスアプリ操作を1ツールで実行(operation指定)。状態=state_get、画面一覧=screen_get、検査=app_checker。プレミアム/未確認コネクタを含む変更は自動停止(blocked_premium)。ソリューション書出→編集→取込→社内公開→再取得検証、変更前スナップショット自動保存(restoreで復元)。画像はimages[{name,base64|url}]、割当はassignTo/control+imageName。', inputSchema: { type: 'object', properties: { appId: { type: 'string' }, operation: op(['app_get', 'state_get', 'source_get', 'screen_get', 'screen_add', 'screen_edit', 'control_get', 'control_add', 'control_edit', 'powerfx_get', 'powerfx_edit', 'datasource_add', 'datasource_edit', 'image_add', 'image_replace', 'image_assign', 'save', 'publish', 'reread', 'publish_verify', 'app_checker', 'restore', 'snapshots']), solutionName: { type: 'string' }, appFile: { type: 'string' }, screen: { type: 'string' }, controlType: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, script: { type: 'string' }, rules: { type: 'array', items: { type: 'object' }, description: 'control_edit: [{control, property, script, screen?, expectBefore?}]。expectBefore指定時、現在値と不一致なら409で中止' }, expectBefore: { type: 'string' }, edits: { type: 'array', items: { type: 'object' } }, images: { type: 'array', items: { type: 'object' } }, name: { type: 'string' }, base64: { type: 'string' }, url: { type: 'string' }, contentType: { type: 'string' }, assignTo: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, file: { type: 'string' }, maxResults: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' } }, required: ['operation'] } },
   { name: 'powerautomate_manage', description: 'Power Automateクラウドフロー操作を1ツールで実行(operation指定)。一覧=list(nameContains)、履歴=runs、失敗=failures。プレミアム(HTTP/カスタム/Dataverse等)を含む作成・編集は自動停止(blocked_premium)。作成/編集(トリガー・アクション)/接続確認/有効化/テスト/実行履歴/失敗箇所/自動修復/再実行/復元。物理削除は confirm="DELETE flow <id>" が必須。', inputSchema: { type: 'object', properties: { operation: op(['list', 'get', 'create', 'edit', 'trigger_edit', 'action_edit', 'connection_check', 'save', 'enable', 'disable', 'test', 'runs', 'failures', 'auto_repair', 'rerun', 'restore', 'delete']), flowId: { type: 'string' }, solutionName: { type: 'string' }, nameContains: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, definition: { type: 'object' }, connectionReferences: { type: 'object' }, value: {}, set: { type: 'array', items: { type: 'object' } }, edits: { type: 'array', items: { type: 'object' } }, search: { type: 'string' }, top: { type: 'integer' }, waitMs: { type: 'integer' }, snapshotId: { type: 'string' }, dryRun: { type: 'boolean' }, confirm: { type: 'string' } }, required: ['operation'] } },
   { name: 'powerplatform_validate', description: 'Power Platform変更の検証(operation指定): premium_check(アプリ/フローのプレミアム該当検出)/environment/diff/unexpected_changes/reread/powerfx/sp_column_types/flow_run/image_assignment/recoverability/audit。', inputSchema: { type: 'object', properties: { operation: op(['environment', 'diff', 'unexpected_changes', 'reread', 'powerfx', 'sp_column_types', 'flow_run', 'image_assignment', 'recoverability', 'audit', 'premium_check']), snapshotId: { type: 'string' }, allowed: { type: 'array', items: { type: 'string' } }, solutionName: { type: 'string' }, appFile: { type: 'string' }, script: { type: 'string' }, scripts: { type: 'array', items: { type: 'string' } }, list: { type: 'string' }, siteId: { type: 'string' }, expected: { type: 'array', items: { type: 'object' } }, flowId: { type: 'string' }, control: { type: 'string' }, property: { type: 'string' }, imageName: { type: 'string' }, expect: { type: 'array', items: { type: 'object' } }, top: { type: 'integer' } }, required: ['operation'] } },
+  graphManage.DEF,
 ];
 
 module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { pickApp, internalNameOf, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
