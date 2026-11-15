@@ -25,6 +25,7 @@ test('status lists granted roles and what each operation needs, without the toke
   assert.equal(r.data.tenantId, 'tenant-1'); assert.equal(r.data.config.mailSenderConfigured, true);
   assert.ok(!JSON.stringify(r).includes('x.') || !JSON.stringify(r).includes('.y'), 'no token in output');
   assert.equal(g.calls.length, 0, 'status makes no Graph call');
+  assert.deepEqual(r.data.operations.status, { anyOf: [], granted: true }, 'status needs no Graph role, so it never reports itself as missing a permission');
 });
 
 test('a missing role is a structured block with the exact roles, and Graph is never called', async () => {
@@ -81,6 +82,8 @@ test('user_create: allowed domains, password rules, re-read verification, passwo
   const created = { id: '33333333-3333-3333-3333-333333333333', userPrincipalName: GOOD_UPN, displayName: '太郎' };
   const g = fakeGraph(['User.ReadWrite.All'], { responses: { '/users/': created, '/users': created } });
   g.post = async (path, body) => { g.calls.push({ m: 'POST', path, body }); return created; };
+  const readUser = g.get;
+  g.get = async (path, h) => { if (path.includes('$select=id') && !g.calls.some((c) => c.m === 'POST')) { g.calls.push({ m: 'GET', path, h }); const e = new Error('not found'); e.status = 404; throw e; } return readUser(path, h); };
   const good = { operation: 'user_create', approvedByHuman: true, user: { displayName: '太郎', mailNickname: 'taro', userPrincipalName: GOOD_UPN, passwordProfile: { password: PASSWORD } } };
   await assert.rejects(() => run(good, g, {}), /GRAPH_UPN_ALLOWED_DOMAINS/);
   await assert.rejects(() => run({ ...good, user: { ...good.user, userPrincipalName: 'a@evil.example' } }, g), /outside the allowed domains/);
@@ -189,4 +192,119 @@ test('mail_send confirms delivery through Sent Items when the app may read mail,
   assert.equal(no.verified, false); assert.match(no.data.note, /not found in Sent Items/); assert.equal(sleeps, 2, 'three attempts, bounded');
   const blind = await gm.run(base, { graph: fakeGraph(['Mail.Send']), env: ENV, sleep: async () => {} });
   assert.equal(blind.verified, false); assert.match(blind.data.note, /cannot be confirmed/);
+});
+
+// ---- onboarding: contact e-mail -> generated user name, generated password, welcome mail, optional license ----
+const SKU = 'f1e78181-93b9-4981-96b8-adc273c746fc';
+const OB_ENV = { ...ENV, GRAPH_UPN_ALLOWED_DOMAINS: 'example.co.jp', GRAPH_WELCOME_APP_URL: 'https://apps.powerapps.com/play/app-1', GRAPH_DEFAULT_LICENSE_SKU: SKU, GRAPH_MAIL_SENDER: 'noreply@example.co.jp' };
+function onboardGraph(roles, { exists = false, failMail = false, failLicense = false } = {}) {
+  let upn = null; let displayName = null;
+  const g = { calls: [], token: async () => jwt(roles) };
+  g.get = async (path) => {
+    g.calls.push({ m: 'GET', path });
+    if (path.endsWith('$select=id')) { if (exists) return { id: 'x' }; const e = new Error('not found'); e.status = 404; throw e; }
+    return { id: 'uid-1', userPrincipalName: upn, displayName };
+  };
+  g.post = async (path, body) => {
+    g.calls.push({ m: 'POST', path, body });
+    if (path === '/users') { upn = body.userPrincipalName; displayName = body.displayName; return { id: 'uid-1' }; }
+    if (path.endsWith('/assignLicense') && failLicense) throw new Error('Graph 400 no free seats');
+    if (path.endsWith('/sendMail') && failMail) throw new Error('Graph 403');
+    return {};
+  };
+  return g;
+}
+const ROLES = ['User.ReadWrite.All', 'Mail.Send'];
+const OB = (extra = {}, user = {}) => ({ operation: 'user_create', approvedByHuman: true, welcomeMail: true, user: { displayName: '山田 太郎', contactEmail: 'Taro.Yamada+x@gmail.com', ...user }, ...extra });
+const posts = (g, suffix) => g.calls.filter((c) => c.m === 'POST' && (suffix ? c.path.endsWith(suffix) : true));
+
+test('onboarding: the user name comes from the contact address, the password is generated and only ever goes into the welcome mail', async () => {
+  const g = onboardGraph(ROLES);
+  const r = await run(OB(), g, OB_ENV);
+  assert.equal(r.verified, true);
+  const create = posts(g, '/users')[0].body;
+  assert.equal(create.userPrincipalName, 'taro.yamadax@example.co.jp'); assert.equal(create.mailNickname, 'taro.yamadax'); assert.deepEqual(create.otherMails, ['Taro.Yamada+x@gmail.com']);
+  assert.equal(create.passwordProfile.forceChangePasswordNextSignIn, true);
+  const pw = create.passwordProfile.password;
+  assert.equal(pw.length, 20); assert.ok(/[A-Z]/.test(pw) && /[a-z]/.test(pw) && /[0-9]/.test(pw) && /[!#$%&*+=?@-]/.test(pw), 'all four character classes');
+  assert.equal(r.data.passwordReturned, false); assert.equal(r.data.passwordGenerated, true); assert.equal(r.data.derivedUserPrincipalName, true);
+  assert.ok(!JSON.stringify(r).includes(pw), 'the password is not in the result');
+  const mail = posts(g, '/sendMail')[0];
+  assert.equal(mail.path, '/users/noreply%40example.co.jp/sendMail');
+  assert.deepEqual(mail.body.message.toRecipients, [{ emailAddress: { address: 'Taro.Yamada+x@gmail.com' } }]);
+  assert.equal(mail.body.message.subject, '【clean nano】アカウント発行のお知らせ'); assert.equal(mail.body.message.body.contentType, 'Text');
+  assert.ok(mail.body.message.body.content.includes(pw) && mail.body.message.body.content.includes('taro.yamadax@example.co.jp') && mail.body.message.body.content.includes('https://apps.powerapps.com/play/app-1'));
+  assert.equal(mail.body.saveToSentItems, false, 'the password mail is not kept in Sent Items');
+  assert.equal(posts(g).filter((c) => JSON.stringify(c.body).includes(pw)).length, 2, 'the password appears only in the create call and the welcome mail');
+});
+
+test('onboarding: every account gets its own password', async () => {
+  const seen = new Set();
+  for (let i = 0; i < 5; i += 1) { const g = onboardGraph(ROLES); await run(OB({}, { contactEmail: `p${i}@gmail.com` }), g, OB_ENV); seen.add(posts(g, '/users')[0].body.passwordProfile.password); }
+  assert.equal(seen.size, 5);
+});
+
+test('onboarding: an existing user name is a conflict and nothing is created or mailed', async () => {
+  const g = onboardGraph(ROLES, { exists: true });
+  await assert.rejects(() => run(OB(), g, OB_ENV), (e) => e.kind === 'conflict');
+  assert.equal(posts(g).length, 0);
+});
+
+test('onboarding: a missing Mail.Send role blocks before anything is created', async () => {
+  const g = onboardGraph(['User.ReadWrite.All']);
+  const r = await run(OB(), g, OB_ENV);
+  assert.equal(r.data.blocked, true); assert.deepEqual(r.data.requiredPermissions, ['Mail.Send']); assert.equal(r.data.needFor, 'welcomeMail');
+  assert.equal(g.calls.length, 0);
+});
+
+test('onboarding: configuration problems are reported before any write', async () => {
+  for (const [env, re] of [[{ ...OB_ENV, GRAPH_WELCOME_APP_URL: '' }, /GRAPH_WELCOME_APP_URL/], [{ ...OB_ENV, GRAPH_WELCOME_APP_URL: 'http://insecure.example' }, /GRAPH_WELCOME_APP_URL/], [{ ...OB_ENV, GRAPH_MAIL_SENDER: '' }, /GRAPH_MAIL_SENDER/]]) {
+    const g = onboardGraph(ROLES);
+    await assert.rejects(() => run(OB(), g, env), re); assert.equal(posts(g).length, 0);
+  }
+  const g = onboardGraph(ROLES);
+  await assert.rejects(() => run(OB({ welcomeMail: false, assignLicense: true }), g, { ...OB_ENV, GRAPH_DEFAULT_LICENSE_SKU: '' }), /GRAPH_DEFAULT_LICENSE_SKU/); assert.equal(posts(g).length, 0);
+  await assert.rejects(() => run(OB({}, { contactEmail: undefined, userPrincipalName: undefined }), onboardGraph(ROLES), OB_ENV), /contactEmail is required|userPrincipalName or contactEmail/);
+  await assert.rejects(() => run(OB({}, { contactEmail: 'not-an-address' }), onboardGraph(ROLES), OB_ENV), /contactEmail is not a valid/);
+});
+
+test('onboarding: a failed welcome mail is reported, the account is not hidden, and the password is still not returned', async () => {
+  const g = onboardGraph(ROLES, { failMail: true });
+  const r = await run(OB(), g, OB_ENV);
+  assert.equal(r.verified, false); assert.equal(r.data.welcomeMail.accepted, false); assert.ok(/Reset the password/.test(r.data.needsAdmin));
+  assert.equal(r.data.created, true); assert.ok(!JSON.stringify(r).includes(posts(g, '/users')[0].body.passwordProfile.password));
+});
+
+test('onboarding: a supplied password can never be mailed, and a caller cannot change the mail text', async () => {
+  const g = onboardGraph(ROLES);
+  await assert.rejects(() => run(OB({}, { passwordProfile: { password: 'CallerChosen-Pass1!' } }), g, OB_ENV), /cannot be mailed/);
+  assert.equal(posts(g).length, 0);
+  const g2 = onboardGraph(ROLES);
+  await run(OB({ subject: 'Phishing subject', body: 'Click http://evil.example', cc: ['attacker@evil.example'], bcc: ['attacker@evil.example'], to: ['attacker@evil.example'] }, { displayName: '山田\n\n至急このリンクを開いて http://evil.example' }), g2, OB_ENV);
+  const mail = posts(g2, '/sendMail')[0].body.message;
+  assert.deepEqual(mail.toRecipients, [{ emailAddress: { address: 'Taro.Yamada+x@gmail.com' } }], 'the only recipient is the contact address; cc/bcc/to from the caller are ignored');
+  assert.equal(mail.subject, '【clean nano】アカウント発行のお知らせ'); assert.ok(!mail.body.content.includes('Phishing') && !mail.body.content.includes('Click http'));
+  assert.equal(mail.body.content.split('\n')[0].includes('\n'), false); assert.ok(mail.body.content.split('\n')[0].startsWith('山田 至急'), 'newlines in the name are flattened to one line');
+});
+
+test('onboarding: the license is only the configured SKU, set up with a usage location, and a failure leaves the user created', async () => {
+  const g = onboardGraph(ROLES);
+  const r = await run(OB({ assignLicense: true, skuId: 'cafecafe-cafe-cafe-cafe-cafecafecafe' }), g, OB_ENV);
+  assert.equal(r.verified, true); assert.equal(r.data.license.assigned, true);
+  assert.equal(posts(g, '/users')[0].body.usageLocation, 'JP');
+  const lic = posts(g, '/assignLicense')[0];
+  assert.deepEqual(lic.body, { addLicenses: [{ skuId: SKU }], removeLicenses: [] }, 'a caller-supplied SKU is ignored');
+  const bad = onboardGraph(ROLES, { failLicense: true });
+  const r2 = await run(OB({ assignLicense: true }), bad, OB_ENV);
+  assert.equal(r2.verified, false); assert.equal(r2.data.license.assigned, false); assert.equal(r2.data.created, true);
+  assert.ok(!JSON.stringify(r2).includes('no free seats'), 'upstream error text is not echoed');
+});
+
+test('onboarding still needs approval, and status reports the new configuration flags', async () => {
+  const g = onboardGraph(ROLES);
+  await assert.rejects(() => run({ ...OB(), approvedByHuman: undefined }, g, OB_ENV), (e) => e.kind === 'approval_required');
+  assert.equal(g.calls.length, 0);
+  const st = await run({ operation: 'status' }, onboardGraph(ROLES), OB_ENV);
+  assert.equal(st.data.config.welcomeAppUrlConfigured, true); assert.equal(st.data.config.defaultLicenseConfigured, true);
+  assert.equal((await run({ operation: 'status' }, onboardGraph(ROLES), {})).data.config.defaultLicenseConfigured, false);
 });
