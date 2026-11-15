@@ -1,0 +1,86 @@
+name: Bridge Graph連携の設定（案内メール・ユーザー作成）
+# Sets the four NON-SECRET App Service settings that graph_manage needs for employee onboarding.
+# Nothing here is a secret: a domain, a sender address, and an app link. The defaults below are filled in,
+# so a human only has to type the approval phrase GRAPH-CONFIG and press "Run workflow".
+# The workflow only adds or updates these four names; it never reads or prints any other setting.
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "人間の承認文言 GRAPH-CONFIG をそのまま入力"
+        required: true
+        default: ""
+      domain:
+        description: "ユーザー作成を許可する会社ドメイン"
+        required: true
+        default: "hisyoengineer.onmicrosoft.com"
+      sender:
+        description: "案内メールの送信元メールボックス"
+        required: true
+        default: "k.k.hisyoengineer@hisyoengineer.onmicrosoft.com"
+      appUrl:
+        description: "案内メールに入れるアプリのリンク（https://apps.powerapps.com/ で始まるもの）"
+        required: true
+        default: "https://apps.powerapps.com/play/e/4d0aab59-43ec-ecf1-a9d1-869f2517adbb/a/f42a9b03-59b9-49d3-a33b-0a210cd3d51e?tenantId=aa0b99c9-b756-4611-970a-6c31013c42e3"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+
+jobs:
+  set-config:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require human approval phrase
+        if: ${{ inputs.approval != 'GRAPH-CONFIG' }}
+        run: |
+          echo "::error::The human approval phrase is required. Nothing was changed."
+          exit 1
+
+      - name: Validate the inputs (nothing is written if any of them looks wrong)
+        env:
+          DOMAIN: ${{ inputs.domain }}
+          SENDER: ${{ inputs.sender }}
+          APP_URL: ${{ inputs.appUrl }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9.-]{3,190}$' || { echo "::error::domain is not a plain domain name"; exit 1; }
+          printf '%s' "$SENDER" | grep -Eq "^[A-Za-z0-9._%+'-]{1,64}@[A-Za-z0-9.-]{3,190}$" || { echo "::error::sender is not a valid address"; exit 1; }
+          [ "${SENDER#*@}" = "$DOMAIN" ] || { echo "::error::sender must be on the same domain"; exit 1; }
+          case "$APP_URL" in https://apps.powerapps.com/*) ;; *) echo "::error::appUrl must start with https://apps.powerapps.com/"; exit 1;; esac
+          printf '%s' "$APP_URL" | grep -Eq '^[A-Za-z0-9:/._?=&%-]{20,600}$' || { echo "::error::appUrl contains unexpected characters"; exit 1; }
+          echo "inputs ok"
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Write the four settings to the App Service
+        env:
+          DOMAIN: ${{ inputs.domain }}
+          SENDER: ${{ inputs.sender }}
+          APP_URL: ${{ inputs.appUrl }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          az webapp config appsettings set --name "$APP_NAME" --resource-group "$RG" --only-show-errors -o none --settings \
+            "GRAPH_UPN_ALLOWED_DOMAINS=$DOMAIN" "GRAPH_MAIL_SENDER=$SENDER" "GRAPH_MAIL_ALLOWED_DOMAINS=$DOMAIN" "GRAPH_WELCOME_APP_URL=$APP_URL"
+          echo "RG=$RG" >> "$GITHUB_ENV"
+          echo "wrote: GRAPH_UPN_ALLOWED_DOMAINS, GRAPH_MAIL_SENDER, GRAPH_MAIL_ALLOWED_DOMAINS, GRAPH_WELCOME_APP_URL"
+
+      - name: Verify that the four names exist (names only)
+        run: |
+          set -euo pipefail
+          for n in GRAPH_UPN_ALLOWED_DOMAINS GRAPH_MAIL_SENDER GRAPH_MAIL_ALLOWED_DOMAINS GRAPH_WELCOME_APP_URL; do
+            c=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='$n'] | length(@)" -o tsv --only-show-errors)
+            [ "$c" = "1" ] || { echo "::error::$n is missing"; exit 1; }
+            echo "ok: $n"
+          done
+          echo "The app restarts by itself. graph_manage status will show the configuration flags as true after about a minute."
