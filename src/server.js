@@ -5,6 +5,7 @@ const recoveryOAuth = require('./recoveryOAuth');
 const powerAppsSolutionWriter = require('./powerAppsSolutionWriter');
 const powerAutomateFlowWriter = require('./powerAutomateFlowWriter');
 const platformManage = require('./platformManage');
+const entraInvite = require('./entraInvite');
 const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
 const cnaiCopilotEntry = require('./cnaiCopilotEntry');
 const windowsJobs = require('./windowsJobs');
@@ -180,7 +181,7 @@ const MCP_METHODS = Object.freeze([
   'lock_user_info', 'validate_passkey', 'get_user_lock_status', 'can_view_user_info', 'can_edit_user_info', 'can_delete_user_info', 'generate_ui_control_state',
   'get_bridge_capabilities', 'check_dependencies', 'compare_powerapps_with_git', 'validate_powerapps_source',
   'get_sharepoint_list_schema', 'list_registered_power_automate_flows', 'get_power_automate_run_result', 'inspect_powerapps_structure', 'discover_powerapps_structure',
-  'list_power_apps', 'list_environments', 'list_git_branches', 'list_github_commits', 'get_github_file', 'list_github_pull_requests', 'list_github_workflow_runs', 'get_azure_subscription', 'get_azure_app_service', 'list_azure_app_service_slots', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback', ...platformManage.TOOL_NAMES,
+  'list_power_apps', 'list_environments', 'list_git_branches', 'list_github_commits', 'get_github_file', 'list_github_pull_requests', 'list_github_workflow_runs', 'get_azure_subscription', 'get_azure_app_service', 'list_azure_app_service_slots', 'get_application_rules', 'export_knowledge_snapshot', 'resolve_app_target', 'powerapps_app_read', 'powerapps_app_edit_publish', 'powerapps_app_rollback', 'powerapps_snapshots_list', 'powerautomate_flow_list', 'powerautomate_flow_read', 'powerautomate_flow_update', 'powerautomate_flow_set_state', 'powerautomate_flow_rollback', ...platformManage.TOOL_NAMES, entraInvite.TOOL_NAME,
   'check_payment_status',
   'discover_sharepoint_ai4_resources',
   'prepare_powerapps_execution',
@@ -935,6 +936,7 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   ...platformManage.TOOL_DEFS,
+  { name: entraInvite.DEF.name, description: entraInvite.DEF.description, inputSchema: entraInvite.DEF.inputSchema },
   {
     name: 'powerautomate_flow_list',
     description: 'Power Automateクラウドフロー(Dataverse上のソリューション対応フロー)の一覧を返します。solutionNameでソリューション内に限定、nameContainsで名前の部分一致検索。',
@@ -2288,6 +2290,10 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   if (platformManage.TOOL_NAMES.includes(method)) {
     const d = await platformManage.run(method, params || {});
     return createCommonResponse({ status: d.status === 'ok' ? 'ok' : d.status === 'partial' ? 'partial' : 'error', verified: d.verified, data: d, warnings: d.error ? [d.error] : [], summary: `${method}.${d.operation} ${d.status}` });
+  }
+  if (method === entraInvite.TOOL_NAME) {
+    const d = await entraInvite.run(params || {});
+    return createCommonResponse({ status: d.status, verified: d.verified, data: d, warnings: d.error ? [d.error] : [], summary: `${method} ${d.status}` });
   }
   if (typeof method === 'string' && method.startsWith('powerautomate_flow_')) {
     try {

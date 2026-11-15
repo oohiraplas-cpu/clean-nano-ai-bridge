@@ -809,4 +809,4 @@ const TOOL_DEFS = [
   graphManage.DEF,
 ];
 
-module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { pickApp, internalNameOf, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
+module.exports = { run, TOOL_DEFS, TOOL_NAMES: TOOL_DEFS.map((t) => t.name), _internal: { audit, pickApp, internalNameOf, premiumScan, normalizeParams, classify, withRepair, applyRules, readRules, appChecker, powerFxCheck, fieldsMatch, setPath, sharepointManage, powerappsManage, powerautomateManage, powerplatformValidate } };
