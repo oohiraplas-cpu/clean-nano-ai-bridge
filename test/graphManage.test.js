@@ -25,6 +25,7 @@ test('status lists granted roles and what each operation needs, without the toke
   assert.equal(r.data.tenantId, 'tenant-1'); assert.equal(r.data.config.mailSenderConfigured, true);
   assert.ok(!JSON.stringify(r).includes('x.') || !JSON.stringify(r).includes('.y'), 'no token in output');
   assert.equal(g.calls.length, 0, 'status makes no Graph call');
+  assert.deepEqual(r.data.operations.status, { anyOf: [], granted: true }, 'status needs no Graph role, so it never reports itself as missing a permission');
 });
 
 test('a missing role is a structured block with the exact roles, and Graph is never called', async () => {

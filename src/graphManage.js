@@ -74,7 +74,8 @@ async function run(p, deps = {}) {
   const mayWrite = WRITE_OPS.includes(op);
 
   if (op === 'status') {
-    const checks = Object.fromEntries(OPERATIONS.map((o) => [o, { anyOf: NEEDS[o] ?? [], granted: (NEEDS[o] ?? []).some((r) => info.roles.includes(r)) }]));
+    // An operation with no entry in NEEDS (status itself) needs no Graph role, so it is always granted.
+    const checks = Object.fromEntries(OPERATIONS.map((o) => [o, { anyOf: NEEDS[o] ?? [], granted: !NEEDS[o] || NEEDS[o].some((r) => info.roles.includes(r)) }]));
     return { verified: true, data: { tenantId: info.tenantId, appId: info.appId, grantedRoles: info.roles, tokenExpiresAt: info.expiresAt, rolesReadable: !info.undecodable, operations: checks,
       config: { mailSenderConfigured: Boolean(env.GRAPH_MAIL_SENDER), mailAllowedDomainsConfigured: csv(env.GRAPH_MAIL_ALLOWED_DOMAINS).length > 0, upnAllowedDomainsConfigured: csv(env.GRAPH_UPN_ALLOWED_DOMAINS).length > 0 } } };
   }
