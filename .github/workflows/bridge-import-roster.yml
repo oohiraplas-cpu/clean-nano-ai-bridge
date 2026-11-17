@@ -1,7 +1,9 @@
 name: Bridge 名簿（xlsx）の社員台帳への取り込み（既定は確認のみ）
 # Imports a roster into CN_社員台帳 without creating duplicates (see src/importRoster.js).
-# The rows are PERSONAL DATA and this repository is PUBLIC: the rows come ONLY from the GitHub secret ROSTER_JSON
-# (never from a workflow input, never from a file in the repository). The run log shows row numbers, counts and reasons only.
+# The rows are PERSONAL DATA and this repository is PUBLIC: the rows never appear in plain text in a workflow input, a file or the log.
+# They come from the GitHub secret ROSTER_JSON, or - when that is empty - from the ENCRYPTED file data/roster.enc.json
+# (RSA-OAEP + AES-GCM, see src/rosterCrypto.js), decrypted in memory with the private key held only in Azure (ROSTER_PRIVATE_KEY).
+# The run log shows row numbers, counts and reasons only.
 #   create        : no ledger row has this e-mail or name        -> one new row (社員ID=未採番, 在職, 未着手)
 #   fill          : exactly one ledger row has this name         -> only its EMPTY columns are filled
 #   skip_existing : nothing left to fill                          -> nothing (re-running is safe)
@@ -58,9 +60,16 @@ jobs:
           CATEGORIES: ${{ inputs.categories }}
         run: |
           set -euo pipefail
-          test -n "$ROSTER_JSON" || { echo "::error::The secret ROSTER_JSON is not set. Nothing was changed."; exit 1; }
           RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
           test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          if [ -z "$ROSTER_JSON" ]; then
+            test -f data/roster.enc.json || { echo "::error::No roster: neither the secret ROSTER_JSON nor data/roster.enc.json. Nothing was changed."; exit 1; }
+            ROSTER_PRIVATE_KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='ROSTER_PRIVATE_KEY'] | [0].value" -o tsv --only-show-errors)
+            test -n "$ROSTER_PRIVATE_KEY" || { echo "::error::ROSTER_PRIVATE_KEY is not set in Azure. Nothing was changed."; exit 1; }
+            echo "::add-mask::$ROSTER_PRIVATE_KEY"
+            export ROSTER_PRIVATE_KEY
+            export ROSTER_ENC_FILE=data/roster.enc.json
+          fi
           KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
           test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
           echo "::add-mask::$KEY"

@@ -1,0 +1,70 @@
+name: Bridge 名簿の暗号化用の鍵ペアを作る（秘密鍵は Azure にだけ保存）
+# Creates an RSA key pair on the runner. The PRIVATE key is written ONLY to the Azure App Service setting ROSTER_PRIVATE_KEY
+# (base64 of the PEM, masked, never printed or uploaded). The PUBLIC key is printed: it is not secret, and it lets the roster be
+# encrypted so that it can cross this PUBLIC repository. Refuses to overwrite an existing key. Writing an App Service setting
+# restarts the app briefly. The key is removed by bridge-roster-cleanup.yml once the import is done.
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "人間の承認文言 SET-ROSTER-KEY をそのまま入力（Azure に秘密鍵を保存することの承認）"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require human approval phrase
+        if: ${{ inputs.approval != 'SET-ROSTER-KEY' }}
+        run: |
+          echo "::error::The human approval phrase is required. Nothing was changed."
+          exit 1
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Guard - app exists and the key is not set yet
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          echo "RG=$RG" >> "$GITHUB_ENV"
+          COUNT=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='ROSTER_PRIVATE_KEY'] | length(@)" -o tsv --only-show-errors)
+          if [ "$COUNT" != "0" ]; then
+            echo "::error::ROSTER_PRIVATE_KEY already exists. Refusing to overwrite. Nothing was changed."
+            exit 1
+          fi
+          echo "guard ok: app found, key not set yet"
+
+      - name: Generate the key pair; write the private key to Azure only; print the public key
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$RUNNER_TEMP/priv.pem" 2>/dev/null
+          openssl pkey -in "$RUNNER_TEMP/priv.pem" -pubout -out "$RUNNER_TEMP/pub.pem"
+          PRIV_B64=$(base64 -w0 "$RUNNER_TEMP/priv.pem")
+          echo "::add-mask::$PRIV_B64"
+          az webapp config appsettings set --name "$APP_NAME" --resource-group "$RG" --settings "ROSTER_PRIVATE_KEY=$PRIV_B64" --only-show-errors -o none
+          echo "private key written to Azure (not printed)"
+          echo "----- PUBLIC KEY (not secret) -----"
+          cat "$RUNNER_TEMP/pub.pem"
+          echo "----- END PUBLIC KEY -----"
+          shred -u "$RUNNER_TEMP/priv.pem" 2>/dev/null || rm -f "$RUNNER_TEMP/priv.pem"
+
+      - name: Verify the setting exists (length only)
+        run: |
+          set -euo pipefail
+          LEN=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='ROSTER_PRIVATE_KEY'] | [0].value | length(@)" -o tsv --only-show-errors)
+          echo "ROSTER_PRIVATE_KEY exists, value length = $LEN"
+          test "${LEN:-0}" -gt 1000
