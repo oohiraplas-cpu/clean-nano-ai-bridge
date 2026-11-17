@@ -35,11 +35,16 @@ jobs:
               --query "{enabled:platform.enabled, requireAuthentication:globalValidation.requireAuthentication, unauthenticatedClientAction:globalValidation.unauthenticatedClientAction, excludedPaths:globalValidation.excludedPaths, clientId:identityProviders.azureActiveDirectory.registration.clientId, openIdIssuer:identityProviders.azureActiveDirectory.registration.openIdIssuer, allowedAudiences:identityProviders.azureActiveDirectory.validation.allowedAudiences, allowedApplications:identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedApplications}" -o json || echo "(could not read auth settings)"
             echo "--- API key settings (existence only)"
             for K in $KEYS; do
-              COUNT=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | length(@)" -o tsv --only-show-errors)
-              if [ "$COUNT" = "1" ]; then
-                echo "$K: configured"
+              if COUNT=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | length(@)" -o tsv --only-show-errors 2>/dev/null); then
+                if [ "$COUNT" = "1" ]; then
+                  echo "$K: configured"
+                elif [ "$COUNT" = "0" ]; then
+                  echo "$K: NOT SET"
+                else
+                  echo "$K: UNKNOWN (unexpected result)"
+                fi
               else
-                echo "$K: NOT SET"
+                echo "$K: UNKNOWN (read failed or access denied)"
               fi
             done
           }
