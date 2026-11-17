@@ -70,3 +70,9 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - src/dataverseReadOnlyClient.js reuses the existing Power Apps/Automate Entra tenant/client/secret configuration, with strict HTTPS Dataverse org allowlist, client-credentials token cache and fixed read-only OData paths. It never imports the mutating solution/flow writers. POST is used only for Entra token acquisition; Dataverse requests are GET only.
 - Tests use fake token and Dataverse responses; they verify GET-only behavior, token reuse, path rejection and 401 fail-closed. They do NOT prove the real Entra app has Dataverse access or that the actual org URL is configured.
 - No production route was registered, no credential was rotated, no live Microsoft authentication succeeded, no app/flow was edited or published. Release BLOCKED pending real authorized read-only probe, least-privilege permissions audit and E2E.
+
+## Authentication path mismatch audit (read-only)
+- The Bridge MCP key authorization and the Power Platform Entra client-credentials Dataverse authorization are distinct trust boundaries. Bridge UNAUTHORIZED cannot be fixed merely by a successful Dataverse token, and no credentials were changed.
+- The existing config.js provides a default Dataverse org URL even if POWERAPPS_ORG_URL is absent; this default is not evidence that the deployment is configured or authorized. The preflight now requires an explicit verified-shape Dataverse URL, valid tenant/client GUIDs, and existing credentials. It returns PARTIAL at best until a real authorized GET succeeds.
+- recoveryOAuth.js validates a separate /recovery/mcp Entra JWT with strict audience/client/scope/user; it is not the Bridge MAX /mcp API-key path. Do not substitute those credentials or relax verification to bypass 401.
+- This is a static code-level diagnosis, not proof of the actual production cause. No runtime environment values were inspected and no live Dataverse GET succeeded.
