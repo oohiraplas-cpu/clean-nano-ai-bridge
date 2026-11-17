@@ -10,7 +10,10 @@ test('Azure verified probe reports success only after authorized operation',asyn
 });
 test('Power Apps HTTP 200 without authorized operation is not verified',async()=>{
  const adapter=createReadOnlyProviderAdapter('powerApps',{probe:async()=>({status:200,configured:true})});
- assert.equal((await adapter.diagnose()).verified,false);
+ const result=await adapter.diagnose();
+ assert.equal(result.verified,false);
+ assert.equal(result.status,'PARTIAL');
+ assert.equal(result.reason,'authorized_operation_unverified');
 });
 test('Copilot Studio 401 is blocked',async()=>{
  const adapter=createReadOnlyProviderAdapter('copilotStudio',{probe:async()=>({status:401,configured:true})});
@@ -26,4 +29,21 @@ test('invalid providers and malformed responses fail closed',async()=>{
  assert.throws(()=>createReadOnlyProviderAdapter('unknown',{probe:()=>{}}));
  const adapter=createReadOnlyProviderAdapter('azureAi',{probe:async()=>({status:'200',configured:true})});
  assert.equal((await adapter.diagnose()).status,'BLOCKED');
+});
+
+test('all providers require verified authorized operation before PASS',async()=>{
+ for(const service of ['azure','azureAi','powerApps','powerAutomate','copilotStudio']){
+  const a=createReadOnlyProviderAdapter(service,{probe:async()=>({status:200,configured:true,authorizedOperationVerified:false})});
+  const r=await a.diagnose();
+  assert.equal(r.status,'PARTIAL',service);
+  assert.equal(r.verified,false,service);
+ }
+});
+test('429, 403, and missing configuration do not report verified',async()=>{
+ for(const [status,configured] of [[429,true],[403,true],[200,false]]){
+  const a=createReadOnlyProviderAdapter('azure',{probe:async()=>({status,configured,authorizedOperationVerified:true})});
+  const r=await a.diagnose();
+  assert.notEqual(r.status,'PASS');
+  assert.equal(r.verified,false);
+ }
 });
