@@ -60,3 +60,8 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - Live Bridge MAX health_check, get_bridge_capabilities, check_dependencies each returned UNAUTHORIZED during this work. No successful live Microsoft Power Apps/Automate access is claimed; CI with mocked clients is not E2E.
 - Existing src/powerAppsSolutionWriter.js and src/powerAutomateFlowWriter.js contain potentially mutating import/patch/publish operations. They remain unmodified and MUST NOT be called without approved change gate, backup, verified target, and rollback.
 - The adapter is not mounted on a production route. Real credentials/Dataverse access, independently verified identity, and safe integration remain BLOCKED.
+
+## Power Platform authentication preflight
+- src/powerPlatformAuthPreflight.js checks only presence of existing POWERAPPS_* / AZURE_* configuration and the Dataverse org URL shape, without disclosing credentials or attempting login. It returns PARTIAL even when configured, never PASS.
+- This does not fix Bridge MAX UNAUTHORIZED; actual tenant permissions, client secret validity, token issuance, environment access and authorized Dataverse GET must be verified via trusted existing connection.
+- No production writes, app publishes, flow executions, or external releases were performed.
