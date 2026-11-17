@@ -47,3 +47,15 @@ test('429, 403, and missing configuration do not report verified',async()=>{
   assert.equal(r.verified,false);
  }
 });
+
+test('hung provider times out and fails closed without secret leakage',async()=>{
+ const adapter=createReadOnlyProviderAdapter('azure',{probe:()=>new Promise(()=>{})},{timeoutMs:5});
+ const result=await adapter.diagnose();
+ assert.equal(result.status,'BLOCKED');
+ assert.equal(result.reason,'provider_probe_failed');
+ assert.equal(result.verified,false);
+});
+test('invalid provider timeout configuration is rejected',()=>{
+ assert.throws(()=>createReadOnlyProviderAdapter('azure',{probe:async()=>({status:200,configured:true})},{timeoutMs:0}));
+ assert.throws(()=>createReadOnlyProviderAdapter('azure',{probe:async()=>({status:200,configured:true})},{timeoutMs:Infinity}));
+});
