@@ -25,3 +25,9 @@
 
 ## Status
 Code/CI may pass while provider integration remains BLOCKED. No production publication or auto-rotation is authorized by this document.
+
+## Independent source audit findings (2026-11-17)
+- connectionRepairOrchestrator accepts request-supplied approved and approvalScope. This is not authenticated production approval. Never connect production mutation to these flags.
+- durableConnectionApproval uses an injected CAS interface, not a real store or authenticated identity attestation. Target binding and actual secure write are absent.
+- connectionProviderAdapters uses injected probes, not provider-native live API clients. HTTP 200 alone is not PASS without authorized operation. Probe timeouts now fail closed.
+- These are release blockers even when CI passes.
