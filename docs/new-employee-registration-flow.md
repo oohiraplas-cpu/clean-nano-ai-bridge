@@ -203,3 +203,26 @@
 | 社員ID・所属・入社日 | フォームに質問なし | 承認者が承認時に確認・入力（要判断） |
 
 `EmployeeID` は台帳の必須列だが、フォームに質問がない。社員IDを誰がどう採番するかは**未決定**。
+
+## 追補7: アカウント発行後の `EntraObjectId` 書込み（`entra_invite_user` 追加後の確認結果）
+
+### 確認済み（リポジトリのソースより。実環境の再確認は未実施）
+- `App.pa.yaml` に `App.OnStart` はない（`Theme` のみ）。本人の特定は各画面の `OnVisible` で行う（`S1_Home` / `S4_Summary` / `S5_Salary` / `S7_Settings`）: `LookUp(CN_社員台帳, EntraObjectId = Text(User().EntraObjectId))`。
+- リスト名は `CN_社員台帳`、列の内部名は `EntraObjectId`（追補2で実環境確認済み）。
+- Bridge は `create_employee_ledger_entry` / `update_employee_ledger_entry` で `entraObjectId` を書ける（GUID形式のみ。`approvedByHuman:true` 必須）。**追補の「確認済みの問題 1」（`CN_EMPLOYEE_LEDGER_FIELD_MAP` に `EntraObjectId` がない）は、追補2の時点で解消済み。**
+- `entra_invite_user`（Microsoft Entra 外部ユーザー招待）は、`displayName` と `email` だけでゲストを招待し、生成された Object ID を返す。招待メールは Microsoft が送る。
+
+### 台帳への紐付け手順（人間の承認が必要な操作を含む）
+1. 招待の対象と氏名・メールアドレスを確定する（承認者の確認）。
+2. `entra_invite_user` を呼ぶ。成功すると `data.objectId` が返る（`status: partial` の場合も `objectId` は有効。確認の再取得だけが未達）。
+3. 返った `objectId` を、`update_employee_ledger_entry` で台帳へ書く。
+   ```json
+   {"itemId": "<CN_社員台帳のアイテムID>", "record": {"entraObjectId": "<objectId>"}, "approvedByHuman": true}
+   ```
+   `approvedByHuman:true` は、人間が承認した場合にだけ付ける。AI が代行して付けない。
+4. 紐付け後、本人がアプリを開くと `User().EntraObjectId` が台帳の値と一致し、`gblIdentityVerified` が true になる。
+
+### 注意
+- ゲストの Object ID は、**招待先テナントでのゲストの ID**。本人がゲストとしてサインインしたとき、`User().EntraObjectId` はこの値と一致する想定（実機での確認は未実施）。
+- 自社ドメインのアカウント（メンバー）には `entra_invite_user` を使わない。`graph_manage` の `user_create`（`approvedByHuman:true` 必須）で作成し、返った ID を同じ手順 3 で書く。
+- `EntraObjectId` は一意制約がない。書く前に、同じ値が別の社員にないかを確認する。
