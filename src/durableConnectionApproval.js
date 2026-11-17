@@ -2,6 +2,7 @@
 // Durable approval contract: the caller supplies an authenticated principal and
 // a transactional store with compare-and-swap. No in-memory grant is trusted.
 // Store must persist only request metadata, never credentials or access tokens.
+const ALLOWED_ACTIONS = new Set(['rotate_credential','change_permissions','change_production_settings','revoke_credential']);
 function createDurableApprovalService(store) {
   if (!store || typeof store.get !== 'function' || typeof store.compareAndSwap !== 'function') {
     throw new TypeError('transactional_store_required');
@@ -13,6 +14,8 @@ function createDurableApprovalService(store) {
     try {record=await store.get(requestId);} catch {return {status:'BLOCKED',reason:'approval_store_unavailable'};}
     if (!record || record.source!=='trusted_server' || record.status!=='pending' ||
       record.presentedToUser!==true || record.subjectId!==subjectId ||
+      typeof record.service!=='string' || !record.service ||
+      !ALLOWED_ACTIONS.has(record.action) ||
       !Number.isFinite(record.expiresAt) || record.expiresAt<=Date.now() ||
       typeof record.version!=='string' || !record.version)
       return {status:'BLOCKED',reason:'approval_invalid_or_expired'};
