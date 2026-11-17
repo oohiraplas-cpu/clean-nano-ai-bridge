@@ -33,7 +33,7 @@ function createGraphApprovalTransport({siteId,listId,requestIdColumn,fetchImpl,a
  }
  async function patchItem({itemId,ifMatch,fields}={}){
   if(typeof itemId!=='string'||!/^[1-9][0-9]*$/.test(itemId)||
-     typeof ifMatch!=='string'||!/^W?\/"[^"\r\n]+"$/.test(ifMatch)||
+     typeof ifMatch!=='string'||!/^(?:W\/)?"[^"\r\n]+"$/.test(ifMatch)||
      !fields||typeof fields!=='object'||Array.isArray(fields)||
      Object.keys(fields).length!==1||Object.values(fields)[0]!=='consumed')
      throw Error('unsafe_approval_patch');
