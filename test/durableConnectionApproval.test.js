@@ -17,3 +17,12 @@ test('wrong identity and storage failure fail closed',async()=>{
  const broken=createDurableApprovalService({get:async()=>{throw Error('secret');},compareAndSwap:async()=>true});
  assert.equal((await broken.consume({requestId:'request-123',subjectId:'subject-1',utterance:'承認する'})).reason,'approval_store_unavailable');
 });
+
+test('durable approval rejects missing operation scope',async()=>{
+ const record={source:'trusted_server',status:'pending',presentedToUser:true,subjectId:'subject-1',expiresAt:Date.now()+60000,version:'v1',service:'azure'};
+ let mutated=false;
+ const svc=createDurableApprovalService({get:async()=>record,compareAndSwap:async()=>{mutated=true;return true;}});
+ const result=await svc.consume({requestId:'request-123',subjectId:'subject-1',utterance:'承認する'});
+ assert.equal(result.status,'BLOCKED');
+ assert.equal(mutated,false);
+});
