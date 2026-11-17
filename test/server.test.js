@@ -1641,7 +1641,8 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
   assert.equal(resultA.id, 1, 'jsonrpc id preserved');
   assert.ok(resultA.result, 'result exists');
   assert.ok(resultA.result.structuredContent, 'structuredContent exists');
-  assert.ok(resultA.result.structuredContent.requestId, 'requestId generated');
+  assert.equal(resultA.result.structuredContent.status, 'error', 'Lv5 rejects unverified free-form execution');
+  assert.ok(resultA.result.structuredContent.warnings.includes('LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED'));
 
   // Test B: targetName/targetId direct parameters
   const resB = await fetch(`${server.baseUrl}/mcp`, {
@@ -1664,7 +1665,7 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
     })
   });
   const resultB = await resB.json();
-  assert.ok(resultB.result.structuredContent.requestId, 'direct params accepted');
+  assert.equal(resultB.result.structuredContent.status, 'error', 'direct parameters cannot bypass Lv5');
 
   // Test C: target.id fallback (backward compatibility)
   const resC = await fetch(`${server.baseUrl}/mcp`, {
@@ -1689,7 +1690,7 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
     })
   });
   const resultC = await resC.json();
-  assert.ok(resultC.result.structuredContent.requestId, 'fallback targetId accepted');
+  assert.equal(resultC.result.structuredContent.status, 'error', 'fallback targetId cannot bypass Lv5');
 
   // Test G: Missing appId should return BLOCKED
   const resG = await fetch(`${server.baseUrl}/mcp`, {
@@ -1710,7 +1711,7 @@ test('execute_powerplatform_request: input normalization and MCP E2E contract', 
     })
   });
   const resultG = await resG.json();
-  assert.ok(resultG.result.structuredContent.conclusion === 'BLOCKED' || resultG.result.isError, 'missing appId returns error or BLOCKED');
+  assert.ok(resultG.result.structuredContent.status === 'error' && resultG.result.structuredContent.warnings.includes('LV5_WRITE_AUTHORIZATION_NOT_INTEGRATED'), 'missing appId remains fail-closed');
 });
 
 
