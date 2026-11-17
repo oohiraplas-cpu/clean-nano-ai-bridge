@@ -76,3 +76,9 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - The existing config.js provides a default Dataverse org URL even if POWERAPPS_ORG_URL is absent; this default is not evidence that the deployment is configured or authorized. The preflight now requires an explicit verified-shape Dataverse URL, valid tenant/client GUIDs, and existing credentials. It returns PARTIAL at best until a real authorized GET succeeds.
 - recoveryOAuth.js validates a separate /recovery/mcp Entra JWT with strict audience/client/scope/user; it is not the Bridge MAX /mcp API-key path. Do not substitute those credentials or relax verification to bypass 401.
 - This is a static code-level diagnosis, not proof of the actual production cause. No runtime environment values were inspected and no live Dataverse GET succeeded.
+
+## Bridge MAX 401 static root-cause candidates
+- src/server.js apiKeyMiddleware(getKey) accepts x-api-key, Authorization Bearer, and query api_key/x-api-key. It uses timingSafeEqual, but if the configured key is absent it calls next(), an insecure fail-open behavior. This is a code-level finding, NOT proof of which key is configured in Azure or the root cause of current 401.
+- Bridge main MCP_API_KEY and connector CONNECTOR_API_KEY are separate from Dataverse POWERAPPS_*/AZURE_* Entra credentials and from recoveryOAuth /recovery/mcp. A token issued for Dataverse must not be accepted as a Bridge API key.
+- Added src/bridgeAuthConfigDiagnostic.js with mocked independent tests to report missing key names only; never returns values and never claims real authentication success. Actual deployed settings, key mismatch, plugin credential transport and upstream Azure authentication remain unverified.
+- No runtime server authentication middleware was changed, since changing the existing production security boundary without isolated E2E would be unsafe. A separate tested fail-closed migration and authorized release gate are needed.
