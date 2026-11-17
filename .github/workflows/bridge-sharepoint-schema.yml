@@ -1,0 +1,75 @@
+name: Bridge SharePointリスト構造の確認（読み取り専用・項目の中身は出さない）
+# Calls ONLY sharepoint_manage with operation=get on the production /mcp endpoint.
+#  - list empty  -> prints the lists of the site (names / ids only).
+#  - list set    -> prints that list's column definitions (display name, internal name, type, choices).
+# It never reads item contents (no search / no item_get), so no personal data reaches the run log, and it never writes:
+# the tool and operation are fixed in this file. The MCP key is read from Azure App Service settings inside the run,
+# masked, sent as a header, and never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: "サイト名またはURL（例 cleannano）"
+        required: true
+        default: "cleannano"
+      list:
+        description: "リスト表示名またはID。空ならサイト内のリスト一覧"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
+
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Call sharepoint_manage get (read-only, the key is never printed)
+        env:
+          SITE: ${{ inputs.site }}
+          LIST: ${{ inputs.list }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+          args = {'operation': 'get', 'site': os.environ['SITE']}
+          if os.environ.get('LIST', '').strip():
+              args['list'] = os.environ['LIST'].strip()
+          body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'sharepoint_manage', 'arguments': args}}).encode()
+          req = urllib.request.Request(os.environ['BASE_URL'], data=body, headers={'content-type': 'application/json', 'x-api-key': os.environ['KEY']}, method='POST')
+          try:
+              with urllib.request.urlopen(req, timeout=180) as res:
+                  status, text = res.status, res.read().decode('utf-8', 'replace')
+          except urllib.error.HTTPError as e:
+              status, text = e.code, e.read().decode('utf-8', 'replace')
+          print('tool: sharepoint_manage (operation=get)')
+          print('HTTP', status)
+          try:
+              data = json.loads(text)
+              result = data.get('result', data)
+              out = json.dumps(result.get('structuredContent', result) if isinstance(result, dict) else result, ensure_ascii=False, indent=2)
+              print('isError:', result.get('isError') if isinstance(result, dict) else None)
+          except ValueError:
+              out = text
+          limit = 30000
+          print(out[:limit] + ('\n... (truncated)' if len(out) > limit else ''))
+          sys.exit(0 if status == 200 else 1)
+          PY
