@@ -1,7 +1,6 @@
 name: 認証設定の診断（読み取り専用・値は出さない）
-# Read-only. For each App Service it reports ONLY: whether Easy Auth is enabled, whether unauthenticated
-# requests are allowed or rejected, excluded paths, the configured client ID / issuer tenant (identifiers, not
-# secrets), allowed audiences, and whether the API key App Settings exist (name + value length, never the value).
+# Read-only. Report only public configuration identifiers and API-key presence.
+# Never print key values, lengths, hashes, prefixes, or secret-bearing CLI output.
 # It changes nothing. Apps this identity cannot see are reported as "not found / no access".
 on:
   workflow_dispatch:
@@ -34,14 +33,18 @@ jobs:
             echo "--- Easy Auth (authsettingsV2; identifiers only)"
             az webapp auth show --name "$APP" --resource-group "$RG" --only-show-errors \
               --query "{enabled:platform.enabled, requireAuthentication:globalValidation.requireAuthentication, unauthenticatedClientAction:globalValidation.unauthenticatedClientAction, excludedPaths:globalValidation.excludedPaths, clientId:identityProviders.azureActiveDirectory.registration.clientId, openIdIssuer:identityProviders.azureActiveDirectory.registration.openIdIssuer, allowedAudiences:identityProviders.azureActiveDirectory.validation.allowedAudiences, allowedApplications:identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedApplications}" -o json || echo "(could not read auth settings)"
-            echo "--- API key settings (existence and length only)"
+            echo "--- API key settings (existence only)"
             for K in $KEYS; do
-              COUNT=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | length(@)" -o tsv --only-show-errors)
-              if [ "$COUNT" = "1" ]; then
-                LEN=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | [0].value | length(@)" -o tsv --only-show-errors)
-                echo "$K: set (length $LEN)"
+              if COUNT=$(az webapp config appsettings list --name "$APP" --resource-group "$RG" --query "[?name=='$K'] | length(@)" -o tsv --only-show-errors 2>/dev/null); then
+                if [ "$COUNT" = "1" ]; then
+                  echo "$K: configured"
+                elif [ "$COUNT" = "0" ]; then
+                  echo "$K: NOT SET"
+                else
+                  echo "$K: UNKNOWN (unexpected result)"
+                fi
               else
-                echo "$K: NOT SET"
+                echo "$K: UNKNOWN (read failed or access denied)"
               fi
             done
           }
