@@ -71,6 +71,15 @@ function createRecoveryAuth(env = process.env, fetchKeys = fetch) {
     }
   }
 
+  // Reuse the existing cryptographic JWT verification before exposing identity.
+  async function verifiedPrincipal(token) {
+    if (!(await authorized(token))) return null;
+    try {
+      const claims=JSON.parse(Buffer.from(token.split('.')[1], 'base64url'));
+      return Object.freeze({verified:true,subjectId:claims.oid,issuer:claims.iss,tenantId:claims.tid});
+    } catch {return null;}
+  }
+
   async function middleware(req, res, next) {
     const token = /^Bearer ([\w.-]+)$/i.exec(req.get('authorization') || '')?.[1];
     if (await authorized(token)) return next();
@@ -78,7 +87,7 @@ function createRecoveryAuth(env = process.env, fetchKeys = fetch) {
       `Bearer resource_metadata="${origin + metadataPath}", scope="${scope}"`)
       .json({ error: 'Recovery authentication required' });
   }
-  return { metadata, middleware };
+  return { metadata, middleware, verifiedPrincipal };
 }
 
 module.exports = { createRecoveryAuth, path, metadataPath };
