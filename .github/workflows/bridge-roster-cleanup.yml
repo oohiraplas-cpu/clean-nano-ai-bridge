@@ -1,0 +1,47 @@
+name: Bridge 名簿の取り込み後の後始末（Azure の秘密鍵を削除）
+# Removes the Azure App Service setting ROSTER_PRIVATE_KEY (created by bridge-roster-keygen.yml) once the import is done.
+# Without the private key the encrypted file data/roster.enc.json can no longer be decrypted by anyone.
+# It removes ONLY that one setting and refuses to touch anything else. Removing a setting restarts the app briefly.
+# The encrypted file itself is deleted from the repository by a normal pull request.
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "人間の承認文言 REMOVE-ROSTER-KEY をそのまま入力（Azure から名簿用の秘密鍵を削除することの承認）"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require human approval phrase
+        if: ${{ inputs.approval != 'REMOVE-ROSTER-KEY' }}
+        run: |
+          echo "::error::The human approval phrase is required. Nothing was changed."
+          exit 1
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Remove ROSTER_PRIVATE_KEY only
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          COUNT=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='ROSTER_PRIVATE_KEY'] | length(@)" -o tsv --only-show-errors)
+          if [ "$COUNT" = "0" ]; then echo "ROSTER_PRIVATE_KEY is already absent. Nothing to do."; exit 0; fi
+          az webapp config appsettings delete --name "$APP_NAME" --resource-group "$RG" --setting-names ROSTER_PRIVATE_KEY --only-show-errors -o none
+          AFTER=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='ROSTER_PRIVATE_KEY'] | length(@)" -o tsv --only-show-errors)
+          echo "ROSTER_PRIVATE_KEY count after removal = $AFTER"
+          test "$AFTER" = "0"
