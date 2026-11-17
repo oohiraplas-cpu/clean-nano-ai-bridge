@@ -168,9 +168,21 @@ const sanitizeNickname = (local) => String(local || '').toLowerCase().replace(/[
 const oneLine = (v, max) => String(v || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max);
 
 // Fixed template: the caller controls only the display name (single line). Link and sender come from configuration.
+// Official Power Apps mobile player store pages (Microsoft Learn "Install the Power Apps mobile app").
+const POWER_APPS_IOS_URL = 'https://apps.apple.com/us/app/power-apps/id1047318566';
+const POWER_APPS_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.microsoft.msapps';
+
 function welcomeBody(displayName, upn, password, appUrl) {
   return [`${oneLine(displayName, 60)} 様`, '', 'アカウントを発行しました。次の情報でサインインしてください。', '', `サインイン名: ${upn}`, `初期パスワード: ${password}`, '',
-    '初回のサインイン時に、必ずパスワードを変更してください。このメールは、変更後に削除してください。', '', `アプリ: ${appUrl}`, '', '心当たりがない場合は、このメールに返信せず、管理者へ連絡してください。'].join('\n');
+    '初回のサインイン時に、必ずパスワードを変更してください。このメールは、変更後に削除してください。', '',
+    '■ アプリの使い方（スマートフォン）',
+    '1. 「Power Apps」アプリをインストールしてください。',
+    `   iPhone: ${POWER_APPS_IOS_URL}`,
+    `   Android: ${POWER_APPS_ANDROID_URL}`,
+    '2. アプリを開き、上のサインイン名と初期パスワードでサインインします（パスワードの変更を求められます）。',
+    '3. 一覧に「clean nano kk」が表示されます。表示されない場合は、「すべてのアプリ」で検索してください。',
+    '', '■ パソコン・ブラウザから使う場合', `アプリ: ${appUrl}`, '',
+    '心当たりがない場合は、このメールに返信せず、管理者へ連絡してください。'].join('\n');
 }
 
 async function createUser(p, env, graph, deps = {}) {

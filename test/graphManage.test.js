@@ -234,6 +234,10 @@ test('onboarding: the user name comes from the contact address, the password is 
   assert.deepEqual(mail.body.message.toRecipients, [{ emailAddress: { address: 'Taro.Yamada+x@gmail.com' } }]);
   assert.equal(mail.body.message.subject, '【clean nano】アカウント発行のお知らせ'); assert.equal(mail.body.message.body.contentType, 'Text');
   assert.ok(mail.body.message.body.content.includes(pw) && mail.body.message.body.content.includes('taro.yamadax@example.co.jp') && mail.body.message.body.content.includes('https://apps.powerapps.com/play/app-1'));
+  const mailText = mail.body.message.body.content;
+  assert.ok(mailText.includes('https://apps.apple.com/us/app/power-apps/id1047318566'), 'the mail links to the Power Apps iOS app');
+  assert.ok(mailText.includes('https://play.google.com/store/apps/details?id=com.microsoft.msapps'), 'the mail links to the Power Apps Android app');
+  assert.ok(mailText.includes('clean nano kk') && mailText.includes('すべてのアプリ'), 'the mail tells the user which app to open and where to find it');
   assert.equal(mail.body.saveToSentItems, false, 'the password mail is not kept in Sent Items');
   assert.equal(posts(g).filter((c) => JSON.stringify(c.body).includes(pw)).length, 2, 'the password appears only in the create call and the welcome mail');
 });
