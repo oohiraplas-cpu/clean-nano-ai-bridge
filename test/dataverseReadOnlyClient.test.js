@@ -31,3 +31,27 @@ test('authentication and Graph errors fail closed without token or secret leakag
  assert.equal(result.status,'BLOCKED');
  assert.doesNotMatch(JSON.stringify(result),/PRIVATE_SECRET|SECRET_TOKEN/);
 });
+
+test('Dataverse 401 and 403 fail closed after successful Entra token',async()=>{
+ for(const status of [401,403]){
+  const calls=[];
+  const fetchImpl=async(url,options)=>{
+   calls.push({url,method:options.method});
+   return url.includes('/token')?{status:200,json:async()=>({access_token:'SECRET_TOKEN',expires_in:3600})}:{status};
+  };
+  const adapter=createPowerPlatformReadOnlyAdapter({client:createDataverseReadOnlyClient(config,fetchImpl)});
+  const result=await adapter.probePowerAutomate();
+  assert.equal(result.status,'BLOCKED');
+  assert.equal(result.verified,false);
+  assert.deepEqual(calls.map(c=>c.method),['POST','GET']);
+  assert.doesNotMatch(JSON.stringify(result),/SECRET_TOKEN|PRIVATE_SECRET/);
+ }
+});
+test('Dataverse redirect and invalid token response are rejected',async()=>{
+ const redirect=async(url)=>url.includes('/token')?{status:200,json:async()=>({access_token:'SECRET_TOKEN',expires_in:3600})}:{status:302};
+ const adapter=createPowerPlatformReadOnlyAdapter({client:createDataverseReadOnlyClient(config,redirect)});
+ assert.equal((await adapter.probePowerApps()).status,'BLOCKED');
+ const badToken=async()=>({status:200,json:async()=>({access_token:'SECRET_TOKEN',expires_in:0})});
+ const invalid=createPowerPlatformReadOnlyAdapter({client:createDataverseReadOnlyClient(config,badToken)});
+ assert.equal((await invalid.probePowerApps()).status,'BLOCKED');
+});
