@@ -42,3 +42,9 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - Existing src/approvalLedger.js is SharePoint READ-ONLY approval verification, and src/sharePointTaskStore.js uses Graph client credentials. Neither provides a production atomic approval compare-and-swap; do not repurpose either as durable single-use store without validated list schema, ETag concurrency, permissions and authenticated identity binding.
 - New resolver is not mounted in production Express middleware; trustedMiddleware flag is an integration contract, not proof by itself. It must only be set by server-owned middleware after secure bearer extraction. Do not accept this flag from HTTP request JSON.
 - Existing recovery auth is scoped to a fixed user and mcp.access. Do not broaden to other users/scopes without explicit permission and test.
+
+## SharePoint ETag CAS adapter (isolated, not deployed)
+- sharePointApprovalCasStore requires explicit verified fieldMap and injected fetchItem/patchItem. Conditional PATCH must be implemented with SharePoint If-Match header; HTTP 409/412 is treated as a lost race, other failures fail closed. Mock concurrency tests are present.
+- Existing approvalLedger is read-only and cannot be assumed to contain the required fields. No production list schema or unique RequestId constraint was verified; do not wire adapter until those are checked.
+- ETag CAS prevents concurrent updates to one item, but duplicate rows with the same requestId require a unique constraint or an explicit duplicate-detection fail-closed fetchItem implementation.
+- The adapter has no production Graph HTTP implementation, verified authenticated principal binding, or rollback-capable repair adapter. CI success is not live E2E.
