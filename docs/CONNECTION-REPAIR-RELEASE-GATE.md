@@ -96,3 +96,8 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - Added static path/auth contract inspector and independent tests; all outcomes are PARTIAL or BLOCKED until real authenticated call. The GET /mcp endpoint intentionally returns 405 after authentication, so GET success is not a valid MCP E2E probe. POST tools/list or tools/call is required.
 - Azure App Service Easy Auth and deployed environment values cannot be inferred from repository source. An upstream 401 before Express remains possible. Do not bypass upstream authentication or log credentials.
 - Power Apps/Automate Dataverse GET adapter remains isolated from Bridge MCP API key; its mock tests do not establish real Dataverse permissions.
+
+## Current live connection gate
+- CI #2239 passed prior code. Live Bridge MAX health_check and get_bridge_capabilities, and legacy Bridge health_check were attempted and each returned UNAUTHORIZED. No live Dataverse GET could be issued through those authenticated connectors.
+- Added independent fake-provider tests for Dataverse 401/403, HTTP redirect and invalid token response, preserving fail-closed behavior. The latest CI for this new commit must complete before marking these tests PASS.
+- Azure Easy Auth state, real MCP plugin credentials and Dataverse app-user permissions are not visible through the available authorized channel. No production changes or credential rotation were made.
