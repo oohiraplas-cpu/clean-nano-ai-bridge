@@ -7,13 +7,14 @@ function createDurableApprovalService(store) {
   if (!store || typeof store.get !== 'function' || typeof store.compareAndSwap !== 'function') {
     throw new TypeError('transactional_store_required');
   }
-  async function consume({requestId,subjectId,utterance}={}) {
-    if (utterance!=='承認する' || !requestId || !subjectId)
+  async function consume({requestId,subjectId,utterance,targetId}={}) {
+    if (utterance!=='承認する' || !requestId || !subjectId || !targetId)
       return {status:'HUMAN_APPROVAL_REQUIRED',reason:'explicit_approval_required'};
     let record;
     try {record=await store.get(requestId);} catch {return {status:'BLOCKED',reason:'approval_store_unavailable'};}
     if (!record || record.source!=='trusted_server' || record.status!=='pending' ||
       record.presentedToUser!==true || record.subjectId!==subjectId ||
+      typeof record.targetId!=='string' || !record.targetId || record.targetId!==targetId ||
       typeof record.service!=='string' || !record.service ||
       !ALLOWED_ACTIONS.has(record.action) ||
       !Number.isFinite(record.expiresAt) || record.expiresAt<=Date.now() ||
