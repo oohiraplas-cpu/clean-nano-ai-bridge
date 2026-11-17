@@ -1,0 +1,75 @@
+name: Bridge 新規ユーザーの登録（氏名とメールから・既定は確認のみ）
+# Repeatable onboarding of ONE person from a name and a contact e-mail address (see src/onboardWorker.js).
+# Default (dryRun=true): READ-ONLY. It checks the employee ledger and Entra for a duplicate and prints the plan. Nothing is created.
+# dryRun=false: needs the approval phrase ONBOARD-WORKER. It then
+#   1. creates the Entra account (generated password stays on the server; a welcome mail with the Power Apps install steps goes to the contact e-mail),
+#   2. adds one row to CN_社員台帳 (name, e-mail, EntraObjectId; the category is left empty for the person to choose on first sign-in),
+#   3. re-reads both and prints flags.
+# A duplicate (same name or e-mail in the ledger or Entra) stops the run before anything is written.
+# The account is created DISABLED unless enableNow=true: assign the license first, then enable.
+# The report contains no password and no token. The MCP key is read from Azure App Service settings inside the run, masked, never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      displayName:
+        description: "氏名（例: 山田 太郎）"
+        required: true
+      email:
+        description: "連絡先メールアドレス（案内メールの宛先）"
+        required: true
+      dryRun:
+        description: "true=確認のみ（既定）。false=実際に作成する"
+        required: true
+        default: "true"
+      enableNow:
+        description: "true=作成と同時に有効化。false=無効で作成し、ライセンス付与後に有効化（既定）"
+        required: true
+        default: "false"
+      approval:
+        description: "dryRun=false のときだけ、人間の承認文言 ONBOARD-WORKER をそのまま入力"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
+
+jobs:
+  onboard:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Refuse early when a real run is requested without the approval phrase
+        if: ${{ inputs.dryRun == 'false' && inputs.approval != 'ONBOARD-WORKER' }}
+        run: |
+          echo "::error::dryRun=false needs the approval phrase ONBOARD-WORKER. Nothing was changed."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Onboard (duplicate check, then plan or create; the key and any password are never printed)
+        env:
+          DISPLAY_NAME: ${{ inputs.displayName }}
+          EMAIL: ${{ inputs.email }}
+          DRY_RUN: ${{ inputs.dryRun }}
+          ENABLE_NOW: ${{ inputs.enableNow }}
+          APPROVER: ${{ github.actor }} via workflow ONBOARD-WORKER
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          node scripts/onboard-worker.js
