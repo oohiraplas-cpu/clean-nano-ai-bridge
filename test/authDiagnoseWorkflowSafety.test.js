@@ -19,6 +19,8 @@ test('Azure diagnosis remains manual, read-only and without secret metadata outp
   assert.ok(script);
   assert.match(script, /az webapp auth show/);
   assert.match(script, /az webapp config appsettings list/);
+  assert.match(script, /UNKNOWN \(read failed or access denied\)/);
+  assert.match(script, /UNKNOWN \(unexpected result\)/);
   assert.doesNotMatch(script, /\.value\s*\|\s*length\(@\)/);
   assert.doesNotMatch(script, /echo.*(?:length|value|secret|token|password)/i);
   assert.doesNotMatch(script, /az\s+(?:webapp\s+(?:config\s+appsettings\s+set|auth\s+update)|role\s+assignment\s+create)/);
