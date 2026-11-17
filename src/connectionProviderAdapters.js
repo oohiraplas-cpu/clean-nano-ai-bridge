@@ -18,8 +18,10 @@ function createReadOnlyProviderAdapter(service, provider) {
         return {status:'BLOCKED',reason:'unverified_provider_response',verified:false};
       }
       const diagnosis=diagnoseConnection({service,status:response.status,configured:response.configured});
-      return {status:diagnosis.status,reason:diagnosis.reason,
-        verified:diagnosis.status==='PASS' && response.authorizedOperationVerified===true,
+      const verified=diagnosis.status==='PASS' && response.authorizedOperationVerified===true;
+      return {status:diagnosis.status==='PASS' && !verified ? 'PARTIAL' : diagnosis.status,
+        reason:diagnosis.status==='PASS' && !verified ? 'authorized_operation_unverified' : diagnosis.reason,
+        verified,
         nextAction:diagnosis.nextAction};
     }
   });
