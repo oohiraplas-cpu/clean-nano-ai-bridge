@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Mandatory clean nano user-interaction contract
+
+Before performing connection-repair or Company OS work, follow [the Claude Code / Copilot approval contract](docs/CLAUDE-COPILOT-USER-APPROVAL-CONTRACT.md). The user provides the goal; agents execute authorized investigation, implementation, verification and audit without manual handoffs. Only scoped high-risk approval (the explicit phrase 「承認する」) and provider-mandated interactive authentication may require user action. The phrase alone does not authorize a write: verify authenticated identity, target, expiry, single-use durable consumption, backup, rollback and independent E2E. Do not publish, merge, rotate secrets or alter production solely because CI passes.
+
 ## What this is
 
 A small Node.js/Express "bridge" API that lets Power Apps, Power Automate, and Copilot Studio (via HTTPS/Custom Connector) exchange task state with external AI services (Claude Code, Copilot) through webhooks and a minimal MCP-style endpoint. It is a task queue/state machine in front of a JSON file, not a SharePoint client — SharePoint Lists is the real system of record; `data/tasks.json` is only a local dev/test cache.
