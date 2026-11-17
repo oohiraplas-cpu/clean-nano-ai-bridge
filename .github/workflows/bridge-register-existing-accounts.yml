@@ -1,0 +1,73 @@
+name: Bridge 既存アカウントの社員台帳への登録と、ID入り案内メールの送信（既定は確認のみ）
+# Registers EXISTING Entra accounts in CN_社員台帳 without creating duplicates (see src/registerExistingAccounts.js).
+# Targets are given by sign-in name (UPN), never by name alone.
+#   link     : exactly one ledger row has the same name and an empty EntraObjectId -> only EntraObjectId is written into that row
+#   create   : no ledger row has that name and none holds the id                   -> one new row (name, id, 在職, 未着手, 社員ID=未採番)
+#   skip     : a row already holds the id                                          -> nothing (re-running is safe)
+#   conflict : several same-name rows, or the row holds another id                 -> nothing, reported for a human
+# MAIL: for a person given as "UPN=contact e-mail", the fixed account-info mail (sign-in name = ID + the Power Apps steps, NEVER a
+# password) is sent to that address, but only if this run wrote that person's row (so re-running never mails twice).
+# resendMail=true also mails already-linked people who have an e-mail given. Delivery cannot be confirmed by the Bridge.
+# Default (dryRun=true) is READ-ONLY: it prints the plan (including how many mails would go out). dryRun=false needs the approval
+# phrase REGISTER-EXISTING, which covers the ledger writes AND the mails. No existing value is overwritten; no e-mail address or
+# password is printed. The MCP key is read from Azure App Service settings inside the run, masked, sent as a header, never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      targetUpns:
+        description: "登録するアカウント。1行に1人、「サインイン名」または「サインイン名=連絡先メール」。最大20件。連絡先メールを書いた人にだけ、ID入りの案内メールを送る"
+        required: true
+      dryRun:
+        description: "true=確認のみ（既定）。false=実際に書き込む"
+        required: true
+        default: "true"
+      resendMail:
+        description: "true=すでに台帳につながっている人にも、案内メールを再送する（連絡先メールを書いた人のみ）。既定 false"
+        required: true
+        default: "false"
+      approval:
+        description: "dryRun=false のときだけ、人間の承認文言 REGISTER-EXISTING をそのまま入力（台帳への書込みとメール送信の承認）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Refuse early when a real run is requested without the approval phrase
+        if: ${{ inputs.dryRun == 'false' && inputs.approval != 'REGISTER-EXISTING' }}
+        run: |
+          echo "::error::dryRun=false needs the approval phrase REGISTER-EXISTING. Nothing was changed."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Register (plan first; writes only with dryRun=false; the key is never printed)
+        env:
+          TARGET_UPNS: ${{ inputs.targetUpns }}
+          DRY_RUN: ${{ inputs.dryRun }}
+          RESEND_MAIL: ${{ inputs.resendMail }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          node scripts/register-existing-accounts.js

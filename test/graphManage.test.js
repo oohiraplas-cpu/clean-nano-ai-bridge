@@ -200,6 +200,39 @@ test('mail_sent_check needs Mail.ReadBasic.All, a configured sender, and matches
   assert.ok(g.calls.every((c) => c.m === 'GET'));
 });
 
+test('account_info_mail sends a fixed mail with the sign-in name (ID) and the app steps, never a password, and needs approval', async () => {
+  const OB = { ...ENV, GRAPH_WELCOME_APP_URL: 'https://apps.powerapps.com/play/app-1' };
+  const user = { id: 'oid-1', displayName: '山田 太郎', userPrincipalName: 'taro@example.co.jp' };
+  const mk = (roles = ['Mail.Send']) => fakeGraph(roles, { responses: { '/users/taro': user } });
+  const base = { operation: 'account_info_mail', user: 'taro@example.co.jp', contactEmail: 'Taro.Private@gmail.com' };
+
+  await assert.rejects(() => gm.run(base, { graph: mk(), env: OB }), /approval required/, 'a write needs approvedByHuman');
+  const g = mk();
+  const r = await gm.run({ ...base, approvedByHuman: true }, { graph: g, env: OB });
+  assert.equal(r.data.accepted, true); assert.equal(r.verified, false, 'delivery is not confirmed by the Bridge');
+  const mail = g.calls.find((c) => c.m === 'POST');
+  assert.equal(mail.path, '/users/noreply%40example.co.jp/sendMail');
+  assert.deepEqual(mail.body.message.toRecipients, [{ emailAddress: { address: 'Taro.Private@gmail.com' } }]);
+  assert.equal(mail.body.message.subject, '【clean nano】アカウント（ID）とアプリのご案内'); assert.equal(mail.body.saveToSentItems, false);
+  const text = mail.body.message.body.content;
+  for (const need of ['山田 太郎 様', 'taro@example.co.jp', 'https://apps.apple.com/us/app/power-apps/id1047318566', 'com.microsoft.msapps', 'clean nano kk', 'https://apps.powerapps.com/play/app-1']) assert.ok(text.includes(need), need);
+  assert.ok(!/初期パスワード:\s*\S/.test(text) && text.includes('管理者からお伝えします'), 'no password is written in the mail');
+  assert.equal(g.calls.filter((c) => c.m === 'POST').length, 1, 'exactly one mail');
+});
+
+test('account_info_mail refuses bad input, unknown or out-of-domain accounts, missing config, and a missing role', async () => {
+  const OB = { ...ENV, GRAPH_WELCOME_APP_URL: 'https://apps.powerapps.com/play/app-1' };
+  const ok = { operation: 'account_info_mail', user: 'taro@example.co.jp', contactEmail: 'a@gmail.com', approvedByHuman: true };
+  const withUser = (u) => fakeGraph(['Mail.Send'], { responses: { '/users/': u } });
+  await assert.rejects(() => gm.run({ ...ok, contactEmail: 'nope' }, { graph: withUser({}), env: OB }), /contactEmail/);
+  await assert.rejects(() => gm.run(ok, { graph: withUser({}), env: OB }), /user not found/);
+  await assert.rejects(() => gm.run(ok, { graph: withUser({ displayName: 'X', userPrincipalName: 'x@other.com' }), env: OB }), /outside the allowed domains/);
+  await assert.rejects(() => gm.run(ok, { graph: withUser({ displayName: 'X', userPrincipalName: 'x@example.co.jp' }), env: ENV }), /GRAPH_WELCOME_APP_URL/);
+  const g = fakeGraph(['Sites.ReadWrite.All']);
+  const b = await gm.run(ok, { graph: g, env: OB });
+  assert.equal(b.data.blocked, true); assert.ok(b.data.requiredPermissions.includes('Mail.Send')); assert.equal(g.calls.length, 0);
+});
+
 test('mail_send confirms delivery through Sent Items when the app may read mail, otherwise stays unverified', async () => {
   const base = { operation: 'mail_send', approvedByHuman: true, to: [GOOD_UPN], subject: '案内', body: '本文' };
   const sent = { value: [{ subject: '案内', sentDateTime: new Date().toISOString(), toRecipients: [{ emailAddress: { address: GOOD_UPN } }] }] };

@@ -33,9 +33,10 @@ const NEEDS = {
   user_create: ['User.ReadWrite.All', 'Directory.ReadWrite.All'],
   user_update: ['User.ReadWrite.All', 'Directory.ReadWrite.All'],
   mail_send: ['Mail.Send'],
+  account_info_mail: ['Mail.Send'],
 };
 const READ_OPS = ['status', 'user_verify', 'user_list_recent', 'license_available', 'mail_sent_check', 'user_get', 'user_search', 'user_groups', 'user_licenses', 'group_list', 'group_members', 'license_list', 'app_get', 'sp_get', 'permission_grants'];
-const WRITE_OPS = ['user_create', 'user_update', 'mail_send'];
+const WRITE_OPS = ['user_create', 'user_update', 'mail_send', 'account_info_mail'];
 const OPERATIONS = [...READ_OPS, ...WRITE_OPS];
 const USER_FIELDS = 'id,displayName,givenName,surname,userPrincipalName,mail,accountEnabled,jobTitle,department,mobilePhone,officeLocation,usageLocation,createdDateTime,assignedLicenses';
 const UPDATABLE = ['displayName', 'givenName', 'surname', 'jobTitle', 'department', 'mobilePhone', 'officeLocation', 'usageLocation', 'accountEnabled'];
@@ -138,6 +139,7 @@ async function run(p, deps = {}) {
     case 'user_create': return createUser(p, env, graph, deps);
     case 'user_update': return updateUser(p, graph);
     case 'mail_send': return sendMail(p, env, graph, info.roles, deps.sleep || defaultSleep);
+    case 'account_info_mail': return sendAccountInfo(p, env, graph);
     default: throw new GraphOpError(`unknown operation "${op}"`, 'invalid_input');
   }
 }
@@ -194,6 +196,39 @@ function welcomeBody(displayName, upn, password, appUrl) {
     '3. 一覧に「clean nano kk」が表示されます。表示されない場合は、「すべてのアプリ」で検索してください。',
     '', '■ パソコン・ブラウザから使う場合', `アプリ: ${appUrl}`, '',
     '心当たりがない場合は、このメールに返信せず、管理者へ連絡してください。'].join('\n');
+}
+
+// Account-info mail for an EXISTING account: the sign-in name (ID) and the app steps. It never contains a password
+// (the owner hands the password over separately). Fixed template: the caller controls only the display name (single line).
+function accountInfoBody(displayName, upn, appUrl) {
+  return [`${oneLine(displayName, 60)} 様`, '', 'アカウントの準備ができました。サインインに必要な情報をお送りします。', '',
+    `サインイン名（ID）: ${upn}`, 'パスワード: 管理者からお伝えします。このメールには書かれていません。', '',
+    '初回のサインイン時に、パスワードの変更を求められる場合があります。', '',
+    '■ アプリの使い方（スマートフォン）',
+    '1. 「Power Apps」アプリをインストールしてください。',
+    `   iPhone: ${POWER_APPS_IOS_URL}`,
+    `   Android: ${POWER_APPS_ANDROID_URL}`,
+    '2. アプリを開き、上のサインイン名（ID）とパスワードでサインインします。',
+    '3. 一覧に「clean nano kk」が表示されます。表示されない場合は、「すべてのアプリ」で検索してください。',
+    '', '■ パソコン・ブラウザから使う場合', `アプリ: ${appUrl}`, '',
+    '心当たりがない場合は、このメールに返信せず、管理者へ連絡してください。'].join('\n');
+}
+const ACCOUNT_INFO_SUBJECT = '【clean nano】アカウント（ID）とアプリのご案内';
+
+// Sends the fixed account-info mail to ONE contact address for an existing company account.
+// The account must exist and be inside GRAPH_UPN_ALLOWED_DOMAINS; sender and link come from configuration.
+async function sendAccountInfo(p, env, graph) {
+  const sender = String(env.GRAPH_MAIL_SENDER || '');
+  const appUrl = String(env.GRAPH_WELCOME_APP_URL || '');
+  const domains = csv(env.GRAPH_UPN_ALLOWED_DOMAINS);
+  if (!UPN.test(sender) || !/^https:\/\//.test(appUrl) || !domains.length) throw new GraphOpError('GRAPH_MAIL_SENDER, GRAPH_WELCOME_APP_URL (https) and GRAPH_UPN_ALLOWED_DOMAINS must be configured; mail is refused', 'config');
+  const contact = typeof p.contactEmail === 'string' ? p.contactEmail.trim() : '';
+  if (!UPN.test(contact) || contact.length > 254) throw new GraphOpError('contactEmail is missing or not a valid address', 'invalid_input');
+  const u = await graph.get(`/users/${userRef(p)}?$select=id,displayName,userPrincipalName`);
+  if (!u || !u.userPrincipalName || !u.displayName) throw new GraphOpError('user not found', 'not_found');
+  if (!domains.includes(String(u.userPrincipalName).split('@')[1].toLowerCase())) throw new GraphOpError('the account is outside the allowed domains; mail is refused', 'invalid_input');
+  await graph.post(`/users/${enc(sender)}/sendMail`, { message: { subject: ACCOUNT_INFO_SUBJECT, body: { contentType: 'Text', content: accountInfoBody(u.displayName, u.userPrincipalName, appUrl) }, toRecipients: [{ emailAddress: { address: contact } }] }, saveToSentItems: false });
+  return { verified: false, data: { accepted: true, userPrincipalName: u.userPrincipalName, note: 'Graph accepted the mail (202). It contains the sign-in name (ID) but no password. Delivery cannot be confirmed by the Bridge.' } };
 }
 
 async function createUser(p, env, graph, deps = {}) {
@@ -291,11 +326,11 @@ async function sendMail(p, env, graph, roles = [], sleep = defaultSleep) {
 
 const DEF = {
   name: 'graph_manage',
-  description: 'Microsoft Graph(Entra ID / Outlook)を1ツールで実行(operation指定)。読み取り=status(付与済み権限)/user_verify(期待値との照合)/user_list_recent(直近に作成されたユーザー。sinceDays、既定7日)/license_available(空きライセンス数)/mail_sent_check(送信済みの確認)/user_get/user_search/user_groups/user_licenses/group_list/group_members/license_list/app_get/sp_get/permission_grants。書込=user_create(連絡先メールから会社ドメインのユーザー名を作成。初期パスワードはサーバー内で自動生成し、案内メールで本人へ。返しません)/user_update/mail_send は approvedByHuman:true 必須。必要な権限が付与されていない場合は推測せず、必要な権限を構造化して返します。パスワードは返しません。',
+  description: 'Microsoft Graph(Entra ID / Outlook)を1ツールで実行(operation指定)。読み取り=status(付与済み権限)/user_verify(期待値との照合)/user_list_recent(直近に作成されたユーザー。sinceDays、既定7日)/license_available(空きライセンス数)/mail_sent_check(送信済みの確認)/user_get/user_search/user_groups/user_licenses/group_list/group_members/license_list/app_get/sp_get/permission_grants。書込=user_create(連絡先メールから会社ドメインのユーザー名を作成。初期パスワードはサーバー内で自動生成し、案内メールで本人へ。返しません)/user_update/mail_send/account_info_mail(既存アカウントのサインイン名(ID)とアプリの手順を、連絡先メール1件へ固定文面で送る。パスワードは書かない。user と contactEmail を指定) は approvedByHuman:true 必須。必要な権限が付与されていない場合は推測せず、必要な権限を構造化して返します。パスワードは返しません。',
   inputSchema: { type: 'object', properties: {
     operation: { type: 'string', enum: OPERATIONS }, user: { type: ['string', 'object'] }, search: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: MAX_TOP }, group: { type: 'string' },
     appId: { type: 'string' }, expected: { type: 'object' }, sinceDays: { type: 'integer', minimum: 1, maximum: 60 }, sinceMinutes: { type: 'integer', minimum: 1, maximum: 1440 }, patch: { type: 'object' }, to: { type: 'array', items: { type: 'string' }, maxItems: MAX_RECIPIENTS }, subject: { type: 'string' }, body: { type: 'string' },
-    welcomeMail: { type: 'boolean' }, assignLicense: { type: 'boolean' }, approvedByHuman: { type: 'boolean' }, approver: { type: 'string' } }, required: ['operation'], additionalProperties: false },
+    welcomeMail: { type: 'boolean' }, contactEmail: { type: 'string' }, assignLicense: { type: 'boolean' }, approvedByHuman: { type: 'boolean' }, approver: { type: 'string' } }, required: ['operation'], additionalProperties: false },
 };
 
 module.exports = { run, DEF, OPERATIONS, READ_OPS, WRITE_OPS, NEEDS, decodeRoles, GraphOpError };
