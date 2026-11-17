@@ -90,3 +90,9 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 ## 2026-11-17 auth mismatch classification
 - CI #2227 passed for prior static fail-closed route checks. Added a separate, non-executing classifier and independent tests for Bridge API-key versus Dataverse Entra client-credentials transport mismatch, 401/403/404/503 and HTTP 200 not being proof of authorized operation.
 - No credential settings, production middleware, deployment or external connections were modified. Current Bridge 401 root cause remains unverified; source code inspection alone cannot distinguish wrong key from upstream auth. Real Dataverse GET remains blocked until a trusted authorized connection is available.
+
+## Bridge 401 routing and transport audit
+- server.js supports x-api-key, Authorization Bearer containing the configured API key, or query api_key for /mcp and /connector/mcp; those paths have different configured secrets. A Microsoft Entra JWT is not automatically a valid Bridge API key. /recovery/mcp is separately protected by verified Entra JWT when recovery OAuth is configured.
+- Added static path/auth contract inspector and independent tests; all outcomes are PARTIAL or BLOCKED until real authenticated call. The GET /mcp endpoint intentionally returns 405 after authentication, so GET success is not a valid MCP E2E probe. POST tools/list or tools/call is required.
+- Azure App Service Easy Auth and deployed environment values cannot be inferred from repository source. An upstream 401 before Express remains possible. Do not bypass upstream authentication or log credentials.
+- Power Apps/Automate Dataverse GET adapter remains isolated from Bridge MCP API key; its mock tests do not establish real Dataverse permissions.
