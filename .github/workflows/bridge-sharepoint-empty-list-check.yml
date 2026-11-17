@@ -1,0 +1,144 @@
+name: Bridge SharePointリストの件数確認と、空のときだけ削除（既定は読み取り専用）
+# Default (delete=false): READ-ONLY. For the given list it prints ONLY the number of items (never any field value) and the
+# names/states of Power Automate flows whose name contains the given keyword. Nothing is changed.
+# delete=true: deletes that one LIST, but only when ALL of these hold, re-checked inside the same run (fail-closed):
+#   - the approval phrase DELETE-EMPTY-LIST is typed exactly,
+#   - the list name starts with "CN_",
+#   - the list has 0 items and no further page (so it is really empty),
+#   - the flow check itself succeeded.
+# Item contents are never printed. The MCP key is read from Azure App Service settings inside the run, masked, sent as a
+# header, and never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: "サイト名またはURL（例 cleannano）"
+        required: true
+        default: "cleannano"
+      list:
+        description: "対象リストの表示名（例 CN_入社申請_仮登録台帳）"
+        required: true
+      flowKeyword:
+        description: "このリストを使っていそうな Flow 名に含まれる語（確認用。例 入社）"
+        required: false
+        default: ""
+      delete:
+        description: "true なら、空のときだけリストを削除する。既定 false は読み取り専用"
+        required: true
+        default: "false"
+      approval:
+        description: "delete=true のときだけ、人間の承認文言 DELETE-EMPTY-LIST をそのまま入力"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Refuse early when delete is requested without the approval phrase
+        if: ${{ inputs.delete == 'true' && inputs.approval != 'DELETE-EMPTY-LIST' }}
+        run: |
+          echo "::error::delete=true needs the approval phrase DELETE-EMPTY-LIST. Nothing was changed."
+          exit 1
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Count items (no values printed), check flows, delete only if empty
+        env:
+          SITE: ${{ inputs.site }}
+          LIST: ${{ inputs.list }}
+          FLOW_KEYWORD: ${{ inputs.flowKeyword }}
+          DO_DELETE: ${{ inputs.delete }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+
+          def call(tool, args):
+              body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': tool, 'arguments': args}}).encode()
+              req = urllib.request.Request(os.environ['BASE_URL'], data=body, headers={'content-type': 'application/json', 'x-api-key': os.environ['KEY']}, method='POST')
+              try:
+                  with urllib.request.urlopen(req, timeout=180) as res:
+                      status, text = res.status, res.read().decode('utf-8', 'replace')
+              except urllib.error.HTTPError as e:
+                  status, text = e.code, e.read().decode('utf-8', 'replace')
+              try:
+                  data = json.loads(text)
+              except ValueError:
+                  return status, None, text[:300]
+              result = data.get('result', data)
+              sc = result.get('structuredContent', result) if isinstance(result, dict) else result
+              is_error = bool(result.get('isError')) if isinstance(result, dict) else False
+              return status, (None if is_error else sc), (json.dumps(sc, ensure_ascii=False)[:300] if is_error else '')
+
+          site = os.environ['SITE']
+          lst = os.environ['LIST'].strip()
+          keyword = os.environ.get('FLOW_KEYWORD', '').strip()
+          do_delete = os.environ.get('DO_DELETE', 'false') == 'true'
+
+          # 1) item count only. Values are dropped here and never printed.
+          status, sc, err = call('sharepoint_manage', {'operation': 'search', 'site': site, 'list': lst, 'top': 5})
+          if sc is None:
+              print('count check failed: HTTP', status, err); sys.exit(1)
+          inner = sc.get('data', {}).get('data', sc.get('data', {}))
+          count = inner.get('count')
+          has_more = bool(inner.get('hasMore'))
+          print(f'list: {lst}')
+          print(f'items (first page, up to 5): {count}  hasMore: {has_more}')
+          empty = (count == 0 and not has_more)
+          print('empty:', empty)
+
+          # 2) flows whose name contains the keyword: names/states only.
+          flows_ok = True
+          if keyword:
+              status, fsc, ferr = call('powerautomate_manage', {'operation': 'list', 'nameContains': keyword})
+              if fsc is None:
+                  flows_ok = False
+                  print('flow check failed:', status, ferr)
+              else:
+                  finner = fsc.get('data', {}).get('data', fsc.get('data', {}))
+                  flows = finner.get('flows') or finner.get('value') or finner.get('items') or []
+                  print(f'flows containing "{keyword}": {len(flows)}')
+                  for f in flows[:20]:
+                      if isinstance(f, dict):
+                          print('  -', f.get('name') or f.get('displayName') or f.get('workflowid') or f.get('id'), '| state:', f.get('state') or f.get('statecode'))
+          else:
+              flows_ok = False
+              print('flow check skipped (no keyword); a delete would be refused')
+
+          if not do_delete:
+              print('delete=false: nothing was changed.')
+              sys.exit(0)
+
+          # 3) delete, only when every guard holds.
+          problems = []
+          if not lst.startswith('CN_'): problems.append('list name does not start with CN_')
+          if not empty: problems.append('list is not empty')
+          if not flows_ok: problems.append('flow check did not succeed')
+          if problems:
+              print('REFUSED, nothing was changed:', '; '.join(problems)); sys.exit(1)
+          status, dsc, derr = call('sharepoint_manage', {'operation': 'delete', 'site': site, 'list': lst, 'target': 'list', 'confirm': f'DELETE list {lst}'})
+          if dsc is None:
+              print('delete failed: HTTP', status, derr); sys.exit(1)
+          print('delete result:', json.dumps({'verified': dsc.get('verified'), 'summary': dsc.get('summary')}, ensure_ascii=False))
+          sys.exit(0 if dsc.get('verified') else 1)
+          PY

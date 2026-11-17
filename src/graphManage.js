@@ -27,13 +27,14 @@ const NEEDS = {
   sp_get: ['Application.Read.All', 'Directory.Read.All'],
   permission_grants: ['Application.Read.All', 'Directory.Read.All'],
   user_verify: ['User.Read.All', 'Directory.Read.All'],
+  user_list_recent: ['User.Read.All', 'Directory.Read.All'],
   license_available: ['Organization.Read.All', 'LicenseAssignment.Read.All', 'Directory.Read.All'],
   mail_sent_check: ['Mail.ReadBasic.All', 'Mail.Read'],
   user_create: ['User.ReadWrite.All', 'Directory.ReadWrite.All'],
   user_update: ['User.ReadWrite.All', 'Directory.ReadWrite.All'],
   mail_send: ['Mail.Send'],
 };
-const READ_OPS = ['status', 'user_verify', 'license_available', 'mail_sent_check', 'user_get', 'user_search', 'user_groups', 'user_licenses', 'group_list', 'group_members', 'license_list', 'app_get', 'sp_get', 'permission_grants'];
+const READ_OPS = ['status', 'user_verify', 'user_list_recent', 'license_available', 'mail_sent_check', 'user_get', 'user_search', 'user_groups', 'user_licenses', 'group_list', 'group_members', 'license_list', 'app_get', 'sp_get', 'permission_grants'];
 const WRITE_OPS = ['user_create', 'user_update', 'mail_send'];
 const OPERATIONS = [...READ_OPS, ...WRITE_OPS];
 const USER_FIELDS = 'id,displayName,givenName,surname,userPrincipalName,mail,accountEnabled,jobTitle,department,mobilePhone,officeLocation,usageLocation,createdDateTime,assignedLicenses';
@@ -94,6 +95,16 @@ async function run(p, deps = {}) {
       if (!s) throw new GraphOpError('search is required', 'invalid_input');
       const r = await graph.get(`/users?$filter=${enc(`startswith(displayName,'${s}') or startswith(userPrincipalName,'${s}') or startswith(mail,'${s}')`)}&$select=${USER_FIELDS}&$top=${top(p)}`, { ConsistencyLevel: 'eventual' });
       return { verified: true, data: { count: (r.value || []).length, users: r.value || [] } };
+    }
+    case 'user_list_recent': {
+      // Users created in the last N days (default 7, max 60), newest first. Returns only what is needed to see who was added
+      // and whether they can sign in / hold a license: no phone, no address, and the license list is reduced to a count.
+      const days = Math.min(Math.max(Number.isInteger(Number(p.sinceDays)) ? Number(p.sinceDays) : 7, 1), 60);
+      const since = new Date((deps.now ? deps.now() : Date.now()) - days * 86400000).toISOString();
+      const r = await graph.get(`/users?$filter=${enc(`createdDateTime ge ${since}`)}&$count=true&$select=id,displayName,userPrincipalName,mail,accountEnabled,createdDateTime,assignedLicenses&$top=${MAX_TOP}`, { ConsistencyLevel: 'eventual' });
+      const users = (r.value || []).map((u) => ({ displayName: u.displayName, userPrincipalName: u.userPrincipalName, mail: u.mail || null, accountEnabled: u.accountEnabled, createdDateTime: u.createdDateTime, licenseCount: Array.isArray(u.assignedLicenses) ? u.assignedLicenses.length : 0 }))
+        .sort((a, b) => String(b.createdDateTime).localeCompare(String(a.createdDateTime)));
+      return { verified: true, data: { sinceDays: days, since, count: users.length, hasMore: Boolean(r['@odata.nextLink']), users } };
     }
     case 'user_verify': return verifyUser(p, graph, userRef(p));
     case 'license_available': {
@@ -280,10 +291,10 @@ async function sendMail(p, env, graph, roles = [], sleep = defaultSleep) {
 
 const DEF = {
   name: 'graph_manage',
-  description: 'Microsoft Graph(Entra ID / Outlook)を1ツールで実行(operation指定)。読み取り=status(付与済み権限)/user_verify(期待値との照合)/license_available(空きライセンス数)/mail_sent_check(送信済みの確認)/user_get/user_search/user_groups/user_licenses/group_list/group_members/license_list/app_get/sp_get/permission_grants。書込=user_create(連絡先メールから会社ドメインのユーザー名を作成。初期パスワードはサーバー内で自動生成し、案内メールで本人へ。返しません)/user_update/mail_send は approvedByHuman:true 必須。必要な権限が付与されていない場合は推測せず、必要な権限を構造化して返します。パスワードは返しません。',
+  description: 'Microsoft Graph(Entra ID / Outlook)を1ツールで実行(operation指定)。読み取り=status(付与済み権限)/user_verify(期待値との照合)/user_list_recent(直近に作成されたユーザー。sinceDays、既定7日)/license_available(空きライセンス数)/mail_sent_check(送信済みの確認)/user_get/user_search/user_groups/user_licenses/group_list/group_members/license_list/app_get/sp_get/permission_grants。書込=user_create(連絡先メールから会社ドメインのユーザー名を作成。初期パスワードはサーバー内で自動生成し、案内メールで本人へ。返しません)/user_update/mail_send は approvedByHuman:true 必須。必要な権限が付与されていない場合は推測せず、必要な権限を構造化して返します。パスワードは返しません。',
   inputSchema: { type: 'object', properties: {
     operation: { type: 'string', enum: OPERATIONS }, user: { type: ['string', 'object'] }, search: { type: 'string' }, top: { type: 'integer', minimum: 1, maximum: MAX_TOP }, group: { type: 'string' },
-    appId: { type: 'string' }, expected: { type: 'object' }, sinceMinutes: { type: 'integer', minimum: 1, maximum: 1440 }, patch: { type: 'object' }, to: { type: 'array', items: { type: 'string' }, maxItems: MAX_RECIPIENTS }, subject: { type: 'string' }, body: { type: 'string' },
+    appId: { type: 'string' }, expected: { type: 'object' }, sinceDays: { type: 'integer', minimum: 1, maximum: 60 }, sinceMinutes: { type: 'integer', minimum: 1, maximum: 1440 }, patch: { type: 'object' }, to: { type: 'array', items: { type: 'string' }, maxItems: MAX_RECIPIENTS }, subject: { type: 'string' }, body: { type: 'string' },
     welcomeMail: { type: 'boolean' }, assignLicense: { type: 'boolean' }, approvedByHuman: { type: 'boolean' }, approver: { type: 'string' } }, required: ['operation'], additionalProperties: false },
 };
 

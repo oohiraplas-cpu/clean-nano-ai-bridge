@@ -57,6 +57,25 @@ test('READ builds safe, encoded Graph requests', async () => {
   assert.equal(g.calls[4].path.split('?')[0], '/subscribedSkus');
 });
 
+test('user_list_recent returns recently created users with minimal fields and only reads', async () => {
+  const now = Date.parse('2026-11-17T00:00:00Z');
+  const g = fakeGraph(['User.Read.All'], { responses: { '/users?': { value: [
+    { id: 'a', displayName: 'Older', userPrincipalName: 'older@example.co.jp', mail: null, accountEnabled: true, createdDateTime: '2026-11-15T01:00:00Z', assignedLicenses: [], mobilePhone: '090-0000-0000' },
+    { id: 'b', displayName: 'Newer', userPrincipalName: 'newer@example.co.jp', mail: 'newer@example.co.jp', accountEnabled: false, createdDateTime: '2026-11-16T09:00:00Z', assignedLicenses: [{ skuId: 's1' }, { skuId: 's2' }], mobilePhone: '080-1111-1111' }] } } });
+  const r = await gm.run({ operation: 'user_list_recent', sinceDays: 3 }, { graph: g, env: ENV, now: () => now });
+  assert.equal(g.calls.length, 1); assert.equal(g.calls[0].m, 'GET'); assert.equal(g.calls[0].h.ConsistencyLevel, 'eventual');
+  assert.ok(g.calls[0].path.includes(encodeURIComponent('createdDateTime ge 2026-11-14T00:00:00.000Z')), 'the window is sinceDays before now');
+  assert.ok(g.calls[0].path.includes('$count=true') && g.calls[0].path.endsWith('&$top=25'));
+  assert.deepEqual(r.data.users.map((u) => u.displayName), ['Newer', 'Older'], 'newest first');
+  assert.equal(r.data.users[0].licenseCount, 2); assert.equal(r.data.users[1].licenseCount, 0); assert.equal(r.data.users[0].accountEnabled, false);
+  assert.ok(!JSON.stringify(r).includes('090-0000') && !JSON.stringify(r).includes('080-1111'), 'phone numbers are not returned');
+  assert.ok(!JSON.stringify(r).includes('skuId'), 'only a license count, not the license list');
+  const clamp = await gm.run({ operation: 'user_list_recent', sinceDays: 9999 }, { graph: fakeGraph(['User.Read.All']), env: ENV, now: () => now });
+  assert.equal(clamp.data.sinceDays, 60, 'the window is capped at 60 days');
+  const blockedRes = await run({ operation: 'user_list_recent' }, fakeGraph(['Sites.ReadWrite.All']));
+  assert.equal(blockedRes.data.blocked, true, 'a missing role is a structured block');
+});
+
 test('invalid identifiers are rejected before any request', async () => {
   const g = fakeGraph(['User.Read.All', 'Group.Read.All', 'Application.Read.All']);
   await assert.rejects(() => run({ operation: 'user_get', user: "x'; DROP" }, g), /object id|user principal/);
