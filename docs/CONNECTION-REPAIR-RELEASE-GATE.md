@@ -65,3 +65,8 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - src/powerPlatformAuthPreflight.js checks only presence of existing POWERAPPS_* / AZURE_* configuration and the Dataverse org URL shape, without disclosing credentials or attempting login. It returns PARTIAL even when configured, never PASS.
 - This does not fix Bridge MAX UNAUTHORIZED; actual tenant permissions, client secret validity, token issuance, environment access and authorized Dataverse GET must be verified via trusted existing connection.
 - No production writes, app publishes, flow executions, or external releases were performed.
+
+## Power Platform Dataverse GET transport
+- src/dataverseReadOnlyClient.js reuses the existing Power Apps/Automate Entra tenant/client/secret configuration, with strict HTTPS Dataverse org allowlist, client-credentials token cache and fixed read-only OData paths. It never imports the mutating solution/flow writers. POST is used only for Entra token acquisition; Dataverse requests are GET only.
+- Tests use fake token and Dataverse responses; they verify GET-only behavior, token reuse, path rejection and 401 fail-closed. They do NOT prove the real Entra app has Dataverse access or that the actual org URL is configured.
+- No production route was registered, no credential was rotated, no live Microsoft authentication succeeded, no app/flow was edited or published. Release BLOCKED pending real authorized read-only probe, least-privilege permissions audit and E2E.
