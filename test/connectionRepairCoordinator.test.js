@@ -25,3 +25,13 @@ test('approved repair is still not executed without provider adapter',()=> {
 test('unknown mutations fail closed',()=> {
   assert.equal(evaluateRepair({service:'azure',action:'delete_all',capability:capable,approval}).status,'BLOCKED');
 });
+
+test('approval utterance requires trusted pending request and never executes', () => {
+  const { resolveApprovalUtterance } = require('../src/connectionRepairCoordinator');
+  const pending={source:'trusted_server',status:'pending',presentedToUser:true,requestId:'req-123456',service:'azure',action:'rotate_credential',expiresAt:Date.now()+60000};
+  assert.equal(resolveApprovalUtterance('承認する',pending).execution,'not_executed');
+  assert.equal(resolveApprovalUtterance('承認する',pending).status,'PARTIAL');
+  assert.equal(resolveApprovalUtterance('承認する',{...pending,source:'client'}).status,'BLOCKED');
+  assert.equal(resolveApprovalUtterance('承認する',{...pending,expiresAt:0}).status,'BLOCKED');
+  assert.equal(resolveApprovalUtterance('はい',pending).status,'HUMAN_APPROVAL_REQUIRED');
+});
