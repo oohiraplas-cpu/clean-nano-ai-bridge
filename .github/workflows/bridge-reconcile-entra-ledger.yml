@@ -1,0 +1,92 @@
+name: Bridge Entraユーザーと社員台帳の照合（読み取り専用・台帳の値は出さない）
+# READ-ONLY. Fetches (a) users created in the last N days from Entra (graph_manage user_list_recent) and (b) the rows of
+# CN_社員台帳 (sharepoint_manage search), keeps both in temp files only, and runs scripts/reconcile-entra-ledger.js, which
+# prints MATCH FLAGS AND COUNTS ONLY: whether each Entra user is linked to a ledger row by EntraObjectId, or is only a
+# name/e-mail candidate, or is missing; whether the matched row has an e-mail / a category filled (true/false).
+# No ledger value (e-mail, category, ledger name) is printed. Nothing is written anywhere.
+# The MCP key is read from Azure App Service settings inside the run, masked, sent as a header, and never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      sinceDays:
+        description: "何日前までに作成されたEntraユーザーを対象にするか（1〜60）"
+        required: true
+        default: "14"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
+  SITE: cleannano
+  LEDGER_LIST: CN_社員台帳
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Fetch Entra users and ledger rows into temp files (nothing is printed)
+        env:
+          SINCE_DAYS: ${{ inputs.sinceDays }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+
+          def call(tool, args):
+              body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': tool, 'arguments': args}}).encode()
+              req = urllib.request.Request(os.environ['BASE_URL'], data=body, headers={'content-type': 'application/json', 'x-api-key': os.environ['KEY']}, method='POST')
+              try:
+                  with urllib.request.urlopen(req, timeout=180) as res:
+                      status, text = res.status, res.read().decode('utf-8', 'replace')
+              except urllib.error.HTTPError as e:
+                  status, text = e.code, e.read().decode('utf-8', 'replace')
+              try:
+                  data = json.loads(text)
+              except ValueError:
+                  sys.exit(f'{tool}: HTTP {status}, response is not JSON')
+              result = data.get('result', data)
+              sc = result.get('structuredContent', result) if isinstance(result, dict) else result
+              if status != 200 or (isinstance(result, dict) and result.get('isError')):
+                  sys.exit(f'{tool}: HTTP {status}, the call failed')
+              inner = sc.get('data', {}).get('data', sc.get('data', {}))
+              return inner
+
+          try:
+              days = max(1, min(int(os.environ.get('SINCE_DAYS', '14')), 60))
+          except ValueError:
+              sys.exit('sinceDays must be an integer')
+
+          entra = call('graph_manage', {'operation': 'user_list_recent', 'sinceDays': days})
+          tmp = os.environ['RUNNER_TEMP']
+          json.dump({'users': entra.get('users', []), 'hasMore': bool(entra.get('hasMore'))}, open(os.path.join(tmp, 'entra.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+
+          ledger = call('sharepoint_manage', {'operation': 'search', 'site': os.environ['SITE'], 'list': os.environ['LEDGER_LIST'], 'top': 500})
+          items = [{'id': i.get('id'), 'fields': {k: (i.get('fields') or {}).get(k) for k in ('Title', 'EntraObjectId', 'EmailAddress', 'EmployeeCategory')}} for i in ledger.get('items', [])]
+          json.dump({'items': items, 'hasMore': bool(ledger.get('hasMore'))}, open(os.path.join(tmp, 'ledger.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+          print(f'fetched: entra users={len(entra.get("users", []))} (window {days} days), ledger rows={len(items)}')
+          PY
+
+      - name: Reconcile (prints match flags and counts only)
+        run: node scripts/reconcile-entra-ledger.js "$RUNNER_TEMP/entra.json" "$RUNNER_TEMP/ledger.json"
+
+      - name: Remove the temp files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/entra.json" "$RUNNER_TEMP/ledger.json"
