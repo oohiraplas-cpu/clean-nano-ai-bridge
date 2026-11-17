@@ -36,3 +36,9 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - authenticatedConnectionApproval accepts only a principal returned by injected trusted auth middleware, not a request-supplied subject ID. It requires verified=true, nonempty issuer, tenantId and subjectId. Unit tests cover spoofing, auth errors and fail-closed behavior.
 - IMPORTANT: no actual Entra token validation or trusted middleware is wired here. The injected resolver must independently validate token signature, issuer, audience, tenant, expiry and session before setting verified=true. Do not treat an arbitrary resolver or boolean as proof of identity.
 - Production release remains BLOCKED pending trusted auth middleware, real transactional store, and verified provider-specific adapters.
+
+## Existing asset reuse investigation
+- Existing src/recoveryOAuth.js validates Entra JWT RS256 signature against Microsoft signing keys, issuer, audience, tenant, client, fixed user, scope and expiry. Added verifiedPrincipal() that returns identity only after authorized(token) passes. Added read-only recoveryPrincipalResolver and negative tests.
+- Existing src/approvalLedger.js is SharePoint READ-ONLY approval verification, and src/sharePointTaskStore.js uses Graph client credentials. Neither provides a production atomic approval compare-and-swap; do not repurpose either as durable single-use store without validated list schema, ETag concurrency, permissions and authenticated identity binding.
+- New resolver is not mounted in production Express middleware; trustedMiddleware flag is an integration contract, not proof by itself. It must only be set by server-owned middleware after secure bearer extraction. Do not accept this flag from HTTP request JSON.
+- Existing recovery auth is scoped to a fixed user and mcp.access. Do not broaden to other users/scopes without explicit permission and test.
