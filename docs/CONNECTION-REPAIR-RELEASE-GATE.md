@@ -53,3 +53,10 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - src/graphApprovalTransport.js is an injected Microsoft Graph transport for GET with escaped OData requestId filter, strict duplicate/nextLink rejection, and PATCH with If-Match ETag; no production endpoint or token configured. Test mocks only.
 - Live approval list site hostname/path, list GUID, internal column names, indexed unique requestId constraint, and ETag behavior have not been verified. SharePoint connector needs a concrete site path to enumerate lists. Existing src/approvalLedger.js only has a configurable fieldMap, not an actual site reference.
 - The transport's fetchItem/patchItem must be wired only after live read-only schema inspection and a dedicated approval list is confirmed. Graph permissions and actual conditional-write E2E remain BLOCKED.
+
+## Priority change: Power Apps and Power Automate
+- SharePoint approval-store discovery and Graph ETag integration are DEFERRED; prior branch files are retained but not deployed or invoked.
+- src/powerPlatformReadOnlyAdapter.js uses only an injected existing Dataverse client.get for Power Apps canvasapps and Power Automate workflows read-only probes and GUID-scoped inspection. No token or sensitive response is exposed. Fail-closed tests cover missing client, malformed response, invalid IDs, authorization errors and timeouts.
+- Live Bridge MAX health_check, get_bridge_capabilities, check_dependencies each returned UNAUTHORIZED during this work. No successful live Microsoft Power Apps/Automate access is claimed; CI with mocked clients is not E2E.
+- Existing src/powerAppsSolutionWriter.js and src/powerAutomateFlowWriter.js contain potentially mutating import/patch/publish operations. They remain unmodified and MUST NOT be called without approved change gate, backup, verified target, and rollback.
+- The adapter is not mounted on a production route. Real credentials/Dataverse access, independently verified identity, and safe integration remain BLOCKED.
