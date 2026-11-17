@@ -101,8 +101,8 @@ async function run(p, deps = {}) {
       // and whether they can sign in / hold a license: no phone, no address, and the license list is reduced to a count.
       const days = Math.min(Math.max(Number.isInteger(Number(p.sinceDays)) ? Number(p.sinceDays) : 7, 1), 60);
       const since = new Date((deps.now ? deps.now() : Date.now()) - days * 86400000).toISOString();
-      const r = await graph.get(`/users?$filter=${enc(`createdDateTime ge ${since}`)}&$count=true&$select=id,displayName,userPrincipalName,mail,accountEnabled,createdDateTime,assignedLicenses&$top=${MAX_TOP}`, { ConsistencyLevel: 'eventual' });
-      const users = (r.value || []).map((u) => ({ displayName: u.displayName, userPrincipalName: u.userPrincipalName, mail: u.mail || null, accountEnabled: u.accountEnabled, createdDateTime: u.createdDateTime, licenseCount: Array.isArray(u.assignedLicenses) ? u.assignedLicenses.length : 0 }))
+      const r = await graph.get(`/users?$filter=${enc(`createdDateTime ge ${since}`)}&$count=true&$select=id,displayName,userPrincipalName,mail,accountEnabled,userType,createdDateTime,assignedLicenses&$top=${MAX_TOP}`, { ConsistencyLevel: 'eventual' });
+      const users = (r.value || []).map((u) => ({ objectId: u.id, displayName: u.displayName, userPrincipalName: u.userPrincipalName, mail: u.mail || null, accountEnabled: u.accountEnabled, userType: u.userType || null, createdDateTime: u.createdDateTime, licenseCount: Array.isArray(u.assignedLicenses) ? u.assignedLicenses.length : 0 }))
         .sort((a, b) => String(b.createdDateTime).localeCompare(String(a.createdDateTime)));
       return { verified: true, data: { sinceDays: days, since, count: users.length, hasMore: Boolean(r['@odata.nextLink']), users } };
     }
