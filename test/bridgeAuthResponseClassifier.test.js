@@ -5,8 +5,8 @@ const { classifyBridgeAuthResponse: classify } = require('../src/bridgeAuthRespo
 
 test('exact Bridge 401 identifies application rejection without exposing secrets', () => {
   const result = classify({ path: '/mcp', status: 401, body: { error: '認証に失敗しました', token: 'SECRET' } });
-  assert.equal(result.reason, 'bridge_api_key_rejected');
-  assert.equal(result.layer, 'application_signature');
+  assert.equal(result.reason, 'bridge_api_key_rejection_candidate');
+  assert.equal(result.layer, 'application_signature_unverified');
   assert.equal(result.verified, false);
   assert.equal(JSON.stringify(result).includes('SECRET'), false);
 });
@@ -34,4 +34,11 @@ test('ambiguous and forbidden responses do not imply repaired auth', () => {
     assert.equal(result.verified, false);
     assert.equal(result.layer, 'unknown');
   }
+});
+
+test('even a matching 401 error text cannot prove origin', () => {
+  const result = classify({ path: '/mcp', status: 401, body: { error: '認証に失敗しました' } });
+  assert.equal(result.reason, 'bridge_api_key_rejection_candidate');
+  assert.equal(result.layer, 'application_signature_unverified');
+  assert.equal(result.verified, false);
 });
