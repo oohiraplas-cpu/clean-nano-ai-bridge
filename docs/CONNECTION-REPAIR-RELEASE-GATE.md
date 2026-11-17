@@ -31,3 +31,8 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - durableConnectionApproval uses an injected CAS interface, not a real store or authenticated identity attestation. Target binding and actual secure write are absent.
 - connectionProviderAdapters uses injected probes, not provider-native live API clients. HTTP 200 alone is not PASS without authorized operation. Probe timeouts now fail closed.
 - These are release blockers even when CI passes.
+
+## Authenticated approval boundary update
+- authenticatedConnectionApproval accepts only a principal returned by injected trusted auth middleware, not a request-supplied subject ID. It requires verified=true, nonempty issuer, tenantId and subjectId. Unit tests cover spoofing, auth errors and fail-closed behavior.
+- IMPORTANT: no actual Entra token validation or trusted middleware is wired here. The injected resolver must independently validate token signature, issuer, audience, tenant, expiry and session before setting verified=true. Do not treat an arbitrary resolver or boolean as proof of identity.
+- Production release remains BLOCKED pending trusted auth middleware, real transactional store, and verified provider-specific adapters.
