@@ -48,3 +48,8 @@ Code/CI may pass while provider integration remains BLOCKED. No production publi
 - Existing approvalLedger is read-only and cannot be assumed to contain the required fields. No production list schema or unique RequestId constraint was verified; do not wire adapter until those are checked.
 - ETag CAS prevents concurrent updates to one item, but duplicate rows with the same requestId require a unique constraint or an explicit duplicate-detection fail-closed fetchItem implementation.
 - The adapter has no production Graph HTTP implementation, verified authenticated principal binding, or rollback-capable repair adapter. CI success is not live E2E.
+
+## Graph transport implementation and live schema blocker
+- src/graphApprovalTransport.js is an injected Microsoft Graph transport for GET with escaped OData requestId filter, strict duplicate/nextLink rejection, and PATCH with If-Match ETag; no production endpoint or token configured. Test mocks only.
+- Live approval list site hostname/path, list GUID, internal column names, indexed unique requestId constraint, and ETag behavior have not been verified. SharePoint connector needs a concrete site path to enumerate lists. Existing src/approvalLedger.js only has a configurable fieldMap, not an actual site reference.
+- The transport's fetchItem/patchItem must be wired only after live read-only schema inspection and a dedicated approval list is confirmed. Graph permissions and actual conditional-write E2E remain BLOCKED.
