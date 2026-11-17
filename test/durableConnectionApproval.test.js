@@ -26,3 +26,26 @@ test('durable approval rejects missing operation scope',async()=>{
  assert.equal(result.status,'BLOCKED');
  assert.equal(mutated,false);
 });
+
+test('concurrent approval attempts consume exactly once',async()=>{
+ let state='pending';
+ const record={source:'trusted_server',status:'pending',presentedToUser:true,subjectId:'subject-1',expiresAt:Date.now()+60000,version:'v1',service:'azure',action:'rotate_credential'};
+ const svc=createDurableApprovalService({
+   get:async()=>({...record,status:state}),
+   compareAndSwap:async(_id,_version,expected,next)=>{
+     await new Promise(resolve=>setImmediate(resolve));
+     if(state!==expected)return false;
+     state=next;return true;
+   }
+ });
+ const results=await Promise.all(Array.from({length:8},()=>svc.consume({requestId:'request-123',subjectId:'subject-1',utterance:'承認する'})));
+ assert.equal(results.filter(r=>r.reason==='approval_consumed_no_write').length,1);
+ assert.equal(results.filter(r=>r.status==='BLOCKED').length,7);
+});
+test('storage compare-and-swap exception fails closed',async()=>{
+ const record={source:'trusted_server',status:'pending',presentedToUser:true,subjectId:'subject-1',expiresAt:Date.now()+60000,version:'v1',service:'azure',action:'rotate_credential'};
+ const svc=createDurableApprovalService({get:async()=>record,compareAndSwap:async()=>{throw Error('PRIVATE_KEY')}});
+ const result=await svc.consume({requestId:'request-123',subjectId:'subject-1',utterance:'承認する'});
+ assert.equal(result.status,'BLOCKED');
+ assert.doesNotMatch(JSON.stringify(result),/PRIVATE_KEY/);
+});
