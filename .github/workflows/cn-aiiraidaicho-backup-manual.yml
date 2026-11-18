@@ -97,3 +97,42 @@ jobs:
           name: CN_AIiraidaicho-extracted-source-review
           path: out/CN_AIiraidaicho_source/
           retention-days: 30
+
+      - name: Print live screen names only (read-only; no control or formula content)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          d = pathlib.Path('out/CN_AIiraidaicho_source/Source')
+          screens = []
+          for p in sorted(d.glob('*.pa.yaml')):
+              if p.name in ('App.pa.yaml', '_EditorState.pa.yaml'):
+                  continue
+              lines = p.read_text(encoding='utf-8-sig').splitlines()
+              name = None
+              for i, line in enumerate(lines):
+                  if line.startswith('Screens:'):
+                      for nxt in lines[i + 1:]:
+                          m = re.match(r'^  ([^\s:]+):', nxt)
+                          if m:
+                              name = m.group(1)
+                              break
+                      break
+              screens.append((p.name, name, len(lines)))
+          print('live screen count =', len(screens))
+          for f, n, c in screens:
+              print(f'{f}\t{n}\t{c} lines')
+          es = d / '_EditorState.pa.yaml'
+          if es.exists():
+              print('--- _EditorState ScreensOrder ---')
+              on = False
+              for line in es.read_text(encoding='utf-8-sig').splitlines():
+                  if 'ScreensOrder' in line:
+                      on = True
+                      continue
+                  if on:
+                      if line.strip().startswith('- '):
+                          print(line.strip()[2:])
+                      else:
+                          break
+          PY
