@@ -1,0 +1,75 @@
+name: Bridge 実機の画面一覧の取得（読み取り専用）
+# Calls ONLY inspect_powerapps_structure (appId only => analysis of the live app through the Power Apps API) on the production /mcp endpoint
+# and prints the screen names and counts. Nothing is changed. The MCP key is read from Azure App Service settings inside the run,
+# masked, sent as a header and never printed. Control lists are NOT printed (screen names / counts only).
+on:
+  workflow_dispatch:
+    inputs:
+      appId:
+        description: "対象アプリの App ID（GUID）"
+        required: true
+        default: "f42a9b03-59b9-49d3-a33b-0a210cd3d51e"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  APP_NAME: clean-nano-ai-bridge
+  BASE_URL: https://clean-nano-ai-bridge-c7evcxhtergad9b0.westus3-01.azurewebsites.net/mcp
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: 31b68e12-4f97-4bb6-81cd-dbd57fde5f05
+          tenant-id: aa0b99c9-b756-4611-970a-6c31013c42e3
+          subscription-id: bca73b1e-b6b5-4f80-9332-ca299cc033a5
+
+      - name: Inspect the live app (read-only; the key is never printed)
+        env:
+          APP_ID: ${{ inputs.appId }}
+        run: |
+          set -euo pipefail
+          RG=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv --only-show-errors)
+          test -n "$RG" || { echo "::error::App Service $APP_NAME not found"; exit 1; }
+          KEY=$(az webapp config appsettings list --name "$APP_NAME" --resource-group "$RG" --query "[?name=='MCP_API_KEY'] | [0].value" -o tsv --only-show-errors)
+          test -n "$KEY" || { echo "::error::MCP_API_KEY is not set"; exit 1; }
+          echo "::add-mask::$KEY"
+          export KEY
+          python3 - <<'PY'
+          import json, os, re, sys, urllib.error, urllib.request
+          app_id = os.environ['APP_ID']
+          if not re.fullmatch(r'[0-9a-fA-F-]{36}', app_id):
+              sys.exit('appId must be a GUID')
+          body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                             'params': {'name': 'inspect_powerapps_structure', 'arguments': {'appId': app_id}}}).encode()
+          req = urllib.request.Request(os.environ['BASE_URL'], data=body, method='POST',
+                                       headers={'content-type': 'application/json', 'x-api-key': os.environ['KEY']})
+          try:
+              with urllib.request.urlopen(req, timeout=170) as res:
+                  status, text = res.status, res.read().decode('utf-8', 'replace')
+          except urllib.error.HTTPError as e:
+              status, text = e.code, e.read().decode('utf-8', 'replace')
+          print('HTTP', status)
+          try:
+              data = json.loads(text)
+              result = data.get('result', data)
+              sc = result.get('structuredContent', result) if isinstance(result, dict) else {}
+              d = sc.get('data', sc) if isinstance(sc, dict) else {}
+              st = d.get('structure') or {}
+              screens = (st.get('screens') or {}).get('list') or []
+              print(json.dumps({
+                  'status': sc.get('status'), 'verified': sc.get('verified'),
+                  'sourceOrigin': st.get('sourceOrigin'), 'analysisMethod': st.get('analysisMethod'),
+                  'screenCount': len(screens),
+                  'screens': [{'name': s.get('name'), 'controlCount': s.get('controlCount')} for s in screens],
+                  'errors': sc.get('errors'), 'warnings': sc.get('warnings'), 'unconfirmed': sc.get('unconfirmed')
+              }, ensure_ascii=False, indent=2))
+          except (ValueError, AttributeError):
+              print(text[:2000])
+          sys.exit(0 if status == 200 else 1)
+          PY
