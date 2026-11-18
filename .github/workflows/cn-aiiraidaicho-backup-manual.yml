@@ -148,7 +148,7 @@ jobs:
           import pathlib, re
           live = pathlib.Path('out/CN_AIiraidaicho_source/Source')
           git = pathlib.Path('repo/powerapps/CN_AI依頼台帳/Source')
-          pat = re.compile(r'^\s+([A-Za-z0-9_]+) As ([A-Za-z0-9_.]+)', re.M)
+          pat = re.compile(r'^\s*- ([A-Za-z0-9_]+):\s*\n\s+Control: ([A-Za-z0-9_.]+)', re.M)
           def ctrls(p):
               return {(m.group(1), m.group(2)) for m in pat.finditer(p.read_text(encoding='utf-8-sig'))}
           skip = {'App.pa.yaml', '_EditorState.pa.yaml'}
