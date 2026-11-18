@@ -136,3 +136,31 @@ jobs:
                       else:
                           break
           PY
+
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Compare control names only (live vs Git canonical; no formulas printed)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          live = pathlib.Path('out/CN_AIiraidaicho_source/Source')
+          git = pathlib.Path('repo/powerapps/CN_AI依頼台帳/Source')
+          pat = re.compile(r'^\s+([A-Za-z0-9_]+) As ([A-Za-z0-9_.]+)', re.M)
+          def ctrls(p):
+              return {(m.group(1), m.group(2)) for m in pat.finditer(p.read_text(encoding='utf-8-sig'))}
+          skip = {'App.pa.yaml', '_EditorState.pa.yaml'}
+          names = sorted({p.name for p in live.glob('*.pa.yaml')} | {p.name for p in git.glob('*.pa.yaml')} - skip)
+          for n in names:
+              if n in skip: continue
+              l = ctrls(live / n) if (live / n).exists() else None
+              g = ctrls(git / n) if (git / n).exists() else None
+              if l is None: print(f'{n}: only in Git ({len(g)} controls)'); continue
+              if g is None: print(f'{n}: only in LIVE ({len(l)} controls)'); continue
+              ol, og = sorted(l - g), sorted(g - l)
+              print(f'{n}: live={len(l)} git={len(g)} onlyLive={len(ol)} onlyGit={len(og)}')
+              for c in ol[:15]: print('   +live', c[0], c[1])
+              for c in og[:15]: print('   +git ', c[0], c[1])
+          PY
