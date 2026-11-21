@@ -1,0 +1,9 @@
+{
+  "repositories": [
+    { "name": "clean-nano-ai-bridge", "branches": ["main"], "workdirs": ["C:\\work\\clean-nano-ai-bridge"] },
+    { "name": "cn-engineering-mcp", "branches": ["main"], "workdirs": ["C:\\work\\cn-engineering-mcp"] }
+  ],
+  "timeoutMs": 300000,
+  "maxOutputBytes": 200000,
+  "allowApiKeyEnv": false
+}
