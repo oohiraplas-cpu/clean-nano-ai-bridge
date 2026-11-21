@@ -12,6 +12,9 @@ const windowsJobs = require('./windowsJobs');
 const cnaiRouter = require('./cnaiRouter');
 const googleCapability = require('./googleCapability');
 const googleCopilotEntry = require('./googleCopilotEntry');
+const appsheetCnkk = require('./appsheetCnkk');
+const { createEditorDriver, createMobileRunner } = require('./appsheetEditorDriver');
+const { createAppSheetApi } = require('./appsheetOfficialApi');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -1786,16 +1789,33 @@ const googleSnapshots = new Map();
 function readProviderRegistry() {
   try { return JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'ai-provider-registry.json'), 'utf8')); } catch (_) { return null; }
 }
+function buildAppSheetExtension(google, googleClient) {
+  const a = google.appsheet || {};
+  let recipes = {};
+  if (a.recipesModule && require('node:path').isAbsolute(a.recipesModule)) { try { recipes = require(a.recipesModule); } catch (_) { recipes = {}; } }
+  const editor = a.editorStorageState ? createEditorDriver({ storageStatePath: a.editorStorageState, recipes }) : null;
+  const verifier = a.verifierStorageState ? {
+    id: 'router-independent-verifier',
+    editor: createEditorDriver({ storageStatePath: a.verifierStorageState, recipes }),
+    mobile: createMobileRunner({ storageStatePath: a.verifierStorageState }),
+    api: createAppSheetApi({ appId: a.appId, accessKey: a.accessKey })
+  } : null;
+  return appsheetCnkk.createAppSheetExtension({
+    config: google, editor, verifier,
+    api: createAppSheetApi({ appId: a.appId, accessKey: a.accessKey }),
+    planner: googleClient ? appsheetCnkk.createGeminiPlanner({ client: googleClient, config: google }) : null
+  });
+}
+
 function getRouterAdapters(config) {
   if (!config || typeof config !== 'object') return cnaiRouter.defaultAdapters();
   if (!routerAdapterCache.has(config)) {
     const google = config.google || {};
     const oauth = google.oauth || {};
     const configured = Boolean(oauth.clientId && oauth.clientSecret && oauth.refreshToken);
+    const client = configured ? googleCapability.createGoogleClient({ oauth }) : null;
     routerAdapterCache.set(config, cnaiRouter.defaultAdapters({
-      adapters: configured
-        ? { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client: googleCapability.createGoogleClient({ oauth }), config: google, snapshots: googleSnapshots, providerRegistry: readProviderRegistry() }) }
-        : { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client: null, config: google, snapshots: googleSnapshots, providerRegistry: readProviderRegistry() }) }
+      adapters: { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client, config: google, snapshots: googleSnapshots, providerRegistry: readProviderRegistry(), extensions: [buildAppSheetExtension(google, client)] }) }
     }));
   }
   return routerAdapterCache.get(config);

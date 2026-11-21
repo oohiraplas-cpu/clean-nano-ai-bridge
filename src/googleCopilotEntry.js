@@ -13,7 +13,8 @@ const { maskDeep } = require('./secretMasking');
 
 const ID_PATTERN = '^[A-Za-z0-9._:-]{1,128}$';
 const ID_RE = new RegExp(ID_PATTERN);
-const ALLOWED = Object.freeze(Object.entries(CAPABILITIES).filter(([, d]) => d.readOnly || d.humanGate).map(([name]) => name));
+const { APPSHEET_CAPABILITIES } = require('./appsheetCnkk');
+const ALLOWED = Object.freeze(Object.entries({ ...CAPABILITIES, ...APPSHEET_CAPABILITIES }).filter(([, d]) => d.readOnly || d.humanGate).map(([name]) => name));
 
 const GOOGLE_COPILOT_TOOL = Object.freeze({
   name: 'cnai_google_request',
@@ -47,7 +48,8 @@ async function handle(input, { adapter, state = cnaiRouter.defaultState } = {}) 
     route: 'googleWorkspace',
     riskLevel: 'LOW',
     idempotencyKey: `copilot-google:${input.requestId}`,
-    payload: { capability: input.capability, params: input.params || {} }
+    payload: { capability: input.capability, params: input.params || {} },
+    proposalOnly: true // this window can only read or propose; execution of writes needs a human via the authenticated router
     // approvedByHuman is intentionally never forwarded from this entry.
   }, { ...cnaiRouter.defaultAdapters(), googleWorkspace: adapter });
 

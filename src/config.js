@@ -56,7 +56,17 @@ function getConfig(env = process.env) {
       // Gemini API generation is OFF unless explicitly enabled (cost guard: only after confirming it stays within the free tier).
       gemini: { enabled: env.GOOGLE_GEMINI_ENABLED === 'true', model: env.GOOGLE_GEMINI_MODEL || '' },
       // AppSheet API is optional. CNKK defaults to Google Sheets (+GAS).
-      appsheet: { appId: env.GOOGLE_APPSHEET_APP_ID || '', accessKey: env.GOOGLE_APPSHEET_ACCESS_KEY || '' },
+      appsheet: {
+        appId: env.GOOGLE_APPSHEET_APP_ID || '',
+        accessKey: env.GOOGLE_APPSHEET_ACCESS_KEY || '',
+        allowedAppIds: (env.GOOGLE_APPSHEET_ALLOWED_APP_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
+        allowedScriptIds: (env.GOOGLE_APPSHEET_ALLOWED_SCRIPT_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
+        assetDir: env.GOOGLE_APPSHEET_ASSET_DIR || '',
+        // Safe browser automation (Editor). Logged-in session files + recorded Editor recipes (absolute path to a JS module). No credentials here.
+        editorStorageState: env.GOOGLE_APPSHEET_STORAGE_STATE || '',
+        verifierStorageState: env.GOOGLE_APPSHEET_VERIFIER_STORAGE_STATE || env.GOOGLE_APPSHEET_STORAGE_STATE || '',
+        recipesModule: env.GOOGLE_APPSHEET_RECIPES || ''
+      },
       cnkk: {
         backend: env.GOOGLE_CNKK_BACKEND === 'appsheet' ? 'appsheet' : 'sheets',
         appsheetTable: env.GOOGLE_CNKK_APPSHEET_TABLE || '',

@@ -78,13 +78,15 @@ const sid = (v, name) => { need(typeof v === 'string' && SIMPLE_ID.test(v), `${n
 const text = (v, name, max = MAX_TEXT) => { need(typeof v === 'string' && v.length > 0 && v.length <= max, `${name}は1〜${max}文字の文字列である必要があります`); return v; };
 const noCrlf = (v, name) => { text(v, name, 998); need(!/[\r\n]/.test(v), `${name}に改行は使えません`); return v; };
 
+function appSheetCapabilities() { try { return require('./appsheetCnkk').APPSHEET_CAPABILITIES; } catch (_) { return {}; } }
+
 function describeCapabilities(providerRegistry) {
   return {
     implementationOwner: IMPLEMENTATION_OWNER,
     ownerStatus: providerRegistry?.providers?.[IMPLEMENTATION_OWNER]?.status || 'UNKNOWN',
     executionPath: 'google_rest_api_with_existing_workspace_oauth',
     appSheetApiRequired: false,
-    capabilities: Object.entries(CAPABILITIES).map(([capability, c]) => ({ capability, ...c }))
+    capabilities: Object.entries({ ...CAPABILITIES, ...appSheetCapabilities() }).map(([capability, c]) => ({ capability, ...c }))
   };
 }
 
@@ -588,11 +590,11 @@ function resolveCnkk(capability, params, config) {
 }
 
 /**
- * Router adapter. Approval is bound to the proposed payload: when a request is BLOCKED for approval its payload is remembered
- * (by requestId); a later approved resume executes exactly that payload. A different payload is refused.
+ * Approval binding. When a request is BLOCKED for approval its payload is remembered (by requestId); a later approved resume executes
+ * exactly that payload. A different payload / proposal hash is refused. `execute({capability, params, approvedByHuman, proposalKey,
+ * proposalOnly})` must return errorCode HUMAN_APPROVAL_REQUIRED + proposalHash when it needs approval.
  */
-function createGoogleWorkspaceAdapter(deps) {
-  const snapshots = deps.snapshots || new Map();
+function bindApproval(execute) {
   const pending = new Map();
   return async (record, input) => {
     const payload = input.payload && typeof input.payload === 'object' ? input.payload : {};
@@ -606,11 +608,20 @@ function createGoogleWorkspaceAdapter(deps) {
       }
       ({ capability, params } = stored);
     }
-    const result = await executeGoogleCapability({ ...deps, snapshots }, { capability, params, approvedByHuman: input.approvedByHuman === true, proposalKey: record.requestId });
+    const result = await execute({ capability, params, approvedByHuman: input.approvedByHuman === true, proposalKey: record.requestId, proposalOnly: input.proposalOnly === true });
     if (result.errorCode === 'HUMAN_APPROVAL_REQUIRED') pending.set(record.requestId, { capability, params, hash: result.proposalHash });
     else if (result.success && stored) pending.delete(record.requestId);
     return result;
   };
 }
 
-module.exports = { IMPLEMENTATION_OWNER, CAPABILITIES, GoogleCapabilityError, describeCapabilities, consentScopes, createGoogleClient, executeGoogleCapability, createGoogleWorkspaceAdapter, proposalHash };
+/** Router adapter. `deps.extensions`: [{ handles(capability), execute(request) }] (e.g. AppSheet Editor pipeline) take precedence. */
+function createGoogleWorkspaceAdapter(deps) {
+  const snapshots = deps.snapshots || new Map();
+  return bindApproval((req) => {
+    const ext = (deps.extensions || []).find((e) => e.handles(req.capability));
+    return ext ? ext.execute(req) : executeGoogleCapability({ ...deps, snapshots }, req);
+  });
+}
+
+module.exports = { IMPLEMENTATION_OWNER, CAPABILITIES, GoogleCapabilityError, describeCapabilities, consentScopes, createGoogleClient, executeGoogleCapability, createGoogleWorkspaceAdapter, bindApproval, proposalHash, sha256 };

@@ -33,7 +33,7 @@ const EXECUTION_STATUSES = Object.freeze([
   'COMPLETED', 'PARTIAL', 'BLOCKED', 'FAILED', 'ROLLED_BACK'
 ]);
 
-const GOOGLE_CAPABILITY_NAME = /^(google|gemini|gmail|chat|drive|sheets|docs|calendar|gas|appsheet|cnkk)\.[a-z]+$/;
+const GOOGLE_CAPABILITY_NAME = /^(google|gemini|gmail|chat|drive|sheets|docs|calendar|gas|appsheet|cnkk)\.[a-z]+(\.[a-z]+)?$/;
 const RESUMABLE_STATUSES = Object.freeze(['FAILED', 'BLOCKED']);
 const MAX_HISTORY = 200;
 
