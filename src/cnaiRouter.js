@@ -22,6 +22,7 @@ const ROUTES = Object.freeze([
   'powerPlatformStandard',
   'operationsMcp',
   'windowsExecutor',
+  'googleWorkspace',
   'localCode',
   'externalAiReference',
   'blockedPaidRoute'
@@ -41,6 +42,8 @@ const PLATFORM_ROUTE_MAP = Object.freeze({
   powerapps: 'powerPlatformStandard', powerautomate: 'powerPlatformStandard',
   powerplatform: 'powerPlatformStandard', copilotstudio: 'powerPlatformStandard',
   operationsmcp: 'operationsMcp', mcp: 'operationsMcp',
+  google: 'googleWorkspace', googleworkspace: 'googleWorkspace', sheets: 'googleWorkspace', drive: 'googleWorkspace',
+  gas: 'googleWorkspace', appsscript: 'googleWorkspace', cnkk: 'googleWorkspace',
   windows: 'windowsExecutor', executor: 'windowsExecutor', windowsexecutor: 'windowsExecutor',
   code: 'localCode', git: 'localCode', test: 'localCode', ci: 'localCode', local: 'localCode',
   chatgpt: 'externalAiReference', gemini: 'externalAiReference', rakuten: 'externalAiReference',

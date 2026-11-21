@@ -43,6 +43,16 @@ function getConfig(env = process.env) {
       ttlMs: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_TTL_MS, 300000)),
       maxEntries: Math.max(1, parsePositiveInt(env.STATE_CONTEXT_MAX_ENTRIES, 1000))
     },
+    // Google capability (Sheets / Drive / GAS / CNKK). Reuses the existing Google OAuth (refresh token); secrets are env-only.
+    google: {
+      oauth: {
+        clientId: env.GOOGLE_OAUTH_CLIENT_ID || '',
+        clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+        refreshToken: env.GOOGLE_OAUTH_REFRESH_TOKEN || ''
+      },
+      readonlyFunctions: (env.GOOGLE_GAS_READONLY_FUNCTIONS || '').split(',').map((v) => v.trim()).filter(Boolean),
+      cnkk: { spreadsheetId: env.GOOGLE_CNKK_SPREADSHEET_ID || '', gasScriptId: env.GOOGLE_CNKK_GAS_SCRIPT_ID || '' }
+    },
     taskStoreBackend: env.TASK_STORE_BACKEND || 'file',
     sharepoint: {
       tenantId: env.SHAREPOINT_TENANT_ID || env.AZURE_TENANT_ID || '',
