@@ -1,28 +1,55 @@
-# Google Capability（Sheets / Drive / GAS / CNKK）
+# Google Workspace Capability（Gemini / Gmail / Chat / Drive / Sheets / Docs / Calendar / GAS / AppSheet CNKK）
 
-CNAI Router の `googleWorkspace` Route。`platformHint` は `google` / `sheets` / `drive` / `gas` / `appsscript` / `cnkk`。
-実装担当は Gemini（`implementationOwner`）。実行は既存Google OAuth（refresh token）でGoogle REST APIを呼ぶ。Gemini CLI実行ではなく、Gemini Registryが BLOCKED でも REST 実行は妨げない（`ownerStatus`で表示）。追加課金なし・APIキー不使用・AppSheet API不要。
+経路: スマホ → Copilot → (`/connector/mcp` `cnai_google_request`) → CNAI Router(`googleWorkspace`) → Gemini担当 → Google Workspace。
+`requestType` が `gmail.send` 等のcapability名なら、`platformHint`なしでRouterが自動選択する（`gemini`/`google`ヒントも可）。
 
-| capability | 自動実行 | Human Gate | 備考 |
+実装担当は Gemini（`owner`/`implementationOwner`）。実行は同一Workspaceドメインの既存Google OAuth（refresh token）でGoogle REST APIを呼ぶ。**Gemini CLI実行ではない**（CLIはRegistry上BLOCKEDのまま。`gemini.status`で確認）。追加課金なし。
+
+## Capability一覧
+| capability | 自動 | Human Gate | 最小scope |
 |---|---|---|---|
-| gas.read / gas.verify / sheets.read / drive.read / cnkk.read | ○ | - | 読取のみ。`gas.verify`は期待値(`expectedManifestHash`/`expectedFiles`/`checkDeployments`)が無ければPASSにしない |
-| gas.update / gas.deploy | - | **必須**（`approvedByHuman:true`） | 承認前はAPIを一切呼ばない |
-| gas.execute | allowlist関数のみ | allowlist外は必須 | `GOOGLE_GAS_READONLY_FUNCTIONS`。実行成功だけでは`verified`にしない |
-| sheets.update / cnkk.update | ○ | - | Snapshot→更新→再取得照合 |
+| google.status / gemini.status | ○ | - | （consent不足の診断。トークンは返さない） |
+| gemini.generate | ○（既定OFF） | - | generative-language.retriever。`GOOGLE_GEMINI_ENABLED=true`のみ |
+| gmail.read | ○ | - | gmail.readonly |
+| gmail.draft | ○ | - | gmail.compose（作成→再取得照合） |
+| **gmail.send** | - | **必須** | gmail.compose + gmail.readonly |
+| chat.read | ○ | - | chat.messages.readonly |
+| **chat.send** | - | **必須** | chat.messages.create + readonly |
+| drive.read | ○ | - | drive.metadata.readonly |
+| sheets.read | ○ | - | spreadsheets.readonly |
+| **sheets.update** | - | **必須** | spreadsheets |
+| docs.read | ○ | - | documents.readonly |
+| **docs.write**（append/replace） | - | **必須** | documents |
+| calendar.read | ○ | - | calendar.events.readonly |
+| **calendar.write**（create/update。削除なし） | - | **必須** | calendar.events |
+| gas.read / gas.verify | ○ | - | script.projects.readonly (+deployments) |
+| **gas.update / gas.deploy** | - | **必須** | script.projects (+deployments) |
+| gas.execute | allowlist関数のみ | allowlist外は必須 | script.scriptapp |
+| appsheet.read / **appsheet.write**（Add/Edit） | read ○ | write 必須 | （AppSheet APIは任意・未設定ならfail-closed） |
+| cnkk.read / **cnkk.update** | read ○ | update 必須 | 既定=Sheets。`GOOGLE_CNKK_BACKEND=appsheet`でAppSheet |
 
-CNKK = Google Sheets（`GOOGLE_CNKK_SPREADSHEET_ID`）＋必要時GAS（`GOOGLE_CNKK_GAS_SCRIPT_ID`）。未設定なら推測せず `ADAPTER_NOT_CONFIGURED`。
+各capabilityは**そのscopeだけに絞ったアクセストークン**を取得する（refresh tokenの`scope`サブセット）。広域scope（`mail.google.com`、全Drive等）は使わない。
 
-書込みは必ず 変更前Snapshot（`snapshotId`・メモリ保持）→ 書込み → 再取得 → 照合 → Evidence（`lastDispatchOutput.evidence`）。照合不一致は `VERIFICATION_FAILED`（COMPLETEDにしない）。出力は `maskDeep` 済み。
+## 実行パイプライン（write）
+Human Gate（承認前はGoogle呼び出しゼロ）→ 変更前Snapshot → 実行 → 再取得 → 照合 → Evidence → Verifier（`verifier.status` = PASS/FAIL/NOT_VERIFIED）。照合不一致は `VERIFICATION_FAILED`（COMPLETEDにしない）。
+- gmail.send: 下書き作成→承認内容と照合→不一致なら削除して中止→送信→SENTを再取得。宛先は`GOOGLE_WORKSPACE_DOMAIN`内のみ（外部は`allowExternal:true`+承認。ドメイン未設定は送信拒否）。ヘッダ注入は拒否。
+- docs.write: `requiredRevisionId`付きbatchUpdate。calendar: `sendUpdates=none`。
+- 出力・Evidenceは`maskDeep`済み。
 
-## 呼び出し例（`/router/request` または MCP `cnai_route_request`）
-```json
-{ "requestType": "gas.update", "platformHint": "gas",
-  "payload": { "params": { "scriptId": "…", "files": [ {"name":"appsscript","type":"JSON","source":"…"}, … ] } } }
-```
-承認待ち(`BLOCKED`/`HUMAN_APPROVAL_REQUIRED`)の後、人間が承認したら `/router/request/:id/resume` に **同じ payload** と `"approvedByHuman": true` を送る。
-`gas.update` の `files` は `appsscript`マニフェストを含む全ファイル（Google APIは全置換）。
+## 承認フロー（スマホから）
+1. Copilotが `cnai_google_request` を呼ぶ。この入口は読取専用窓口のため `approvedByHuman` を渡せない。
+2. 書込み系は **BLOCKED / HUMAN_APPROVAL_REQUIRED** で `approval.summary`（宛先・件名・本文ハッシュ等）・`proposalHash`・`routerRequestId` が返る（Googleは未実行）。
+3. 承認者が認証付き `POST /router/request/:routerRequestId/resume` に `{"approvedByHuman":true,"approvedProposalHash":"<hash>"}` を送る。**実行されるのは提案時のpayload**。異なるpayload/hashは `APPROVAL_PAYLOAD_MISMATCH` で拒否。
+   （承認操作そのものを電話から行うUI（Teams/Power Automate承認等）は未実装。上記エンドポイントを呼ぶ承認フローが別途必要。）
 
-## 制約・未検証
-- 実Google環境での疎通は未検証（単体テストは注入クライアント）。OAuthのスコープ追加が必要な場合は人間のconsentが必要。
-- 環境変数名 `GOOGLE_OAUTH_*` は本リポジトリに既存Google OAuth実装が無いため新設した名称。既存の値を同名で設定する。
-- Snapshotはプロセスメモリのみ（再起動で消える）。復元は保存済みSnapshotの`files`で`gas.update`（承認要）。
+## 本人操作（最後に1回）
+同一Workspaceドメインの既存アカウントで **初回OAuth同意を1回**:
+`node scripts/google-consent-plan.js` → 全scope（16件）を1つの同意URLで提示。得たrefresh tokenを `GOOGLE_OAUTH_REFRESH_TOKEN` に設定（環境変数のみ）。
+`google.status` で不足scopeを確認できる。ほか環境変数: `GOOGLE_WORKSPACE_DOMAIN`、必要に応じ`GOOGLE_CNKK_*`。
+
+## 未検証・制約
+- 実Google環境での疎通は未実施（単体/統合テストは注入クライアント）。
+- Snapshotはプロセスメモリのみ（再起動で消える）。復元は保存済みSnapshotで該当writeを承認付きで再実行。
+- 提案(pending)もメモリ保持のため、Bridge再起動後の承認は不可（再提案が必要）。
+- `gas.execute`成功は副作用の検証にならない（`verified:false`）。別途`gas.verify`/read。
+- `GOOGLE_OAUTH_*` 等の環境変数名は新設（既存実装がリポジトリに無いため）。

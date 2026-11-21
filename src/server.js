@@ -11,6 +11,7 @@ const cnaiCopilotEntry = require('./cnaiCopilotEntry');
 const windowsJobs = require('./windowsJobs');
 const cnaiRouter = require('./cnaiRouter');
 const googleCapability = require('./googleCapability');
+const googleCopilotEntry = require('./googleCopilotEntry');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -1782,6 +1783,9 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
 // returns ADAPTER_NOT_CONFIGURED (BLOCKED) instead of pretending to execute.
 const routerAdapterCache = new WeakMap();
 const googleSnapshots = new Map();
+function readProviderRegistry() {
+  try { return JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'ai-provider-registry.json'), 'utf8')); } catch (_) { return null; }
+}
 function getRouterAdapters(config) {
   if (!config || typeof config !== 'object') return cnaiRouter.defaultAdapters();
   if (!routerAdapterCache.has(config)) {
@@ -1790,8 +1794,8 @@ function getRouterAdapters(config) {
     const configured = Boolean(oauth.clientId && oauth.clientSecret && oauth.refreshToken);
     routerAdapterCache.set(config, cnaiRouter.defaultAdapters({
       adapters: configured
-        ? { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client: googleCapability.createGoogleClient({ oauth }), config: google, snapshots: googleSnapshots }) }
-        : {}
+        ? { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client: googleCapability.createGoogleClient({ oauth }), config: google, snapshots: googleSnapshots, providerRegistry: readProviderRegistry() }) }
+        : { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client: null, config: google, snapshots: googleSnapshots, providerRegistry: readProviderRegistry() }) }
     }));
   }
   return routerAdapterCache.get(config);
@@ -3032,10 +3036,10 @@ function connectorReadOnlyGuard(req, res, next) {
   if (typeof method === 'string' && method.startsWith('notifications/')) return next();
   if (method === 'ping' || method === 'initialize') return next();
   if (method === 'tools/list') {
-    return res.status(200).json(jsonRpcResult(id, { tools: [...PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)), ...cnaiCopilotEntry.COPILOT_TOOLS] }));
+    return res.status(200).json(jsonRpcResult(id, { tools: [...PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)), ...cnaiCopilotEntry.COPILOT_TOOLS, googleCopilotEntry.GOOGLE_COPILOT_TOOL] }));
   }
   if (method === 'tools/call') {
-    if (typeof params.name === 'string' && (CONNECTOR_READONLY_TOOLS.includes(params.name) || cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(params.name))) return next();
+    if (typeof params.name === 'string' && (CONNECTOR_READONLY_TOOLS.includes(params.name) || cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(params.name) || params.name === googleCopilotEntry.GOOGLE_COPILOT_TOOL.name)) return next();
     return res.status(200).json(jsonRpcError(id, -32601, 'このコネクタでは読み取り専用ツールのみ使用できます'));
   }
   return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${typeof method === 'string' ? method : ''}`));
@@ -3200,6 +3204,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   // Copilot CNAI entry (cnai_status / cnai_route_request): READ-only, served here instead of the generic MCP path.
   const copilotCnaiCall = async (req, res, next) => {
     const body = req.body;
+    if (body && body.method === 'tools/call' && body.params && body.params.name === googleCopilotEntry.GOOGLE_COPILOT_TOOL.name) {
+      const result = await googleCopilotEntry.handle(body.params.arguments || {}, { adapter: getRouterAdapters(config).googleWorkspace, state: cnaiRouter.defaultState });
+      return res.status(200).json(jsonRpcResult(body.id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result, isError: result.status === 'REJECTED' || result.status === 'FAILED' }));
+    }
     if (!body || body.method !== 'tools/call' || !body.params || !cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(body.params.name)) return next();
     const entry = cnaiCopilotEntry.createCopilotEntry({
       reader: sharePointReader,
