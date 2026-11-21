@@ -3114,7 +3114,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   }));
   app.get('/job/pull', jobAuth, jobRoute((req) => {
     const executorId = typeof req.query.executorId === 'string' ? req.query.executorId : req.query.executor_id;
-    return { accepted: true, ...windowsJobs.pullWindowsJob(jobState, windowsJobs.readExecutorId({ executorId })) };
+    const providers = typeof req.query.providers === 'string' && req.query.providers.trim()
+      ? req.query.providers.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean)
+      : null;
+    return { accepted: true, ...windowsJobs.pullWindowsJob(jobState, windowsJobs.readExecutorId({ executorId }), providers) };
   }));
   app.post('/job/checkpoint', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.checkpointWindowsJob(jobState, req.body || {}) })));
   app.post('/job/result', jobAuth, jobRoute((req) => ({ accepted: true, ...windowsJobs.resultWindowsJob(jobState, req.body || {}) })));

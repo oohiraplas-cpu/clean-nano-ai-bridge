@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "note": "ACTIVEは `scripts/provider-worker.js --selftest <provider>` が実CLI呼び出しでPASSした場合のみ書き込まれる。手編集でACTIVEにしない。",
+  "providers": {
+    "gemini": {
+      "status": "BLOCKED",
+      "wallboard": false,
+      "cli": "gemini",
+      "blocker": "Gemini CLI が検証環境(PATH)に存在しない",
+      "unblockCondition": "Windows実機に Gemini CLI(gemini.exe) をインストールしGoogleアカウントでログイン後、`node scripts/provider-worker.js --selftest gemini` をPASSさせる"
+    },
+    "claude_code": {
+      "status": "ACTIVE",
+      "wallboard": true,
+      "cli": "claude",
+      "verifiedAt": "2026-11-21T07:52:49.394Z",
+      "cliVersion": "2.1.330 (Claude Code)",
+      "verifiedPlatform": "linux-sandbox (Claude Code cloud container)",
+      "windowsVerified": false,
+      "note": "実CLI呼び出しselftestはLinux検証環境でPASS。Windows実機では未検証のため、Windows起動時に同selftestを再実行すること。"
+    }
+  }
+}

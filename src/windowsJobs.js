@@ -23,6 +23,7 @@ const RESULT_STATUSES = Object.freeze(['COMPLETED', 'FAILED', 'REJECTED', 'BLOCK
 const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const EXECUTOR_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 const RESUME_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const PROVIDER_PATTERN = /^[a-z][a-z0-9_]{1,31}$/;
 const MAX_ACTION_LENGTH = 1000;
 const MAX_WORKSPACE_LENGTH = 500;
 const MAX_CHECKPOINT_HISTORY = 100;
@@ -130,7 +131,7 @@ function heartbeatExecutor(state, body = {}) {
   return { accepted: true, executorId, status: 'OK', reRegistered, executor };
 }
 
-function createWindowsJobRecord(taskId, action, workspace, riskLevel, source) {
+function createWindowsJobRecord(taskId, action, workspace, riskLevel, source, target = {}) {
   const waiting = !AUTO_RISK_LEVELS.includes(riskLevel);
   const timestamp = now();
   return {
@@ -139,6 +140,10 @@ function createWindowsJobRecord(taskId, action, workspace, riskLevel, source) {
     workspace,
     riskLevel,
     source,
+    // Optional AI Provider routing (Provider Worker). null = legacy Windows Executor job.
+    provider: target.provider || null,
+    repository: target.repository || null,
+    branch: target.branch || null,
     status: waiting ? 'WAITING_FOR_APPROVAL' : 'QUEUED',
     accepted: true,
     claimedBy: null,
@@ -165,23 +170,31 @@ function submitWindowsJob(state, params = {}, source = 'submit') {
   if (workspace.length > MAX_WORKSPACE_LENGTH) throw requestError(`workspaceは${MAX_WORKSPACE_LENGTH}文字以内にしてください`);
   if (!riskLevel) throw requestError('riskLevelはLOW, MEDIUM, HIGH, CRITICALのいずれかである必要があります');
 
+  const provider = asTrimmedString(params.provider)?.toLowerCase() || null;
+  if (provider && !PROVIDER_PATTERN.test(provider)) throw requestError('providerの形式が不正です');
+  const repository = asTrimmedString(params.repository);
+  const branch = asTrimmedString(params.branch);
+  if ((repository && repository.length > 200) || (branch && branch.length > 200)) throw requestError('repository/branchが長すぎます');
+
   const existing = state.jobs.get(taskId);
   if (existing) {
     // Never re-run or overwrite: the caller learns the current state of the original job.
     return { taskId, accepted: false, duplicate: true, status: existing.status, reason: 'taskId already exists' };
   }
-  const job = createWindowsJobRecord(taskId, maskSecrets(action), maskSecrets(workspace), riskLevel, source);
+  const job = createWindowsJobRecord(taskId, maskSecrets(action), maskSecrets(workspace), riskLevel, source, { provider, repository, branch });
   state.jobs.set(taskId, job);
   return { taskId, accepted: true, status: job.status };
 }
 
-function pullWindowsJob(state, executorId) {
+/** providers: optional list. With a list only those providers' jobs are claimed; without it, provider jobs are skipped (legacy executors). */
+function pullWindowsJob(state, executorId, providers = null) {
   const { executor } = ensureExecutor(state, executorId);
   executor.lastHeartbeatAt = now();
   for (const job of state.jobs.values()) {
     if (job.status !== 'QUEUED') continue;
     if (!AUTO_RISK_LEVELS.includes(job.riskLevel)) continue; // defence in depth; HIGH/CRITICAL are never QUEUED
     if (job.claimedBy && job.claimedBy !== executorId) continue;
+    if (Array.isArray(providers) ? job.provider === null || !providers.includes(job.provider) : job.provider !== null) continue;
     job.claimedBy = executorId;
     job.status = 'RUNNING';
     job.updatedAt = now();
