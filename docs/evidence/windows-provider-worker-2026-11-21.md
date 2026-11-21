@@ -23,3 +23,19 @@
 
 ## 未検証
 Windows実機での起動・CLI実呼び出し（本環境はLinux）。追加課金なし（APIキー非使用、新規有料API無し）。
+
+## merge後確認（追記）
+- PR #268 を merge: `cd0908b6d3c38dff5a6d99c63a94ab0794d0d255`（merge時のhead `c9a54b6`）。
+- merge後のpush workflowはすべて success:
+  - clean-nano-bridge Integration Test #2273
+  - Phase 6 Validation - State Manager Enforcement #105
+  - Verify Production Bridge 28 Tools Two Pass #74（非破壊の本番検証）
+  - Build and deploy Node.js app to Azure Web App #223（既存の自動デプロイ。手動デプロイ・本番操作なし）
+- 本番にデプロイされたのはBridge側の `provider` 対応のみ。Provider WorkerはWindows実機で動かす別プロセスで、本番では未起動。
+- 本番URLへの個別のhealth呼び出しは未実施（Verify Production Bridge の成功で代替）。
+- branch protectionの設定は直接確認していない（mergeable=clean を根拠にした）。
+
+## 未解決
+- Windows実機での `--probe` / `--selftest claude_code`（claude_codeは `windowsVerified=false`）。
+- Gemini CLI未導入（BLOCKED）。
+- 指示にあった基準commit `cbfb2cf` と OZ Router / Capability Registry の実体は、本リポジトリで確認できていない。
