@@ -22,6 +22,7 @@ const ROUTES = Object.freeze([
   'powerPlatformStandard',
   'operationsMcp',
   'windowsExecutor',
+  'googleWorkspace',
   'localCode',
   'externalAiReference',
   'blockedPaidRoute'
@@ -32,6 +33,7 @@ const EXECUTION_STATUSES = Object.freeze([
   'COMPLETED', 'PARTIAL', 'BLOCKED', 'FAILED', 'ROLLED_BACK'
 ]);
 
+const GOOGLE_CAPABILITY_NAME = /^(google|gemini|gmail|chat|drive|sheets|docs|calendar|gas|appsheet|cnkk)\.[a-z]+(\.[a-z]+)?$/;
 const RESUMABLE_STATUSES = Object.freeze(['FAILED', 'BLOCKED']);
 const MAX_HISTORY = 200;
 
@@ -41,9 +43,13 @@ const PLATFORM_ROUTE_MAP = Object.freeze({
   powerapps: 'powerPlatformStandard', powerautomate: 'powerPlatformStandard',
   powerplatform: 'powerPlatformStandard', copilotstudio: 'powerPlatformStandard',
   operationsmcp: 'operationsMcp', mcp: 'operationsMcp',
+  google: 'googleWorkspace', googleworkspace: 'googleWorkspace', sheets: 'googleWorkspace', drive: 'googleWorkspace',
+  gas: 'googleWorkspace', appsscript: 'googleWorkspace', cnkk: 'googleWorkspace',
+  gmail: 'googleWorkspace', chat: 'googleWorkspace', docs: 'googleWorkspace', calendar: 'googleWorkspace',
+  appsheet: 'googleWorkspace', gemini: 'googleWorkspace',
   windows: 'windowsExecutor', executor: 'windowsExecutor', windowsexecutor: 'windowsExecutor',
   code: 'localCode', git: 'localCode', test: 'localCode', ci: 'localCode', local: 'localCode',
-  chatgpt: 'externalAiReference', gemini: 'externalAiReference', rakuten: 'externalAiReference',
+  chatgpt: 'externalAiReference', rakuten: 'externalAiReference',
   japanai: 'externalAiReference', externalai: 'externalAiReference',
   premium: 'blockedPaidRoute', paid: 'blockedPaidRoute'
 });
@@ -106,7 +112,9 @@ function classify(input) {
 
   const platformHint = asTrimmedString(input.platformHint)?.toLowerCase() || null;
   const mappedRoute = platformHint ? PLATFORM_ROUTE_MAP[platformHint] : null;
-  const route = explicitRoute || mappedRoute;
+  // Auto-selection: a Google capability name (gmail.send, gas.update, ...) routes to googleWorkspace (Gemini = implementation owner).
+  const googleCapabilityRoute = GOOGLE_CAPABILITY_NAME.test(requestType) ? 'googleWorkspace' : null;
+  const route = explicitRoute || mappedRoute || googleCapabilityRoute;
   if (!route) throw requestError('platformHintまたはrouteのいずれかを指定してください（未知のplatformHintから推測はしません）');
 
   const riskLevel = windowsJobs.normalizeRiskLevel(input.riskLevel) || 'LOW';
@@ -199,7 +207,7 @@ async function dispatch(record, input, adapters) {
 function deriveStatus(dispatchResult) {
   if (dispatchResult.success && dispatchResult.verified) return { executionStatus: 'COMPLETED', verificationStatus: 'VERIFIED' };
   if (dispatchResult.success && !dispatchResult.verified) return { executionStatus: 'PARTIAL', verificationStatus: 'UNVERIFIED' };
-  const blockingCodes = ['ADAPTER_NOT_CONFIGURED', 'HUMAN_APPROVAL_REQUIRED', 'PAID_ROUTE_BLOCKED', 'EXTERNAL_AI_UNAVAILABLE'];
+  const blockingCodes = ['ADAPTER_NOT_CONFIGURED', 'HUMAN_APPROVAL_REQUIRED', 'PAID_ROUTE_BLOCKED', 'EXTERNAL_AI_UNAVAILABLE', 'APPROVAL_PAYLOAD_MISMATCH', 'CONSENT_REQUIRED', 'EXTERNAL_RECIPIENT_BLOCKED'];
   if (blockingCodes.includes(dispatchResult.errorCode)) return { executionStatus: 'BLOCKED', verificationStatus: 'UNVERIFIED' };
   return { executionStatus: 'FAILED', verificationStatus: 'FAILED' };
 }

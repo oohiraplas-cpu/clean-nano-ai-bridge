@@ -7,6 +7,7 @@ const { createApp, CONNECTOR_READONLY_TOOLS, MCP_METHODS, PUBLISHED_TOOLS } = re
 const { getConfig } = require('../src/config');
 const { DIRECT_TOOL_NAMES } = require('../src/toolVisibility');
 const { COPILOT_TOOL_NAMES } = require('../src/cnaiCopilotEntry');
+const { GOOGLE_COPILOT_TOOL } = require('../src/googleCopilotEntry');
 
 async function startServer(env = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'connector-endpoint-'));
@@ -46,13 +47,13 @@ test('wrong or missing key is rejected; the master key does not work here and th
   } finally { await close(); }
 });
 
-test('tools/list returns exactly the read-only tools plus the Copilot CNAI entry', async () => {
+test('tools/list returns exactly the read-only tools plus the Copilot CNAI and Google entries', async () => {
   const { base, close } = await startServer({ CONNECTOR_API_KEY: 'connector-key-1234' });
   try {
     const res = await post(`${base}/connector/mcp?api_key=connector-key-1234`, rpc('tools/list'));
     assert.equal(res.status, 200);
     const names = (await res.json()).result.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, [...CONNECTOR_READONLY_TOOLS, ...COPILOT_TOOL_NAMES].sort());
+    assert.deepEqual(names, [...CONNECTOR_READONLY_TOOLS, ...COPILOT_TOOL_NAMES, GOOGLE_COPILOT_TOOL.name].sort());
   } finally { await close(); }
 });
 
@@ -133,4 +134,23 @@ test('/mcp is fail-closed (503) when MCP_API_KEY is not configured, and still wo
   const base = `http://127.0.0.1:${keyed.address().port}/mcp`;
   assert.equal((await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body })).status, 401);
   assert.equal((await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'k'.repeat(32) }, body })).status, 200);
+});
+
+test('phone path (Copilot -> connector -> Router -> Google): reads run, writes become proposals and are never executed', async () => {
+  const { base, close } = await startServer({ CONNECTOR_API_KEY: 'connector-key-1234', GOOGLE_WORKSPACE_DOMAIN: 'cleannano.co.jp' });
+  const call = async (args) => (await (await post(`${base}/connector/mcp?api_key=connector-key-1234`, rpc('tools/call', { name: 'cnai_google_request', arguments: args }))).json()).result.structuredContent;
+  try {
+    const status = await call({ requestId: 'phone-1', capability: 'gemini.status' });
+    assert.equal(status.status, 'COMPLETED');
+    assert.equal(status.owner, 'gemini');
+    const proposal = await call({ requestId: 'phone-2', capability: 'gmail.send', params: { to: ['a@cleannano.co.jp'], subject: 'S', body: 'B' } });
+    assert.equal(proposal.status, 'BLOCKED');
+    assert.equal(proposal.errorCode, 'HUMAN_APPROVAL_REQUIRED');
+    assert.equal(proposal.approval.summary.subject, 'S');
+    const forged = await call({ requestId: 'phone-3', capability: 'gmail.send', approvedByHuman: true, params: {} });
+    assert.equal(forged.status, 'REJECTED');
+    const unconfigured = await call({ requestId: 'phone-4', capability: 'calendar.read' });
+    assert.equal(unconfigured.status, 'BLOCKED');
+    assert.equal(unconfigured.errorCode, 'ADAPTER_NOT_CONFIGURED');
+  } finally { await close(); }
 });

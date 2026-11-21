@@ -10,6 +10,11 @@ const { publishedToolsFor, resolveVisibleCall } = require('./toolVisibility');
 const cnaiCopilotEntry = require('./cnaiCopilotEntry');
 const windowsJobs = require('./windowsJobs');
 const cnaiRouter = require('./cnaiRouter');
+const googleCapability = require('./googleCapability');
+const googleCopilotEntry = require('./googleCopilotEntry');
+const appsheetCnkk = require('./appsheetCnkk');
+const { createEditorDriver, createMobileRunner } = require('./appsheetEditorDriver');
+const { createAppSheetApi } = require('./appsheetOfficialApi');
 const express = require('express');
 const cors = require('cors');
 const { getConfig } = require('./config');
@@ -388,7 +393,8 @@ const MCP_PUBLIC_TOOLS = Object.freeze([
         idempotencyKey: { type: 'string', description: '同一キーの二重投入を防止する識別子（任意）' },
         correlationId: { type: 'string', description: '既存の追跡IDを引き継ぐ場合（任意）' },
         payload: { description: '実行対象への入力（秘密値はマスクして保存されます）' },
-        workspace: { type: 'string', description: 'windowsExecutor Route向けの作業対象パス（任意）' }
+        workspace: { type: 'string', description: 'windowsExecutor Route向けの作業対象パス（任意）' },
+        approvedByHuman: { type: 'boolean', description: 'googleWorkspaceのgas.update/gas.deploy等、人間承認が必要な操作で、人間が実際に承認した場合のみtrue' }
       },
       required: ['requestType'],
       additionalProperties: false
@@ -1776,6 +1782,45 @@ function createEmployeeLedgerEntries(writer, sharepointConfig) {
   };
 }
 
+// CNAI Router adapters. googleWorkspace is only wired when the existing Google OAuth is configured; otherwise the Router
+// returns ADAPTER_NOT_CONFIGURED (BLOCKED) instead of pretending to execute.
+const routerAdapterCache = new WeakMap();
+const googleSnapshots = new Map();
+function readProviderRegistry() {
+  try { return JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'config', 'ai-provider-registry.json'), 'utf8')); } catch (_) { return null; }
+}
+function buildAppSheetExtension(google, googleClient) {
+  const a = google.appsheet || {};
+  let recipes = {};
+  if (a.recipesModule && require('node:path').isAbsolute(a.recipesModule)) { try { recipes = require(a.recipesModule); } catch (_) { recipes = {}; } }
+  const editor = a.editorStorageState ? createEditorDriver({ storageStatePath: a.editorStorageState, recipes }) : null;
+  const verifier = a.verifierStorageState ? {
+    id: 'router-independent-verifier',
+    editor: createEditorDriver({ storageStatePath: a.verifierStorageState, recipes }),
+    mobile: createMobileRunner({ storageStatePath: a.verifierStorageState }),
+    api: createAppSheetApi({ appId: a.appId, accessKey: a.accessKey })
+  } : null;
+  return appsheetCnkk.createAppSheetExtension({
+    config: google, editor, verifier,
+    api: createAppSheetApi({ appId: a.appId, accessKey: a.accessKey }),
+    planner: googleClient ? appsheetCnkk.createGeminiPlanner({ client: googleClient, config: google }) : null
+  });
+}
+
+function getRouterAdapters(config) {
+  if (!config || typeof config !== 'object') return cnaiRouter.defaultAdapters();
+  if (!routerAdapterCache.has(config)) {
+    const google = config.google || {};
+    const oauth = google.oauth || {};
+    const configured = Boolean(oauth.clientId && oauth.clientSecret && oauth.refreshToken);
+    const client = configured ? googleCapability.createGoogleClient({ oauth }) : null;
+    routerAdapterCache.set(config, cnaiRouter.defaultAdapters({
+      adapters: { googleWorkspace: googleCapability.createGoogleWorkspaceAdapter({ client, config: google, snapshots: googleSnapshots, providerRegistry: readProviderRegistry(), extensions: [buildAppSheetExtension(google, client)] }) }
+    }));
+  }
+  return routerAdapterCache.get(config);
+}
+
 async function executeMcpMethod(method, params, store, powerAppsStore, powerAppsGitStore, sharePointReader, powerAutomateRunner, employeeLedgerEntries, bridgeServices, config = {}, stateRegistry, authenticatedScope) {
   if (method === 'get_powerapps_media_asset') {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !['operation', 'relativePath', 'relativePaths'].includes(key))) throw requestError('画像取得のparamsが不正です');
@@ -1801,7 +1846,7 @@ async function executeMcpMethod(method, params, store, powerAppsStore, powerApps
   }
   if (method === 'cnai_route_request') {
     if (!params || typeof params !== 'object' || Array.isArray(params)) throw requestError('paramsはJSONオブジェクトである必要があります');
-    return cnaiRouter.routeRequest(cnaiRouter.defaultState, params);
+    return cnaiRouter.routeRequest(cnaiRouter.defaultState, params, getRouterAdapters(config));
   }
   if (method === 'cnai_get_route_status') {
     if (!params || typeof params.requestId !== 'string') throw requestError('requestIdは必須です');
@@ -3011,10 +3056,10 @@ function connectorReadOnlyGuard(req, res, next) {
   if (typeof method === 'string' && method.startsWith('notifications/')) return next();
   if (method === 'ping' || method === 'initialize') return next();
   if (method === 'tools/list') {
-    return res.status(200).json(jsonRpcResult(id, { tools: [...PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)), ...cnaiCopilotEntry.COPILOT_TOOLS] }));
+    return res.status(200).json(jsonRpcResult(id, { tools: [...PUBLISHED_TOOLS.filter((tool) => CONNECTOR_READONLY_TOOLS.includes(tool.name)), ...cnaiCopilotEntry.COPILOT_TOOLS, googleCopilotEntry.GOOGLE_COPILOT_TOOL] }));
   }
   if (method === 'tools/call') {
-    if (typeof params.name === 'string' && (CONNECTOR_READONLY_TOOLS.includes(params.name) || cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(params.name))) return next();
+    if (typeof params.name === 'string' && (CONNECTOR_READONLY_TOOLS.includes(params.name) || cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(params.name) || params.name === googleCopilotEntry.GOOGLE_COPILOT_TOOL.name)) return next();
     return res.status(200).json(jsonRpcError(id, -32601, 'このコネクタでは読み取り専用ツールのみ使用できます'));
   }
   return res.status(200).json(jsonRpcError(id, -32601, `Method not found: ${typeof method === 'string' ? method : ''}`));
@@ -3127,7 +3172,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   // Same auth posture as the Windows Executor/job routes (fail-closed 503 with no MCP_API_KEY).
   app.post('/router/request', jobAuth, async (req, res, next) => {
     try {
-      return res.status(200).json(await cnaiRouter.routeRequest(cnaiRouter.defaultState, req.body || {}));
+      return res.status(200).json(await cnaiRouter.routeRequest(cnaiRouter.defaultState, req.body || {}, getRouterAdapters(config)));
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: error.message });
       return next(error);
@@ -3140,7 +3185,7 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   })));
   app.post('/router/request/:id/resume', jobAuth, async (req, res, next) => {
     try {
-      return res.status(200).json(await cnaiRouter.resumeRequest(cnaiRouter.defaultState, req.params.id, req.body || {}));
+      return res.status(200).json(await cnaiRouter.resumeRequest(cnaiRouter.defaultState, req.params.id, req.body || {}, getRouterAdapters(config)));
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: error.message });
       return next(error);
@@ -3179,6 +3224,10 @@ function createApp(config = getConfig(), injectedStore, injectedPowerAppsStore, 
   // Copilot CNAI entry (cnai_status / cnai_route_request): READ-only, served here instead of the generic MCP path.
   const copilotCnaiCall = async (req, res, next) => {
     const body = req.body;
+    if (body && body.method === 'tools/call' && body.params && body.params.name === googleCopilotEntry.GOOGLE_COPILOT_TOOL.name) {
+      const result = await googleCopilotEntry.handle(body.params.arguments || {}, { adapter: getRouterAdapters(config).googleWorkspace, state: cnaiRouter.defaultState });
+      return res.status(200).json(jsonRpcResult(body.id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result, isError: result.status === 'REJECTED' || result.status === 'FAILED' }));
+    }
     if (!body || body.method !== 'tools/call' || !body.params || !cnaiCopilotEntry.COPILOT_TOOL_NAMES.includes(body.params.name)) return next();
     const entry = cnaiCopilotEntry.createCopilotEntry({
       reader: sharePointReader,
